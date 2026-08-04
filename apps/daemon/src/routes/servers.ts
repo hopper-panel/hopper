@@ -11,11 +11,11 @@ import type { ServerManager } from '../server/server-manager.js';
 import { emptyUsage } from '../server/stats.js';
 
 /**
- * Routes appelées par le panel pour piloter les serveurs.
+ * Routes the panel calls to drive the servers.
  *
- * Toutes exigent le jeton de node, vérifié par le hook global. Aucune n'est
- * accessible depuis un navigateur : la console passe par le WebSocket, qui a son
- * propre modèle d'autorisation.
+ * All require the node token, checked by the global hook. None is reachable
+ * from a browser: the console goes through the WebSocket, which has its own
+ * authorisation model.
  */
 export function registerServerRoutes(app: FastifyInstance, manager: ServerManager): void {
   app.post('/api/servers', async (request, reply) => {
@@ -33,13 +33,13 @@ export function registerServerRoutes(app: FastifyInstance, manager: ServerManage
 
     const server = manager.upsert(body.data.configuration);
 
-    // Volontairement non attendu : installer un serveur prend de quelques
-    // secondes à plusieurs minutes — téléchargement d'un modpack, compilation
-    // de BuildTools. Tenir la requête HTTP ouverte pendant ce temps la ferait
-    // expirer côté proxy. Le panel suit l'avancement par WebSocket, et reçoit
-    // le verdict final sur `/api/remote/servers/:uuid/install`.
+    // Deliberately not awaited: installing a server takes from a few seconds to
+    // several minutes — downloading a modpack, compiling BuildTools. Holding
+    // the HTTP request open that long would make it expire at the proxy. The
+    // panel follows progress over the WebSocket, and receives the final verdict
+    // on `/api/remote/servers/:uuid/install`.
     void server.install(body.data.startOnCompletion).catch((error: unknown) => {
-      request.log.error({ server: server.uuid, err: error }, 'Installation échouée');
+      request.log.error({ server: server.uuid, err: error }, 'Installation failed');
     });
 
     return reply.code(201).send({ uuid: server.uuid, state: server.currentState });
@@ -72,14 +72,14 @@ export function registerServerRoutes(app: FastifyInstance, manager: ServerManage
     const server = manager.require(uuid);
     const action = server.power(body.data.action);
 
-    // Sans `wait`, on accuse réception tout de suite : l'arrêt d'un serveur
-    // Minecraft peut prendre une minute, et laisser une requête HTTP ouverte
-    // aussi longtemps la ferait expirer côté proxy.
+    // Without `wait`, receipt is acknowledged at once: stopping a Minecraft
+    // server can take a minute, and leaving an HTTP request open that long
+    // would make it expire at the proxy.
     if (body.data.wait) {
       await action;
     } else {
       void action.catch((error: unknown) => {
-        request.log.error({ server: uuid, err: error }, 'Action de puissance échouée');
+        request.log.error({ server: uuid, err: error }, 'Power action failed');
       });
     }
 
@@ -106,9 +106,9 @@ export function registerServerRoutes(app: FastifyInstance, manager: ServerManage
   });
 
   /**
-   * Met à jour la configuration d'un serveur sans le redémarrer.
-   * Les changements de limites ne prendront effet qu'à la recréation du
-   * conteneur, signalée par `container.requiresRebuild`.
+   * Updates a server's configuration without restarting it.
+   * Limit changes only take effect when the container is recreated, signalled
+   * by `container.requiresRebuild`.
    */
   app.post('/api/servers/:uuid/sync', async (request, reply) => {
     const { uuid } = request.params as { uuid: string };
@@ -124,7 +124,7 @@ export function registerServerRoutes(app: FastifyInstance, manager: ServerManage
       return reply.code(400).send({
         error: {
           code: 'uuid_mismatch',
-          message: "L'UUID du corps ne correspond pas à celui de l'URL.",
+          message: 'The UUID in the body does not match the one in the URL.',
           requestId: request.id,
         },
       });

@@ -6,31 +6,30 @@ import { Public } from '../modules/auth/decorators.js';
 import { WEB_ROOT_TOKEN, isApiPath } from './web-assets.js';
 
 /**
- * Repli de l'application à routage côté client.
+ * Fallback for the client-routed application.
  *
- * `@fastify/static` sert les fichiers réellement présents ; tout le reste
- * arrive ici. Une application React résout ses propres routes, donc recharger
- * `/servers/abc` doit rendre `index.html` plutôt qu'une 404.
+ * `@fastify/static` serves the files actually present; everything else lands
+ * here. A React application resolves its own routes, so reloading
+ * `/servers/abc` has to return `index.html` rather than a 404.
  *
- * Le routeur de Fastify préfère les routes statiques à une route générique :
- * les contrôleurs de l'API gardent donc la priorité, et seules les URL qui ne
- * correspondent à rien atterrissent ici.
+ * Fastify's router prefers static routes to a catch-all: the API controllers
+ * therefore keep priority, and only URLs matching nothing land here.
  */
 @Controller()
 export class WebController {
   constructor(@Inject(WEB_ROOT_TOKEN) private readonly webRoot: string) {}
 
   @Public()
-  // Joker anonyme, et non `*path` : le routeur de Fastify exige que l'étoile
-  // soit le dernier caractère de la route. La forme nommée, valable côté
-  // Express, fait échouer le démarrage.
+  // An anonymous wildcard, not `*path`: Fastify's router requires the star to
+  // be the last character of the route. The named form, valid in Express, makes
+  // startup fail.
   @Get('*')
   fallback(@Req() request: FastifyRequest, @Res() reply: FastifyReply): void {
     const pathname = request.url.split('?')[0] ?? '';
 
-    // Une route inconnue sous `/api` doit rester une 404 : renvoyer du HTML à
-    // un client qui attend du JSON transforme une faute de frappe d'URL en
-    // panne incompréhensible.
+    // An unknown route under `/api` has to stay a 404: returning HTML to a
+    // client expecting JSON turns a URL typo into an incomprehensible
+    // failure.
     if (isApiPath(pathname)) {
       throw new NotFoundException(`Route ${request.method} ${pathname} introuvable.`);
     }
@@ -38,14 +37,14 @@ export class WebController {
     const indexPath = join(this.webRoot, 'index.html');
 
     if (!existsSync(indexPath)) {
-      throw new NotFoundException("L'interface n'a pas été construite.");
+      throw new NotFoundException('The interface has not been built.');
     }
 
     void reply
       .status(200)
       .header('content-type', 'text/html; charset=utf-8')
-      // `index.html` référence des fichiers empreintés : le mettre en cache
-      // ferait charger l'ancienne application après une mise à jour.
+      // `index.html` references digest-stamped files: caching it would load the
+      // old application after an update.
       .header('cache-control', 'no-cache, must-revalidate')
       .send(createReadStream(indexPath));
   }

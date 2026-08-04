@@ -3,15 +3,16 @@ import { powerActionSchema, resourceUsageSchema, serverStateSchema } from '../se
 import { permissionSchema } from '../permissions.js';
 
 /**
- * Protocole WebSocket **navigateur ↔ daemon**.
+ * WebSocket protocol, **browser ↔ daemon**.
  *
- * Le navigateur se connecte directement au daemon : le panel ne relaie rien.
- * Il obtient d'abord un JWT court auprès du panel, puis l'envoie dans un message
- * `auth`. Tant que l'authentification n'a pas réussi, le daemon ignore tout
- * autre message et ferme la connexion après 10 secondes.
+ * The browser connects straight to the daemon: the panel relays nothing. It
+ * first obtains a short JWT from the panel, then sends it in an `auth` message.
+ * Until authentication has succeeded, the daemon ignores every other message
+ * and closes the connection after 10 seconds.
  *
- * Le JWT expirant vite, le daemon prévient le client (`token_expiring`) avant
- * l'échéance pour qu'il en demande un nouveau sans couper la console.
+ * Since the JWT expires quickly, the daemon warns the client
+ * (`token_expiring`) ahead of time so it can ask for a new one without cutting
+ * the console.
  */
 
 // ---------------------------------------------------------------------------
@@ -22,7 +23,7 @@ export const clientMessageSchema = z.discriminatedUnion('event', [
   z.object({ event: z.literal('auth'), token: z.string().min(1) }),
   z.object({ event: z.literal('send_command'), command: z.string().max(2000) }),
   z.object({ event: z.literal('set_state'), action: powerActionSchema }),
-  /** Demande le renvoi du tampon de console (à la connexion ou après un rafraîchissement). */
+  /** Asks for the console buffer again (on connect or after a refresh). */
   z.object({ event: z.literal('request_logs') }),
   z.object({ event: z.literal('request_stats') }),
 ]);
@@ -40,16 +41,16 @@ export const serverMessageSchema = z.discriminatedUnion('event', [
     /** Date d'expiration du JWT courant, en millisecondes epoch. */
     expiresAt: z.number().int().positive(),
   }),
-  /** Le jeton expire bientôt : demander un nouveau jeton au panel et renvoyer `auth`. */
+  /** The token expires soon: ask the panel for a new one and send `auth` again. */
   z.object({ event: z.literal('token_expiring') }),
   z.object({ event: z.literal('token_expired') }),
 
   z.object({ event: z.literal('status'), state: serverStateSchema }),
   z.object({ event: z.literal('stats'), usage: resourceUsageSchema }),
 
-  /** Une ligne de sortie du serveur, sans le saut de ligne final. */
+  /** One line of server output, without the trailing newline. */
   z.object({ event: z.literal('console_output'), line: z.string() }),
-  /** Message émis par Hopper lui-même, à afficher distinctement de la sortie du serveur. */
+  /** A message from Hopper itself, to be shown apart from the server's output. */
   z.object({ event: z.literal('daemon_message'), message: z.string() }),
 
   z.object({ event: z.literal('install_started') }),
@@ -64,7 +65,7 @@ export const serverMessageSchema = z.discriminatedUnion('event', [
 
 export type ServerMessage = z.infer<typeof serverMessageSchema>;
 
-/** Codes d'erreur transportés par l'événement `error`. */
+/** Error codes carried by the `error` event. */
 export const WS_ERROR_CODES = {
   UNAUTHENTICATED: 'unauthenticated',
   INVALID_TOKEN: 'invalid_token',
@@ -78,8 +79,8 @@ export const WS_ERROR_CODES = {
 export type WsErrorCode = (typeof WS_ERROR_CODES)[keyof typeof WS_ERROR_CODES];
 
 /**
- * Nombre de lignes de console conservées par le daemon et renvoyées à la
- * connexion. Assez pour voir une stack trace complète, assez peu pour ne pas
- * peser sur la mémoire avec cinquante serveurs.
+ * Number of console lines the daemon keeps and replays on connect. Enough to
+ * see a complete stack trace, few enough not to weigh on memory with fifty
+ * servers.
  */
 export const CONSOLE_BUFFER_LINES = 500;

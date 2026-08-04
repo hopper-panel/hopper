@@ -2,11 +2,11 @@ import { describe, expect, it } from 'vitest';
 import { CronError, formatCron, nextOccurrence, parseField, validateCron } from './cron.js';
 
 /**
- * Raccourci de lecture : `at('2026-08-03 10:00')`.
+ * Reading shortcut: `at('2026-08-03 10:00')`.
  *
- * Découpage par position plutôt que par `split` : ce dernier rend des éléments
- * possiblement absents, qu'il faudrait ensuite écarter à coups d'assertions
- * pour un format entièrement sous notre contrôle.
+ * Slicing by position rather than by `split`: the latter returns possibly
+ * absent elements, which would then have to be ruled out with assertions for a
+ * format entirely under our control.
  */
 function at(text: string): Date {
   return new Date(
@@ -30,43 +30,43 @@ function iso(date: Date): string {
 }
 
 describe('parseField', () => {
-  it('développe l’astérisque sur tout le domaine', () => {
+  it('expands the asterisk over the whole domain', () => {
     expect(parseField('*', 'hour')).toHaveLength(24);
     expect(parseField('*', 'minute')).toHaveLength(60);
     expect(parseField('*', 'dayOfMonth')[0]).toBe(1);
   });
 
-  it('accepte une valeur, une liste et un intervalle', () => {
+  it('accepts a value, a list and a range', () => {
     expect(parseField('5', 'hour')).toEqual([5]);
     expect(parseField('1,3,5', 'hour')).toEqual([1, 3, 5]);
     expect(parseField('1-4', 'hour')).toEqual([1, 2, 3, 4]);
   });
 
-  it('accepte un pas', () => {
+  it('accepts a step', () => {
     expect(parseField('*/15', 'minute')).toEqual([0, 15, 30, 45]);
     expect(parseField('10-30/10', 'minute')).toEqual([10, 20, 30]);
   });
 
-  // `5/15` parcourt le reste du domaine, comme dans une crontab : sans cela il
-  // ne désignerait que la minute 5 et la tâche ne tournerait qu'une fois par
-  // heure au lieu de quatre.
-  it('poursuit jusqu’au bout du domaine avec un pas sans borne haute', () => {
+  // `5/15` walks the rest of the domain, as in a crontab: without that it
+  // would only name minute 5 and the task would run once an hour instead of
+  // four times.
+  it('runs to the end of the domain with an unbounded step', () => {
     expect(parseField('5/15', 'minute')).toEqual([5, 20, 35, 50]);
   });
 
-  it('déduplique et trie', () => {
+  it('deduplicates and sorts', () => {
     expect(parseField('5,1,5,3', 'hour')).toEqual([1, 3, 5]);
   });
 
-  // Comportement historique de cron, que toute crontab existante suppose.
-  it('ramène 7 sur 0 pour dimanche', () => {
+  // Cron's historical behaviour, which every existing crontab assumes.
+  it('folds 7 onto 0 for Sunday', () => {
     expect(parseField('7', 'dayOfWeek')).toEqual([0]);
     expect(parseField('0,7', 'dayOfWeek')).toEqual([0]);
   });
 
-  describe('refus', () => {
-    // Refuser à la création plutôt qu'accepter une expression qui ne se
-    // déclencherait jamais : l'utilisateur croirait sa tâche planifiée.
+  describe('refusals', () => {
+    // Refuse at creation rather than accept an expression that would never
+    // fire: the user would believe their task was scheduled.
     it.each([
       ['', 'minute'],
       ['abc', 'hour'],
@@ -86,7 +86,7 @@ describe('parseField', () => {
 });
 
 describe('nextOccurrence', () => {
-  it('trouve la prochaine minute correspondante', () => {
+  it('finds the next matching minute', () => {
     const next = nextOccurrence(
       { minute: '30', hour: '4', dayOfMonth: '*', month: '*', dayOfWeek: '*' },
       at('2026-08-03 10:00'),
@@ -95,9 +95,9 @@ describe('nextOccurrence', () => {
     expect(iso(next)).toBe('2026-08-04 04:30');
   });
 
-  // Strictement postérieure : sinon une tâche qui vient de tourner serait
-  // immédiatement redéclenchée, en boucle.
-  it('est strictement postérieure à l’instant fourni', () => {
+  // Strictly later: otherwise a task that just ran would be retriggered at
+  // once, in a loop.
+  it('is strictly later than the instant given', () => {
     const next = nextOccurrence(
       { minute: '0', hour: '*', dayOfMonth: '*', month: '*', dayOfWeek: '*' },
       at('2026-08-03 10:00'),
@@ -106,7 +106,7 @@ describe('nextOccurrence', () => {
     expect(iso(next)).toBe('2026-08-03 11:00');
   });
 
-  it('gère un pas sur les minutes', () => {
+  it('handles a step on the minutes', () => {
     const next = nextOccurrence(
       { minute: '*/15', hour: '*', dayOfMonth: '*', month: '*', dayOfWeek: '*' },
       at('2026-08-03 10:07'),
@@ -115,7 +115,7 @@ describe('nextOccurrence', () => {
     expect(iso(next)).toBe('2026-08-03 10:15');
   });
 
-  it('passe au mois suivant', () => {
+  it('moves on to the next month', () => {
     const next = nextOccurrence(
       { minute: '0', hour: '0', dayOfMonth: '1', month: '*', dayOfWeek: '*' },
       at('2026-08-15 12:00'),
@@ -124,7 +124,7 @@ describe('nextOccurrence', () => {
     expect(iso(next)).toBe('2026-09-01 00:00');
   });
 
-  it('trouve un 29 février', () => {
+  it('finds a 29 February', () => {
     const next = nextOccurrence(
       { minute: '0', hour: '0', dayOfMonth: '29', month: '2', dayOfWeek: '*' },
       at('2026-03-01 00:00'),
@@ -133,8 +133,8 @@ describe('nextOccurrence', () => {
     expect(iso(next)).toBe('2028-02-29 00:00');
   });
 
-  it('respecte le jour de la semaine', () => {
-    // 3 août 2026 est un lundi ; le mardi suivant est le 4.
+  it('honours the day of the week', () => {
+    // 3 August 2026 is a Monday; the following Tuesday is the 4th.
     const next = nextOccurrence(
       { minute: '0', hour: '6', dayOfMonth: '*', month: '*', dayOfWeek: '2' },
       at('2026-08-03 10:00'),
@@ -145,23 +145,23 @@ describe('nextOccurrence', () => {
   });
 
   /**
-   * Le piège classique de cron, et celui qui fait redémarrer un serveur au
-   * mauvais moment : quand le jour du mois **et** le jour de la semaine sont
-   * tous deux restreints, ils se combinent en **ou**, pas en **et**.
+   * Cron's classic trap, and the one that restarts a server at the wrong
+   * moment: when the day of the month **and** the day of the week are both
+   * restricted, they combine with **or**, not with **and**.
    */
-  describe('croisement jour du mois / jour de la semaine', () => {
-    it('combine en OU quand les deux sont restreints', () => {
+  describe('day-of-month / day-of-week crossing', () => {
+    it('combines with OR when both are restricted', () => {
       const expression = { minute: '0', hour: '0', dayOfMonth: '15', month: '8', dayOfWeek: '1' };
 
-      // Le lundi 10 août arrive avant le 15 : c'est bien un OU.
+      // Monday 10 August comes before the 15th: it really is an OR.
       const next = nextOccurrence(expression, at('2026-08-05 12:00'));
 
       expect(iso(next)).toBe('2026-08-10 00:00');
       expect(next.getDay()).toBe(1);
     });
 
-    it('combine en ET dès que l’un des deux est libre', () => {
-      // Jour du mois restreint, jour de semaine libre : seul le 15 compte.
+    it('combines with AND as soon as one of the two is free', () => {
+      // Day of month restricted, day of week free: only the 15th counts.
       const next = nextOccurrence(
         { minute: '0', hour: '0', dayOfMonth: '15', month: '8', dayOfWeek: '*' },
         at('2026-08-05 12:00'),
@@ -171,9 +171,9 @@ describe('nextOccurrence', () => {
     });
   });
 
-  // Une expression impossible doit se signaler, pas faire tourner la recherche
-  // indéfiniment ni rendre une date fantaisiste.
-  it('refuse une expression qui ne correspond à aucune date', () => {
+  // An impossible expression has to report itself, not run the search forever
+  // nor return a fanciful date.
+  it('refuses an expression that matches no date', () => {
     expect(() =>
       nextOccurrence(
         { minute: '0', hour: '0', dayOfMonth: '30', month: '2', dayOfWeek: '*' },
@@ -182,8 +182,8 @@ describe('nextOccurrence', () => {
     ).toThrow(CronError);
   });
 
-  // Les secondes de l'instant de départ ne doivent pas décaler le résultat.
-  it('ignore les secondes de l’instant fourni', () => {
+  // The seconds of the starting instant must not shift the result.
+  it('ignores the seconds of the instant given', () => {
     const from = at('2026-08-03 10:00');
     from.setSeconds(59, 999);
 
@@ -198,13 +198,13 @@ describe('nextOccurrence', () => {
 });
 
 describe('validateCron', () => {
-  it('accepte une expression complète', () => {
+  it('accepts a complete expression', () => {
     expect(() =>
       validateCron({ minute: '0', hour: '5', dayOfMonth: '*', month: '*', dayOfWeek: '1-5' }),
     ).not.toThrow();
   });
 
-  it('signale le champ fautif', () => {
+  it('reports the faulty field', () => {
     expect(() =>
       validateCron({ minute: '0', hour: '99', dayOfMonth: '*', month: '*', dayOfWeek: '*' }),
     ).toThrow(/heure/);
@@ -212,7 +212,7 @@ describe('validateCron', () => {
 });
 
 describe('formatCron', () => {
-  it('rend la forme habituelle', () => {
+  it('returns the usual form', () => {
     expect(
       formatCron({ minute: '0', hour: '5', dayOfMonth: '*', month: '*', dayOfWeek: '1-5' }),
     ).toBe('0 5 * * 1-5');

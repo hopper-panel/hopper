@@ -2,25 +2,25 @@ import { describe, expect, it } from 'vitest';
 import { ALWAYS_IGNORED, IgnoreList } from './ignore.js';
 
 describe('IgnoreList', () => {
-  it('n’exclut rien sans motif', () => {
+  it('excludes nothing without a pattern', () => {
     const list = new IgnoreList([]);
 
     expect(list.isEmpty).toBe(true);
     expect(list.ignores('world/level.dat')).toBe(false);
   });
 
-  it('ignore les commentaires et les lignes vides', () => {
+  it('ignores comments and empty lines', () => {
     const list = new IgnoreList(['# les journaux', '', '   ', '*.log']);
 
     expect(list.ignores('latest.log')).toBe(true);
     expect(list.ignores('server.properties')).toBe(false);
   });
 
-  // Comportement `.gitignore` : un motif sans barre vaut à toute profondeur.
-  // C'est ce qui rend `*.log` utile — les journaux d'un serveur Minecraft sont
-  // éparpillés dans les répertoires de plugins.
-  describe('motif non ancré', () => {
-    it('s’applique à toute profondeur', () => {
+  // `.gitignore` behaviour: a pattern without a slash holds at any depth. That
+  // is what makes `*.log` useful — a Minecraft server's logs are scattered
+  // through the plugin directories.
+  describe('unanchored pattern', () => {
+    it('applies at any depth', () => {
       const list = new IgnoreList(['*.log']);
 
       expect(list.ignores('latest.log')).toBe(true);
@@ -28,7 +28,7 @@ describe('IgnoreList', () => {
       expect(list.ignores('plugins/CoreProtect/debug.log')).toBe(true);
     });
 
-    it('exclut aussi le contenu de ce qu’il désigne', () => {
+    it('also excludes the contents of what it names', () => {
       const list = new IgnoreList(['cache']);
 
       expect(list.ignores('cache', true)).toBe(true);
@@ -37,16 +37,16 @@ describe('IgnoreList', () => {
     });
   });
 
-  describe('motif ancré', () => {
-    it('ne vaut qu’à la racine', () => {
+  describe('anchored pattern', () => {
+    it('holds at the root only', () => {
       const list = new IgnoreList(['/logs']);
 
       expect(list.ignores('logs/latest.log')).toBe(true);
       expect(list.ignores('plugins/logs/latest.log')).toBe(false);
     });
 
-    // Une barre au milieu ancre aussi, comme dans `.gitignore`.
-    it('est ancré dès qu’il contient une barre', () => {
+    // A slash in the middle anchors too, as in `.gitignore`.
+    it('is anchored as soon as it contains a slash', () => {
       const list = new IgnoreList(['plugins/*/data']);
 
       expect(list.ignores('plugins/Essentials/data')).toBe(true);
@@ -54,15 +54,15 @@ describe('IgnoreList', () => {
     });
   });
 
-  describe('joker', () => {
-    it('*, un seul segment', () => {
+  describe('wildcard', () => {
+    it('*, one segment only', () => {
       const list = new IgnoreList(['plugins/*.jar']);
 
       expect(list.ignores('plugins/Essentials.jar')).toBe(true);
       expect(list.ignores('plugins/sub/Essentials.jar')).toBe(false);
     });
 
-    it('**, plusieurs segments', () => {
+    it('**, several segments', () => {
       const list = new IgnoreList(['plugins/**/*.jar']);
 
       expect(list.ignores('plugins/sub/Essentials.jar')).toBe(true);
@@ -70,44 +70,43 @@ describe('IgnoreList', () => {
     });
   });
 
-  it('ne vise que les répertoires avec une barre finale', () => {
+  it('targets directories only with a trailing slash', () => {
     const list = new IgnoreList(['cache/']);
 
     expect(list.ignores('cache', true)).toBe(true);
-    // Un *fichier* nommé « cache » n'est pas ce que la règle visait.
+    // A *file* named "cache" is not what the rule was aiming at.
     expect(list.ignores('cache', false)).toBe(false);
   });
 
-  // La raison d'être de `!` : c'est la dernière règle correspondante qui
-  // décide. Un parcours qui s'arrêterait à la première correspondance rendrait
-  // la négation inopérante — et l'utilisateur perdrait un fichier qu'il croyait
-  // avoir sauvé.
-  describe('négation', () => {
-    it('réintègre ce qu’une règle précédente excluait', () => {
+  // The reason `!` exists: it is the last matching rule that decides. A walk
+  // stopping at the first match would make negation useless — and the user
+  // would lose a file they believed they had saved.
+  describe('negation', () => {
+    it('brings back what an earlier rule excluded', () => {
       const list = new IgnoreList(['*.log', '!important.log']);
 
       expect(list.ignores('debug.log')).toBe(true);
       expect(list.ignores('important.log')).toBe(false);
     });
 
-    it('l’ordre compte', () => {
+    it('order matters', () => {
       const list = new IgnoreList(['!important.log', '*.log']);
 
       expect(list.ignores('important.log')).toBe(true);
     });
   });
 
-  // Un chemin séparé par des antislashs ne doit pas échapper aux règles :
-  // l'archive est produite sur Linux, mais les tests tournent aussi sous
-  // Windows et un jour quelqu'un passera un chemin natif.
-  it('normalise les séparateurs', () => {
+  // A backslash-separated path must not escape the rules: the archive is
+  // produced on Linux, but the tests also run on Windows and one day somebody
+  // will pass a native path.
+  it('normalises the separators', () => {
     const list = new IgnoreList(['logs/*.log']);
 
     expect(list.ignores('logs\\latest.log')).toBe(true);
     expect(list.ignores('./logs/latest.log')).toBe(true);
   });
 
-  it('ne prétend jamais exclure la racine', () => {
+  it('never claims to exclude the root', () => {
     const list = new IgnoreList(['**']);
 
     expect(list.ignores('')).toBe(false);
@@ -115,16 +114,16 @@ describe('IgnoreList', () => {
   });
 
   describe('canPrune', () => {
-    // Descendre dans un répertoire dont rien ne sortira coûte un appel système
-    // par entrée ; sur un serveur qui en compte des dizaines de milliers, c'est
-    // l'essentiel du temps de sauvegarde.
-    it('permet de sauter un répertoire entièrement exclu', () => {
+    // Descending into a directory nothing will come out of costs one system
+    // call per entry; on a server holding tens of thousands, that is most of
+    // the backup time.
+    it('allows skipping a wholly excluded directory', () => {
       expect(new IgnoreList(['cache/']).canPrune('cache')).toBe(true);
     });
 
-    // Mais dès qu'une règle peut réintégrer quelque chose, il faut ouvrir le
-    // répertoire : élaguer ferait disparaître un fichier explicitement sauvé.
-    it('interdit l’élagage en présence d’une négation', () => {
+    // But as soon as a rule could bring something back, the directory has to
+    // be opened: pruning would make an explicitly saved file vanish.
+    it('forbids pruning when a negation is present', () => {
       const list = new IgnoreList(['cache/', '!cache/garder.dat']);
 
       expect(list.ignores('cache', true)).toBe(true);
@@ -134,10 +133,10 @@ describe('IgnoreList', () => {
 });
 
 describe('ALWAYS_IGNORED', () => {
-  // `session.lock` restauré fait croire au moteur de monde qu'une autre
-  // instance écrit déjà dedans : le serveur refuse alors de démarrer, sur une
-  // erreur qui ne mentionne pas la sauvegarde.
-  it('écarte le verrou de session et les vidages de la JVM', () => {
+  // A restored `session.lock` makes the world engine believe another instance
+  // is already writing to it: the server then refuses to start, on an error
+  // that does not mention the backup.
+  it('drops the session lock and the JVM dumps', () => {
     const list = new IgnoreList(ALWAYS_IGNORED);
 
     expect(list.ignores('world/session.lock')).toBe(true);

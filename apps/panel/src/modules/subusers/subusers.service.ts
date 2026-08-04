@@ -13,22 +13,21 @@ import {
 import { PrismaService } from '../../prisma/prisma.service.js';
 
 /**
- * Sous-utilisateurs d'un serveur.
+ * A server's subusers.
  *
- * Un sous-utilisateur est un **compte existant** du panel à qui l'on accorde
- * des permissions sur un serveur précis. Il n'y a pas d'invitation par courriel
- * ici : le panel est auto-hébergé, l'administrateur crée les comptes, et un
- * système d'invitation ajouterait une file d'attente de jetons à gérer pour un
- * gain nul dans ce contexte.
+ * A subuser is an **existing** panel account granted permissions on one
+ * particular server. There is no email invitation here: the panel is
+ * self-hosted, the administrator creates the accounts, and an invitation system
+ * would add a queue of tokens to manage for no gain in this context.
  *
- * Deux règles gouvernent l'attribution :
+ * Two rules govern the grant:
  *
- *  - **le propriétaire n'est pas un sous-utilisateur de son propre serveur** —
- *    lui en créer un lui donnerait moins de droits qu'il n'en a déjà, et
- *    laisserait croire qu'on peut les lui retirer ;
- *  - **on ne peut pas accorder ce qu'on n'a pas** : un sous-utilisateur qui
- *    gère les autres ne peut leur donner que ses propres permissions, sinon la
- *    délégation deviendrait une élévation de privilèges.
+ *  - **the owner is not a subuser of their own server** — creating one for them
+ *    would give them fewer rights than they already hold, and would suggest
+ *    those rights could be taken away;
+ *  - **one cannot grant what one does not have**: a subuser who manages the
+ *    others can only give them their own permissions, otherwise delegation
+ *    would become a privilege escalation.
  */
 @Injectable()
 export class SubusersService {
@@ -59,13 +58,13 @@ export class SubusersService {
 
     if (!user) {
       throw new NotFoundException(
-        "Aucun compte n'existe avec cette adresse. Créez-le d'abord dans l'administration.",
+        'No account exists with this address. Create it in the administration first.',
       );
     }
 
     if (user.id === server.ownerId) {
       throw new BadRequestException(
-        'Le propriétaire du serveur possède déjà toutes les permissions.',
+        'The server owner already holds every permission.',
       );
     }
 
@@ -74,7 +73,7 @@ export class SubusersService {
     });
 
     if (existing) {
-      throw new ConflictException('Ce compte a déjà accès à ce serveur.');
+      throw new ConflictException('This account already has access to this server.');
     }
 
     const permissions = this.grantable(input.permissions, granter);
@@ -111,11 +110,11 @@ export class SubusersService {
   }
 
   /**
-   * Restreint une demande de permissions à ce que l'attribuant peut donner.
+   * Narrows a permission request to what the grantor can give.
    *
-   * Les valeurs inconnues sont écartées par `sanitizePermissions` — une
-   * permission supprimée d'une version à l'autre ne doit pas rester en base et
-   * ressusciter au prochain rapprochement.
+   * Unknown values are dropped by `sanitizePermissions` — a permission removed
+   * from one version to the next must not stay in the database and come back to
+   * life at the next reconciliation.
    */
   private grantable(
     requested: Permission[],
@@ -131,7 +130,7 @@ export class SubusersService {
 
     if (refused.length > 0) {
       throw new BadRequestException(
-        `Vous ne pouvez pas accorder une permission que vous n'avez pas : ${refused.join(', ')}.`,
+        `You cannot grant a permission you do not hold: ${refused.join(', ')}.`,
       );
     }
 
@@ -175,7 +174,7 @@ function toPublicSubuser(subuser: SubuserRow) {
     uuid: subuser.uuid,
     user: subuser.user,
     permissions: subuser.permissions,
-    /** Signalées à l'interface pour qu'elle puisse prévenir avant d'accorder. */
+    /** Reported to the interface so it can warn before granting. */
     dangerous: subuser.permissions.filter((permission) =>
       (DANGEROUS_PERMISSIONS as readonly string[]).includes(permission),
     ),

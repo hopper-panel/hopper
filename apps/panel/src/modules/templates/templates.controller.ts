@@ -16,19 +16,19 @@ import { TemplateSyncService, type SyncOutcome } from './template-sync.service.j
 import { TemplatesService, type TemplateView } from './templates.service.js';
 
 const importEggSchema = z.object({
-  /** Contenu du fichier egg, tel quel. */
+  /** Contents of the egg file, as is. */
   egg: z.unknown(),
-  /** Groupe d'accueil. Créé s'il n'existe pas. */
+  /** Group it lands in. Created if it does not exist. */
   group: z.string().min(1).max(100),
 });
 
 type ImportEggDto = z.infer<typeof importEggSchema>;
 
 /**
- * Réservé aux administrateurs : seuls eux créent des serveurs pour l'instant.
- * Quand les utilisateurs pourront en créer eux-mêmes, cette liste devra être
- * filtrée par ce qui leur est autorisé — d'où le contrôleur distinct plutôt
- * qu'une route ouverte qu'on oublierait de restreindre.
+ * Administrators only: they alone create servers for now. When users can create
+ * their own, this list will have to be filtered by what they are allowed —
+ * hence the separate controller rather than an open route somebody would forget
+ * to restrict.
  */
 @Controller('api/admin/templates')
 @AdminOnly()
@@ -54,10 +54,10 @@ export class TemplatesController {
   }
 
   /**
-   * Réinstalle le catalogue livré avec Hopper.
+   * Reinstalls the catalogue shipped with Hopper.
    *
-   * Utile après une mise à jour du panel. Les templates modifiés depuis
-   * l'interface sont conservés tels quels.
+   * Useful after a panel update. Templates edited from the interface are kept
+   * as they are.
    */
   @Post('sync')
   @HttpCode(HttpStatus.OK)
@@ -66,12 +66,12 @@ export class TemplatesController {
   }
 
   /**
-   * Importe un « egg » Pterodactyl.
+   * Imports a Pterodactyl egg.
    *
-   * Ouvre l'accès aux centaines d'eggs maintenus par la communauté, pour des
-   * jeux et des modpacks que Hopper ne livrera jamais lui-même. Les points
-   * demandant une relecture sont renvoyés avec le résultat plutôt que d'être
-   * découverts au premier démarrage.
+   * Opens access to the hundreds of eggs maintained by the community, for games
+   * and modpacks Hopper will never ship itself. The points needing a
+   * read-through are returned with the result rather than discovered on the
+   * first start.
    */
   @Post('import')
   @HttpCode(HttpStatus.CREATED)
@@ -86,8 +86,8 @@ export class TemplatesController {
       return { template: await this.templates.findByKey(template.key), warnings };
     } catch (error: unknown) {
       if (error instanceof EggImportError) {
-        // Le détail des problèmes de format est renvoyé : sans lui,
-        // l'administrateur n'a aucun moyen de savoir quoi corriger.
+        // The detail of the format problems is returned: without it, the
+        // administrator has no way of knowing what to fix.
         throw new BadRequestException({ message: error.message, issues: error.issues });
       }
 
