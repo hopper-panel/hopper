@@ -4,21 +4,20 @@ import { Secret, TOTP } from 'otpauth';
 import type { Environment } from '../../config/environment.js';
 
 /**
- * Double authentification par code temporel (RFC 6238).
+ * Two-factor authentication by time-based code (RFC 6238).
  *
- * Réglages standards — 6 chiffres, 30 secondes, SHA-1 — parce que c'est ce que
- * savent lire Google Authenticator, Aegis, 1Password et Bitwarden. Passer en
- * SHA-256 casserait la compatibilité avec une partie des applications sans
- * gain réel : le secret fait déjà 160 bits.
+ * Standard settings — 6 digits, 30 seconds, SHA-1 — because that is what Google
+ * Authenticator, Aegis, 1Password and Bitwarden can read. Moving to SHA-256
+ * would break compatibility with some apps for no real gain: the secret is
+ * already 160 bits.
  */
 const TOTP_DIGITS = 6;
 const TOTP_PERIOD_SECONDS = 30;
 
 /**
- * Fenêtre de tolérance, en pas de 30 secondes, de part et d'autre du code
- * courant. 1 accepte donc une horloge décalée de 30 s au plus — indispensable
- * en pratique, les téléphones dérivent. Au-delà, la fenêtre d'attaque par
- * rejeu s'élargit sans bénéfice.
+ * Tolerance window, in 30-second steps, either side of the current code. 1
+ * therefore accepts a clock off by at most 30s — indispensable in practice,
+ * phones drift. Beyond that, the replay window widens for no benefit.
  */
 const TOTP_WINDOW = 1;
 
@@ -27,13 +26,13 @@ export class TotpService {
   private readonly issuer: string;
 
   constructor(config: ConfigService<Environment, true>) {
-    // L'émetteur apparaît dans l'application d'authentification : il doit
-    // désigner l'instance, pas le logiciel, sinon deux panels Hopper créent
-    // deux entrées indiscernables.
+    // The issuer shows up in the authenticator app: it has to name the
+    // instance, not the software, otherwise two Hopper panels create two
+    // indistinguishable entries.
     this.issuer = new URL(config.get('APP_URL', { infer: true })).host;
   }
 
-  /** Secret aléatoire en base32, à stocker chiffré. */
+  /** Random base32 secret, to be stored encrypted. */
   generateSecret(): string {
     return new Secret({ size: 20 }).base32;
   }
@@ -49,18 +48,17 @@ export class TotpService {
     });
   }
 
-  /** URI `otpauth://` à encoder en QR code côté interface. */
+  /** `otpauth://` URI, to be encoded as a QR code by the interface. */
   buildProvisioningUri(secret: string, username: string): string {
     return this.build(secret, username).toString();
   }
 
   /**
-   * Valide un code saisi par l'utilisateur.
+   * Validates a code typed by the user.
    *
-   * Les espaces et tirets sont retirés : les applications affichent souvent
-   * `123 456`, et refuser une saisie recopiée telle quelle serait une friction
-   * gratuite. Toute autre entrée est rejetée sans être transmise à la
-   * bibliothèque.
+   * Spaces and hyphens are stripped: apps often display `123 456`, and refusing
+   * an entry copied as shown would be gratuitous friction. Any other input is
+   * rejected without being passed to the library.
    */
   verify(secret: string, code: string): boolean {
     const normalized = code.replace(/[\s-]/g, '');

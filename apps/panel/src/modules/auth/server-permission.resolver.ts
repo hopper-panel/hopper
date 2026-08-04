@@ -11,20 +11,20 @@ export interface ResolvedServerAccess {
 }
 
 /**
- * Résout l'accès d'un utilisateur à un serveur.
+ * Resolves a user's access to a server.
  *
- * Isolé du garde pour être testable seul : c'est la fonction qui décide qui
- * peut toucher à quoi, et elle doit être vérifiable sans monter une requête
- * HTTP ni un module Nest.
+ * Kept apart from the guard so it can be tested on its own: this is the
+ * function that decides who may touch what, and it has to be checkable without
+ * standing up an HTTP request or a Nest module.
  *
- * Trois niveaux, dans cet ordre :
- *  1. **administrateur du panel** — toutes les permissions, sur tous les serveurs ;
- *  2. **propriétaire** — toutes les permissions sur ses serveurs ;
- *  3. **sous-utilisateur** — uniquement les permissions qui lui ont été accordées.
+ * Three levels, in this order:
+ *  1. **panel administrator** — every permission, on every server;
+ *  2. **owner** — every permission on their own servers;
+ *  3. **subuser** — only the permissions granted to them.
  *
- * Un utilisateur sans lien avec le serveur reçoit `null`, et l'appelant doit
- * répondre 404 plutôt que 403 : distinguer « existe mais interdit » de
- * « n'existe pas » permettrait d'énumérer les serveurs des autres.
+ * A user with no link to the server gets `null`, and the caller has to answer
+ * 404 rather than 403: telling "exists but forbidden" from "does not exist"
+ * would allow enumerating other people's servers.
  */
 @Injectable()
 export class ServerPermissionResolver {
@@ -69,9 +69,9 @@ export class ServerPermissionResolver {
       return null;
     }
 
-    // `sanitizePermissions` écarte les valeurs devenues inconnues : une
-    // permission retirée du code dans une version ultérieure ne doit pas être
-    // interprétée comme un droit quelconque.
+    // `sanitizePermissions` drops values that have become unknown: a
+    // permission removed from the code in a later version must not be read as
+    // some right or other.
     return {
       id: server.id,
       uuid: server.uuid,

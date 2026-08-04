@@ -14,12 +14,12 @@ import type { AuthenticatedRequest } from '../request-user.js';
 import { TokenService } from '../token.service.js';
 
 /**
- * Garde global d'authentification.
+ * Global authentication guard.
  *
- * Enregistré en `APP_GUARD` : toute route est protégée sauf marquage `@Public()`
- * explicite. C'est l'inverse du réflexe habituel, et c'est délibéré — sur un
- * panel qui pilote des conteneurs, oublier un garde doit être impossible, pas
- * seulement improbable.
+ * Registered as `APP_GUARD`: every route is protected unless explicitly marked
+ * `@Public()`. That is the reverse of the usual reflex, and it is deliberate —
+ * on a panel that drives containers, forgetting a guard has to be impossible,
+ * not merely unlikely.
  */
 @Injectable()
 export class JwtAuthGuard implements CanActivate {
@@ -47,8 +47,8 @@ export class JwtAuthGuard implements CanActivate {
       throw new UnauthorizedException('Authentification requise.');
     }
 
-    // Une clé d'API se reconnaît à son préfixe : la confondre avec un jeton de
-    // session la ferait échouer à la vérification de signature, avec un message
+    // An API key is recognised by its prefix: mistaking it for a session token
+    // would fail signature verification, with a message
     // trompeur.
     if (looksLikeApiKey(token)) {
       return this.authenticateApiKey(request, token, context);
@@ -56,12 +56,12 @@ export class JwtAuthGuard implements CanActivate {
 
     const payload = await this.tokens.verifyAccessToken(token);
     if (!payload) {
-      throw new UnauthorizedException('Jeton invalide ou expiré.');
+      throw new UnauthorizedException('Invalid or expired token.');
     }
 
-    // La session est relue à chaque requête : c'est ce qui permet à une
-    // déconnexion ou à une suspension de prendre effet avant l'expiration de
-    // l'access token, au prix d'une requête indexée.
+    // The session is read back on every request: that is what lets a sign-out
+    // or a suspension take effect before the access token expires, at the cost
+    // of one indexed query.
     const session = await this.prisma.session.findFirst({
       where: { id: Number(payload.sid), revokedAt: null, expiresAt: { gt: new Date() } },
       select: {
@@ -79,7 +79,7 @@ export class JwtAuthGuard implements CanActivate {
     });
 
     if (!session || session.user.uuid !== payload.sub) {
-      throw new UnauthorizedException('Session révoquée ou expirée.');
+      throw new UnauthorizedException('Session revoked or expired.');
     }
 
     if (session.user.suspended) {
@@ -91,8 +91,8 @@ export class JwtAuthGuard implements CanActivate {
       uuid: session.user.uuid,
       username: session.user.username,
       email: session.user.email,
-      // Le rôle vient de la base, pas du jeton : promouvoir ou rétrograder un
-      // utilisateur doit prendre effet immédiatement, sans attendre qu'il se
+      // The role comes from the database, not the token: promoting or
+      // demoting a user has to take effect at once, without waiting for them to
       // reconnecte.
       role: session.user.role,
       sessionId: payload.sid,
@@ -104,20 +104,19 @@ export class JwtAuthGuard implements CanActivate {
     ]);
 
     if (requiredRole === 'ADMIN' && request.user.role !== 'ADMIN') {
-      throw new ForbiddenException('Cette action est réservée aux administrateurs.');
+      throw new ForbiddenException('This action is for administrators only.');
     }
 
     return true;
   }
 
   /**
-   * Authentifie une requête portant une clé d'API.
+   * Authenticates a request carrying an API key.
    *
-   * Deux garde-fous que la session n'a pas : la **portée** de la clé — une clé
-   * de lecture ne doit pas pouvoir éteindre un serveur — et le fait qu'elle
-   * n'ouvre l'administration que si elle a été créée pour cela. Le rôle du
-   * compte est vérifié en plus, pour qu'une rétrogradation prenne effet sans
-   * qu'on ait à révoquer les clés une à une.
+   * Two guardrails a session does not have: the key's **scope** — a read key
+   * must not be able to stop a server — and the fact that it only opens the
+   * administration if it was created for that. The account's role is checked on
+   * top, so a demotion takes effect without having to revoke keys one by one.
    */
   private async authenticateApiKey(
     request: AuthenticatedRequest,
@@ -127,15 +126,15 @@ export class JwtAuthGuard implements CanActivate {
     const key = await this.apiKeys.authenticate(token, request.ip);
 
     if (!key) {
-      throw new UnauthorizedException('Clé d’API invalide, expirée ou révoquée.');
+      throw new UnauthorizedException('API key invalid, expired or revoked.');
     }
 
-    // `request.url` porte la chaîne de requête : on ne compare que le chemin.
+    // `request.url` carries the query string: only the path is compared.
     const path = request.url.split('?')[0] ?? '';
 
     if (!scopeAllows(key.scopes, request.method, path)) {
       throw new ForbiddenException(
-        `Cette clé n’a pas la portée nécessaire (${key.scopes.join(', ') || 'aucune'}).`,
+        `This key does not have the necessary scope (${key.scopes.join(', ') || 'none'}).`,
       );
     }
 
@@ -145,8 +144,8 @@ export class JwtAuthGuard implements CanActivate {
       username: key.user.username,
       email: key.user.email,
       role: key.user.role,
-      // Une clé n'ouvre pas de session : il n'y a rien à révoquer côté sessions,
-      // et l'identifiant sert à distinguer l'origine dans les journaux.
+      // A key opens no session: there is nothing to revoke on the session
+      // side, and the identifier tells the origin apart in the logs.
       sessionId: `api-key:${key.id}`,
     };
 
@@ -156,7 +155,7 @@ export class JwtAuthGuard implements CanActivate {
     ]);
 
     if (requiredRole === 'ADMIN' && key.user.role !== 'ADMIN') {
-      throw new ForbiddenException('Cette action est réservée aux administrateurs.');
+      throw new ForbiddenException('This action is for administrators only.');
     }
 
     return true;
@@ -171,10 +170,10 @@ export class JwtAuthGuard implements CanActivate {
       }
     }
 
-    // Repli sur le cookie, utilisé par l'interface web. Une clé d'API ne s'y
-    // trouve jamais : elle se présente toujours en en-tête. Les requêtes qui
-    // s'authentifient par cookie sont protégées contre le CSRF par
-    // `SameSite=Lax` et par le fait que l'API n'accepte que du JSON.
+    // Falls back to the cookie, used by the web interface. An API key is never
+    // there: it always presents itself in a header. Requests authenticated by
+    // cookie are protected against CSRF by
+    // `SameSite=Lax` and by the fact the API only accepts JSON.
     const cookie = request.cookies?.hopper_access;
     return cookie ?? null;
   }

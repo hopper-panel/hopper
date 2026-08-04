@@ -13,13 +13,13 @@ import { TokenService } from './token.service.js';
 import { TotpService } from './totp.service.js';
 
 /**
- * Global : `CryptoService` et `TokenService` sont utilisés par les modules
- * serveurs et nodes (signature des jetons de console, chiffrement des secrets
- * de node). Les redéclarer ailleurs créerait des instances concurrentes avec
- * les mêmes clés dérivées, sans bénéfice.
+ * Global: `CryptoService` and `TokenService` are used by the servers and nodes
+ * modules (signing console tokens, encrypting node secrets). Redeclaring them
+ * elsewhere would create competing instances with the same derived keys, for no
+ * benefit.
  *
- * Les deux gardes sont enregistrés en `APP_GUARD` : l'authentification est le
- * comportement par défaut, l'accès anonyme une exception marquée `@Public()`.
+ * Both guards are registered as `APP_GUARD`: authentication is the default
+ * behaviour, anonymous access an exception marked `@Public()`.
  */
 @Global()
 @Module({

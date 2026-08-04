@@ -44,7 +44,7 @@ export class AuthController {
     private readonly settings: InstanceSettingsService,
     config: ConfigService<Environment, true>,
   ) {
-    // `Secure` casserait la connexion en développement sur http://localhost.
+    // `Secure` would break signing in during development on http://localhost.
     this.secureCookies = config.get('APP_URL', { infer: true }).startsWith('https://');
   }
 
@@ -72,8 +72,8 @@ export class AuthController {
     return {
       status: 'authenticated',
       user: result.user,
-      // Renvoyés aussi dans le corps pour les clients non navigateur (CLI,
-      // scripts). L'interface web, elle, s'appuie uniquement sur les cookies.
+      // Returned in the body too, for non-browser clients (CLI,
+      // scripts). The web interface itself relies on cookies only.
       accessToken: result.accessToken,
       refreshToken: result.refreshToken,
       expiresIn: ACCESS_TOKEN_TTL_SECONDS,
@@ -91,7 +91,7 @@ export class AuthController {
     const token = body.refreshToken ?? request.cookies?.[REFRESH_COOKIE];
 
     if (!token) {
-      throw new UnauthorizedException('Aucun jeton de rafraîchissement fourni.');
+      throw new UnauthorizedException('No refresh token supplied.');
     }
 
     const result = await this.auth.refresh(token, this.contextOf(request));
@@ -119,8 +119,8 @@ export class AuthController {
       await this.auth.logout(token, this.contextOf(request));
     }
 
-    // Les cookies sont effacés même sans jeton valide : un client dans un état
-    // incohérent doit toujours pouvoir revenir à un état propre.
+    // Cookies are cleared even without a valid token: a client in an
+    // inconsistent state must always be able to get back to a clean one.
     this.clearAuthCookies(reply);
   }
 
@@ -137,9 +137,9 @@ export class AuthController {
       panelName: settings.panelName,
       twoFactorEnabled: account.twoFactorEnabled,
       /**
-       * L'interface s'en sert pour barrer l'accès tant que le second facteur
-       * n'est pas actif. L'exigence ne peut pas être appliquée à la connexion :
-       * il faut être connecté pour activer un second facteur.
+       * The interface uses it to bar access until the second factor is on.
+       * The requirement cannot be enforced at sign-in: one has to be signed in
+       * to turn a second factor on.
        */
       mustEnableTwoFactor:
         !account.twoFactorEnabled &&
@@ -149,10 +149,10 @@ export class AuthController {
   }
 
   /**
-   * Choix du mot de passe initial, depuis le lien reçu par courriel.
+   * Choosing the initial password, from the link received by email.
    *
-   * Publique par nécessité : son porteur n'a pas encore de mot de passe, donc
-   * pas de session. Le jeton signé tient lieu d'authentification.
+   * Public out of necessity: its bearer has no password yet, so no session.
+   * The signed token stands in for authentication.
    */
   @Post('password-setup')
   @Public()
@@ -179,7 +179,7 @@ export class AuthController {
       this.contextOf(request),
     );
 
-    // Toutes les sessions viennent d'être révoquées, y compris celle-ci.
+    // Every session was just revoked, this one included.
     this.clearAuthCookies(reply);
   }
 
@@ -216,9 +216,9 @@ export class AuthController {
   }
 
   /**
-   * Le refresh token est restreint à `/api/auth` : il n'a aucune raison d'être
-   * envoyé avec chaque appel d'API, et limiter son chemin réduit la surface en
-   * cas de faille XSS ou de journalisation trop bavarde d'un proxy.
+   * The refresh token is restricted to `/api/auth`: it has no reason to be
+   * sent with every API call, and limiting its path shrinks the surface in case
+   * of an XSS flaw or an over-talkative proxy log.
    */
   private setAuthCookies(reply: FastifyReply, accessToken: string, refreshToken: string): void {
     reply.setCookie(ACCESS_COOKIE, accessToken, {

@@ -6,22 +6,22 @@ export const REQUIRED_ROLE_KEY = 'hopper:role';
 export const REQUIRED_SERVER_PERMISSION_KEY = 'hopper:server-permission';
 
 /**
- * Route accessible sans authentification.
+ * Route reachable without authentication.
  *
- * `JwtAuthGuard` est enregistré globalement : l'accès anonyme est donc une
- * exception explicite, jamais un oubli. Ajouter une route sans y penser la rend
- * protégée par défaut.
+ * `JwtAuthGuard` is registered globally: anonymous access is therefore an
+ * explicit exception, never an oversight. Adding a route without thinking about
+ * it leaves it protected by default.
  */
 export const Public = (): MethodDecorator & ClassDecorator => SetMetadata(IS_PUBLIC_KEY, true);
 
-/** Réserve la route aux administrateurs du panel. */
+/** Reserves the route for panel administrators. */
 export const AdminOnly = (): MethodDecorator & ClassDecorator =>
   SetMetadata(REQUIRED_ROLE_KEY, 'ADMIN');
 
 /**
- * Exige une permission sur le serveur désigné par le paramètre de route
- * `:serverId` (son UUID). Active `ServerPermissionGuard`, qui résout le serveur
- * et les permissions effectives de l'appelant.
+ * Requires a permission on the server designated by the `:serverId` route
+ * parameter (its UUID). Activates `ServerPermissionGuard`, which resolves the
+ * server and the caller's effective permissions.
  *
  * @example
  * ```ts

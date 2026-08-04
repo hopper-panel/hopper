@@ -2,7 +2,7 @@ import type { Permission } from '@hopper/shared';
 import { createParamDecorator, type ExecutionContext } from '@nestjs/common';
 import type { FastifyRequest } from 'fastify';
 
-/** Utilisateur résolu par `JwtAuthGuard` et attaché à la requête. */
+/** User resolved by `JwtAuthGuard` and attached to the request. */
 export interface RequestUser {
   id: number;
   uuid: string;
@@ -13,9 +13,9 @@ export interface RequestUser {
 }
 
 /**
- * Serveur résolu par `ServerPermissionGuard`, avec les permissions effectives
- * de l'utilisateur *sur ce serveur*. Les contrôleurs lisent ces permissions
- * plutôt que de refaire la résolution propriétaire/admin/sous-utilisateur.
+ * Server resolved by `ServerPermissionGuard`, with the user's effective
+ * permissions *on that server*. Controllers read these permissions rather than
+ * redo the owner/admin/subuser resolution.
  */
 export interface RequestServer {
   id: number;
@@ -26,11 +26,11 @@ export interface RequestServer {
 }
 
 /**
- * Requête enrichie par les gardes.
+ * Request enriched by the guards.
  *
- * Le champ s'appelle `serverAccess` et non `server` : Fastify utilise déjà
- * `request.server` pour référencer l'instance Fastify elle-même, et l'écraser
- * casserait le typage de toute requête.
+ * The field is called `serverAccess` and not `server`: Fastify already uses
+ * `request.server` to reference the Fastify instance itself, and overwriting it
+ * would break the typing of every request.
  */
 export interface AuthenticatedRequest extends FastifyRequest {
   user?: RequestUser;
@@ -42,9 +42,9 @@ export const CurrentUser = createParamDecorator(
     const request = context.switchToHttp().getRequest<AuthenticatedRequest>();
 
     if (!request.user) {
-      // Ne peut arriver que si le décorateur est utilisé sur une route sans
-      // JwtAuthGuard : c'est une erreur de programmation, pas d'exécution.
-      throw new Error('CurrentUser utilisé sur une route non protégée par JwtAuthGuard.');
+      // Can only happen if the decorator is used on a route without
+      // JwtAuthGuard: that is a programming error, not a runtime one.
+      throw new Error('CurrentUser used on a route not protected by JwtAuthGuard.');
     }
 
     return request.user;
@@ -57,7 +57,7 @@ export const CurrentServer = createParamDecorator(
 
     if (!request.serverAccess) {
       throw new Error(
-        'CurrentServer utilisé sur une route sans ServerPermissionGuard, ou sans paramètre :serverId.',
+        'CurrentServer used on a route without ServerPermissionGuard, or without a :serverId parameter.',
       );
     }
 

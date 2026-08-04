@@ -24,36 +24,35 @@ import type { ServerManager } from '../server/server-manager.js';
 import { parseSftpUsername } from './sftp-username.js';
 
 /**
- * Serveur SFTP intégré.
+ * Built-in SFTP server.
  *
- * Il n'expose **pas** un shell : seul le sous-système `sftp` est accepté, et la
- * requête `exec` est refusée. Un serveur SFTP qui autorise l'exécution de
- * commandes donnerait à l'utilisateur un shell sur la machine hôte — hors de
- * tout conteneur.
+ * It does **not** expose a shell: only the `sftp` subsystem is accepted, and
+ * the `exec` request is refused. An SFTP server that allows running commands
+ * would hand the user a shell on the host machine — outside any container.
  *
- * Chaque opération passe par `JailedFilesystem`, exactement comme l'API HTTP.
- * C'est la raison d'être de cette classe : le jail est écrit une fois et sert
- * les deux chemins d'accès, plutôt que d'avoir une validation par protocole
- * dont l'une prendrait du retard sur l'autre.
+ * Every operation goes through `JailedFilesystem`, exactly like the HTTP API.
+ * That is the reason this class exists: the jail is written once and serves
+ * both access paths, rather than having one validation per protocol, one of
+ * which would fall behind the other.
  */
 
 /**
- * Constantes du protocole SFTP, reprises de ssh2 plutôt que réécrites.
+ * SFTP protocol constants, taken from ssh2 rather than rewritten.
  *
- * Les redéfinir invitait à la confusion avec les constantes de `node:fs`, dont
- * les valeurs diffèrent : `OPEN_MODE.READ` vaut 1, comme `O_WRONLY`.
+ * Redefining them invited confusion with the `node:fs` constants, whose values
+ * differ: `OPEN_MODE.READ` is 1, same as `O_WRONLY`.
  */
 const { OPEN_MODE, STATUS_CODE: STATUS } = utils.sftp;
 
-/** Poignées ouvertes par une session, indexées par identifiant binaire. */
+/** Handles opened by a session, keyed by binary identifier. */
 interface OpenHandle {
   type: 'file' | 'directory';
   path: string;
-  /** Pour un dossier : entrées restant à envoyer. */
+  /** For a directory: entries left to send. */
   pending?: SshFileEntry[];
-  /** Pour un fichier en écriture. */
+  /** For a file being written. */
   writeStream?: ReturnType<typeof createWriteStream>;
-  /** Pour un fichier en lecture. */
+  /** For a file being read. */
   readPath?: string;
 }
 
@@ -71,11 +70,11 @@ export class SftpServer {
   constructor(private readonly options: SftpServerOptions) {}
 
   /**
-   * Charge la clé d'hôte, ou en génère une.
+   * Loads the host key, or generates one.
    *
-   * Une clé régénérée à chaque démarrage ferait afficher à tous les clients
-   * l'avertissement « l'identité de l'hôte a changé », qui est précisément le
-   * signal d'une attaque de l'intercepteur. On la persiste donc.
+   * A key regenerated on every start would show every client the "host identity
+   * has changed" warning, which is precisely the signal of a man-in-the-middle
+   * attack. So it is persisted.
    */
   private async hostKey(): Promise<Buffer> {
     const path =
@@ -85,12 +84,12 @@ export class SftpServer {
     try {
       return await readFile(path);
     } catch {
-      this.options.logger.info({ path }, "Génération de la clé d'hôte SFTP");
+      this.options.logger.info({ path }, 'Generating the SFTP host key');
 
       const keys = utils.generateKeyPairSync('ed25519');
 
       await mkdir(join(path, '..'), { recursive: true }).catch(() => undefined);
-      // 0600 : la clé privée de l'hôte ne doit être lisible que par le daemon.
+      // 0600: the host private key must be readable by the daemon only.
       await writeFile(path, keys.private, { mode: 0o600 });
 
       return Buffer.from(keys.private);
@@ -101,15 +100,16 @@ export class SftpServer {
     const { config, logger } = this.options;
 
     if (!config.system.sftp.enabled) {
-      logger.info('SFTP désactivé par la configuration');
+      logger.info('SFTP disabled by configuration');
       return;
     }
 
     const hostKeys = [await this.hostKey()];
 
     this.server = new SshServer({ hostKeys }, (client, info) => {
-      // L'adresse vient du second argument : `Connection` ne l'expose pas, et
-      // sans elle le panel ne pourrait pas limiter les tentatives par IP.
+      // The address comes from the second argument: `Connection` does not
+      // expose it, and without it the panel could not rate-limit attempts by
+      // IP.
       this.handleClient(client, info.ip);
     });
 
@@ -117,7 +117,7 @@ export class SftpServer {
       this.server!.listen(config.system.sftp.bindPort, config.system.sftp.bindAddress, () => {
         logger.info(
           { port: config.system.sftp.bindPort, address: config.system.sftp.bindAddress },
-          'SFTP à l’écoute',
+          'SFTP listening',
         );
         resolve();
       });
@@ -140,9 +140,9 @@ export class SftpServer {
 
     client.on('authentication', (context) => {
       void (async () => {
-        // Seul le mot de passe est accepté : les clés publiques exigeraient une
-        // gestion de clés par utilisateur que le panel n'offre pas encore, et
-        // les accepter sans vérification reviendrait à ne pas authentifier.
+        // Only passwords are accepted: public keys would need a per-user key
+        // management the panel does not offer yet, and accepting them without
+        // checking would amount to not authenticating at all.
         if (context.method !== 'password') {
           context.reject(['password']);
           return;
@@ -156,8 +156,8 @@ export class SftpServer {
         }
 
         try {
-          // C'est le panel qui authentifie : lui seul connaît les comptes, les
-          // mots de passe et les permissions de sous-utilisateur.
+          // The panel is what authenticates: it alone knows the accounts, the
+          // passwords and the subuser permissions.
           const result = await panel.authenticateSftp({
             username: context.username,
             password: context.password,
@@ -167,22 +167,22 @@ export class SftpServer {
           const instance = manager.get(result.serverUuid);
 
           if (!instance) {
-            logger.warn({ server: result.serverUuid }, 'SFTP : serveur inconnu de ce node');
+            logger.warn({ server: result.serverUuid }, 'SFTP: server unknown to this node');
             context.reject();
             return;
           }
 
           if (instance.configuration.suspended) {
-            logger.warn({ server: result.serverUuid }, 'SFTP refusé : serveur suspendu');
+            logger.warn({ server: result.serverUuid }, 'SFTP refused: server suspended');
             context.reject();
             return;
           }
 
-          // La permission SFTP est distincte de la permission de lecture : un
-          // sous-utilisateur peut consulter les fichiers dans le panel sans
-          // qu'on lui ouvre un accès protocolaire à la machine.
+          // The SFTP permission is distinct from the read permission: a
+          // subuser can browse files in the panel without being handed
+          // protocol-level access to the machine.
           if (!result.permissions.includes(PERMISSIONS.FILE_SFTP)) {
-            logger.warn({ user: result.userUuid }, 'SFTP refusé : permission manquante');
+            logger.warn({ user: result.userUuid }, 'SFTP refused: missing permission');
             context.reject();
             return;
           }
@@ -196,7 +196,7 @@ export class SftpServer {
 
           context.accept();
         } catch (error: unknown) {
-          logger.warn({ err: error, user: context.username }, 'Authentification SFTP refusée');
+          logger.warn({ err: error, user: context.username }, 'SFTP authentication refused');
           context.reject();
         }
       })();
@@ -206,7 +206,7 @@ export class SftpServer {
       client.on('session', (accept) => {
         const session = accept();
 
-        // Un shell donnerait un accès direct à l'hôte, hors de tout conteneur.
+        // A shell would give direct access to the host, outside any container.
         session.on('shell', (_a, reject) => reject());
         session.on('exec', (_a, reject) => reject());
 
@@ -223,17 +223,17 @@ export class SftpServer {
     });
 
     client.on('error', (error) => {
-      logger.debug({ err: error }, 'Erreur de connexion SFTP');
+      logger.debug({ err: error }, 'SFTP connection error');
     });
   }
 
   /**
-   * Branche les gestionnaires du protocole SFTP.
+   * Wires up the SFTP protocol handlers.
    *
-   * Chaque opération vérifie sa permission puis délègue au jail. Les erreurs du
-   * jail sont traduites en codes SFTP : une évasion et un fichier interdit
-   * renvoient tous deux `PERMISSION_DENIED`, sans distinction — la différence
-   * confirmerait l'existence d'un fichier hors du volume.
+   * Every operation checks its permission then delegates to the jail. The
+   * jail's errors are translated into SFTP codes: an escape and a denied file
+   * both return `PERMISSION_DENIED`, with no distinction — the difference would
+   * confirm the existence of a file outside the volume.
    */
   private attachSftpHandlers(
     sftp: SFTPWrapper,
@@ -253,10 +253,10 @@ export class SftpServer {
 
     const has = (permission: Permission): boolean => getPermissions().includes(permission);
 
-    /** Traduit une erreur en code SFTP. */
+    /** Translates an error into an SFTP code. */
     const fail = (reqId: number, error: unknown): void => {
       if (error instanceof PathEscapeError || error instanceof DeniedFileError) {
-        logger.warn({ server: serverUuid }, 'SFTP : chemin refusé par le jail');
+        logger.warn({ server: serverUuid }, 'SFTP: path refused by the jail');
         sftp.status(reqId, STATUS.PERMISSION_DENIED);
         return;
       }
@@ -266,7 +266,7 @@ export class SftpServer {
         return;
       }
 
-      logger.error({ err: error, server: serverUuid }, 'SFTP : erreur inattendue');
+      logger.error({ err: error, server: serverUuid }, 'SFTP: unexpected error');
       sftp.status(reqId, STATUS.FAILURE);
     };
 
@@ -289,8 +289,8 @@ export class SftpServer {
     sftp.on('REALPATH', ((reqId: number, path: string) => {
       run(reqId, PERMISSIONS.FILE_READ, async () => {
         const jail = getJail()!;
-        // Le client demande la forme canonique ; on lui rend un chemin relatif
-        // au volume, jamais le chemin réel sur l'hôte.
+        // The client asks for the canonical form; it gets a path relative to
+        // the volume, never the real path on the host.
         const entry = await jail.stat(path).catch(() => null);
         const canonical = '/' + (entry?.path ?? path.replace(/^\/+/, ''));
 
@@ -304,8 +304,8 @@ export class SftpServer {
       });
     }) as never);
 
-    // LSTAT décrit le lien plutôt que sa cible ; `jail.stat` fait déjà un
-    // `lstat`, les deux opérations sont donc identiques ici.
+    // LSTAT describes the link rather than its target; `jail.stat` already
+    // does an `lstat`, so both operations are identical here.
     sftp.on('LSTAT', ((reqId: number, path: string) => {
       run(reqId, PERMISSIONS.FILE_READ, async () => {
         sftp.attrs(reqId, this.toSftpAttrs(await getJail()!.stat(path)));
@@ -331,8 +331,8 @@ export class SftpServer {
 
         const names: SshFileEntry[] = entries.map((entry) => ({
           filename: entry.name,
-          // `longname` est la ligne que les clients en mode texte affichent
-          // telle quelle : elle imite la sortie de `ls -l`.
+          // `longname` is the line text-mode clients display verbatim: it
+          // imitates the output of `ls -l`.
           longname: `${entry.directory ? 'd' : '-'}${entry.mode} 1 container container ${entry.sizeBytes} ${entry.name}`,
           attrs: this.toSftpAttrs(entry),
         }));
@@ -354,17 +354,17 @@ export class SftpServer {
         return;
       }
 
-      // Envoyé par lots : un dossier de dix mille fichiers dépasserait la
-      // taille maximale d'un paquet SFTP.
+      // Sent in batches: a folder of ten thousand files would exceed the
+      // maximum size of an SFTP packet.
       const batch = entry.pending.splice(0, 100);
       sftp.name(reqId, batch);
     }) as never);
 
     sftp.on('OPEN', ((reqId: number, path: string, flags: number) => {
-      // Les drapeaux du protocole SFTP ne sont **pas** ceux de `open(2)` : dans
-      // SFTP, la valeur 1 signifie « lecture », alors qu'en POSIX c'est
-      // `O_WRONLY`. Les confondre faisait ouvrir en écriture tout fichier
-      // demandé en lecture — et donc le tronquer à l'ouverture.
+      // The SFTP protocol flags are **not** those of `open(2)`: in SFTP the
+      // value 1 means "read", whereas in POSIX it is `O_WRONLY`. Confusing them
+      // opened every file requested for reading in write mode — and therefore
+      // truncated it on open.
       const write =
         (flags & (OPEN_MODE.WRITE | OPEN_MODE.APPEND | OPEN_MODE.CREAT | OPEN_MODE.TRUNC)) !== 0;
       const permission = write ? PERMISSIONS.FILE_UPDATE : PERMISSIONS.FILE_READ_CONTENT;
@@ -378,13 +378,13 @@ export class SftpServer {
 
           const stream = createWriteStream(absolute);
 
-          // Sans ce gestionnaire, une erreur d'écriture — disque plein,
-          // permission refusée — devient un événement `error` non capté, et
-          // Node termine le processus. Le daemon entier tomberait, avec les
-          // consoles de tous les serveurs de la machine, parce qu'un
-          // utilisateur a tenté d'envoyer un fichier.
+          // Without this handler, a write error — disk full, permission
+          // denied — becomes an uncaught `error` event, and Node ends the
+          // process. The whole daemon would fall over, with the consoles of
+          // every server on the machine, because one user tried to upload a
+          // file.
           stream.on('error', (error) => {
-            logger.error({ err: error, server: serverUuid }, 'Écriture SFTP impossible');
+            logger.error({ err: error, server: serverUuid }, 'SFTP write failed');
             stream.destroy();
           });
 
@@ -392,7 +392,7 @@ export class SftpServer {
           return;
         }
 
-        // Vérifie l'existence avant d'annoncer une poignée valide.
+        // Check existence before announcing a valid handle.
         await jail.stat(path);
         sftp.handle(reqId, allocate({ type: 'file', path, readPath: absolute }));
       });
@@ -407,8 +407,8 @@ export class SftpServer {
       }
 
       if (entry.writeStream.destroyed) {
-        // Le flux a déjà échoué : répondre FAILURE plutôt que d'écrire dans le
-        // vide, sans quoi le client croirait son envoi réussi.
+        // The stream already failed: answer FAILURE rather than write into the
+        // void, otherwise the client would believe its upload succeeded.
         sftp.status(reqId, STATUS.FAILURE);
         return;
       }
@@ -485,19 +485,18 @@ export class SftpServer {
       });
     }) as never);
 
-    // Créer un lien symbolique depuis SFTP est le moyen le plus direct de
-    // tenter une évasion, et aucun usage légitime n'en a besoin sur un volume
-    // de serveur Minecraft.
+    // Creating a symlink over SFTP is the most direct way to attempt an
+    // escape, and no legitimate use needs it on a Minecraft server volume.
     for (const unsupported of ['SYMLINK', 'READLINK']) {
       sftp.on(unsupported, ((reqId: number) => {
         sftp.status(reqId, STATUS.OP_UNSUPPORTED);
       }) as never);
     }
 
-    // Les changements de permissions et de dates sont acceptés sans effet.
-    // Hopper impose l'UID et les permissions du volume, il n'y a donc rien à
-    // appliquer — mais répondre « non supporté » ferait abandonner l'envoi à
-    // plusieurs clients, qui positionnent les dates juste après un transfert.
+    // Permission and timestamp changes are accepted with no effect. Hopper
+    // imposes the volume's UID and permissions, so there is nothing to apply —
+    // but answering "unsupported" would make several clients abandon the
+    // upload, as they set timestamps right after a transfer.
     for (const ignored of ['SETSTAT', 'FSETSTAT']) {
       sftp.on(ignored, ((reqId: number) => {
         sftp.status(reqId, STATUS.OK);
@@ -505,7 +504,7 @@ export class SftpServer {
     }
   }
 
-  /** Traduit une entrée du jail en attributs SFTP. */
+  /** Translates a jail entry into SFTP attributes. */
   private toSftpAttrs(entry: {
     directory: boolean;
     sizeBytes: number;
@@ -514,8 +513,8 @@ export class SftpServer {
     const seconds = Math.floor(entry.modifiedAt.getTime() / 1000);
 
     return {
-      // Les permissions réelles du volume ne sont pas exposées : elles
-      // n'apprennent rien d'utile au client et varient selon l'hôte.
+      // The volume's real permissions are not exposed: they teach the client
+      // nothing useful and vary from host to host.
       mode: entry.directory ? 0o40755 : 0o100644,
       size: entry.sizeBytes,
       uid: this.options.config.system.uid,

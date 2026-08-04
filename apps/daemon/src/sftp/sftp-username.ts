@@ -1,34 +1,34 @@
 /**
- * Nom d'utilisateur SFTP : `<utilisateur>.<8 premiers caractères de l'UUID>`.
+ * SFTP username: `<user>.<first 8 characters of the UUID>`.
  *
- * Le serveur visé est encodé dans le nom d'utilisateur parce que SFTP n'offre
- * aucun autre canal pour le transmettre — pas d'en-tête, pas de paramètre. Un
- * client se connecte à `julien.b10a05a8` et atterrit dans ce serveur-là.
+ * The target server is encoded in the username because SFTP offers no other
+ * channel to carry it — no header, no parameter. A client connects as
+ * `julien.b10a05a8` and lands in that server.
  *
- * Le suffixe est un préfixe d'UUID, pas l'UUID entier : un nom d'utilisateur de
- * 45 caractères est refusé par plusieurs clients SFTP, et huit caractères
- * hexadécimaux suffisent largement à distinguer les serveurs d'une instance.
- * L'ambiguïté résiduelle est levée côté panel, qui vérifie que l'utilisateur a
- * bien accès au serveur trouvé.
+ * The suffix is a UUID prefix, not the whole UUID: a 45-character username is
+ * refused by several SFTP clients, and eight hexadecimal characters are more
+ * than enough to tell an instance's servers apart. The remaining ambiguity is
+ * resolved panel-side, which checks the user really has access to the server
+ * that was found.
  */
 
 export const SERVER_ID_LENGTH = 8;
 
 export interface ParsedSftpUsername {
   username: string;
-  /** Préfixe de l'UUID du serveur, en minuscules. */
+  /** Prefix of the server UUID, lowercased. */
   serverIdPrefix: string;
 }
 
 /**
- * Découpe un nom d'utilisateur SFTP.
+ * Splits an SFTP username.
  *
- * Le découpage se fait sur le **dernier** point : les noms d'utilisateur ne
- * peuvent pas en contenir (`usernameSchema` les interdit), mais couper sur le
- * premier rendrait le format fragile si cette règle changeait un jour.
+ * The split happens on the **last** dot: usernames cannot contain one
+ * (`usernameSchema` forbids it), but splitting on the first would make the
+ * format fragile if that rule ever changed.
  *
- * @returns `null` si le format ne convient pas. L'appelant doit alors répondre
- *   comme à un mot de passe erroné, sans distinguer les deux cas.
+ * @returns `null` if the format does not fit. The caller must then answer as it
+ *   would to a wrong password, without distinguishing the two cases.
  */
 export function parseSftpUsername(raw: string): ParsedSftpUsername | null {
   const separator = raw.lastIndexOf('.');
@@ -51,7 +51,7 @@ export function parseSftpUsername(raw: string): ParsedSftpUsername | null {
   return { username, serverIdPrefix };
 }
 
-/** Construit le nom d'utilisateur à afficher dans l'interface. */
+/** Builds the username to display in the interface. */
 export function buildSftpUsername(username: string, serverUuid: string): string {
   return `${username}.${serverUuid.slice(0, SERVER_ID_LENGTH)}`;
 }

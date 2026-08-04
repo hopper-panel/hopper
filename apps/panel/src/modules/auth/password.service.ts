@@ -2,15 +2,15 @@ import { Algorithm, hash, verify } from '@node-rs/argon2';
 import { Injectable, Logger } from '@nestjs/common';
 
 /**
- * Paramètres Argon2id.
+ * Argon2id parameters.
  *
- * 19 Mio de mémoire et 2 passes correspondent à la recommandation OWASP de
- * 2024 pour Argon2id. Le coût mémoire est ce qui compte face à un attaquant
- * équipé de GPU : augmenter `timeCost` sans `memoryCost` ne sert à rien.
+ * 19 MiB of memory and 2 passes match OWASP's 2024 advice for Argon2id. The
+ * memory cost is what counts against a GPU-equipped attacker: raising
+ * `timeCost` without `memoryCost` achieves nothing.
  *
- * Ces valeurs sont figées ici plutôt que configurables : un opérateur qui les
- * baisserait pour « accélérer la connexion » affaiblirait tous les mots de
- * passe de son instance sans s'en rendre compte.
+ * These values are frozen here rather than configurable: an operator who
+ * lowered them to "speed up sign-in" would weaken every password on their
+ * instance without noticing.
  */
 const ARGON2_OPTIONS = {
   algorithm: Algorithm.Argon2id,
@@ -21,8 +21,8 @@ const ARGON2_OPTIONS = {
 } as const;
 
 /**
- * Découpe l'en-tête d'une empreinte au format PHC :
- * `$argon2id$v=19$m=19456,t=2,p=1$<sel>$<empreinte>`
+ * Splits the header of a PHC-format digest:
+ * `$argon2id$v=19$m=19456,t=2,p=1$<salt>$<digest>`
  */
 const PHC_PATTERN = /^\$argon2(id|i|d)\$v=(\d+)\$m=(\d+),t=(\d+),p=(\d+)\$/;
 
@@ -35,30 +35,30 @@ export class PasswordService {
   }
 
   /**
-   * Vérifie un mot de passe. Retourne `false` sur une empreinte illisible au
-   * lieu de lever : une ligne corrompue en base doit refuser la connexion, pas
-   * renvoyer une 500 qui révèle l'existence du compte.
+   * Verifies a password. Returns `false` on an unreadable digest instead of
+   * throwing: a corrupt row in the database has to refuse the sign-in, not
+   * return a 500 that reveals the account exists.
    */
   async verify(hashed: string, password: string): Promise<boolean> {
     try {
       return await verify(hashed, password, ARGON2_OPTIONS);
     } catch (error: unknown) {
-      this.logger.error(`Empreinte de mot de passe illisible : ${String(error)}`);
+      this.logger.error(`Unreadable password digest: ${String(error)}`);
       return false;
     }
   }
 
   /**
-   * Indique si l'empreinte a été produite avec des paramètres plus faibles que
-   * les paramètres courants.
+   * Says whether the digest was produced with weaker parameters than the
+   * current ones.
    *
-   * `@node-rs/argon2` n'expose pas d'équivalent : les paramètres sont donc lus
-   * dans l'en-tête PHC de l'empreinte, qui les porte en clair par conception.
+   * `@node-rs/argon2` exposes no equivalent: the parameters are therefore read
+   * from the digest's PHC header, which carries them in the clear by design.
    *
-   * Appelé après une connexion réussie — le seul moment où le mot de passe en
-   * clair est disponible pour être réencodé sans rien demander à l'utilisateur.
-   * Une empreinte illisible renvoie `true` : mieux vaut réencoder inutilement
-   * que laisser vivre une empreinte qu'on ne sait pas évaluer.
+   * Called after a successful sign-in — the only moment the plaintext password
+   * is available to be re-encoded without asking the user anything. An
+   * unreadable digest returns `true`: better to re-encode needlessly than to
+   * leave alive a digest we cannot assess.
    */
   needsRehash(hashed: string): boolean {
     const match = PHC_PATTERN.exec(hashed);
@@ -73,9 +73,9 @@ export class PasswordService {
       return true;
     }
 
-    // Strictement inférieur : une empreinte plus coûteuse que la configuration
-    // courante reste valable. Rétrograder un mot de passe déjà bien protégé
-    // parce qu'un opérateur a baissé les réglages serait un recul.
+    // Strictly lower: a digest costlier than the current configuration stays
+    // valid. Downgrading an already well-protected password because an operator
+    // lowered the settings would be a step backwards.
     return (
       Number(memoryCost) < ARGON2_OPTIONS.memoryCost ||
       Number(timeCost) < ARGON2_OPTIONS.timeCost ||

@@ -15,7 +15,7 @@ import { PasswordService } from './password.service.js';
 import { REFRESH_TOKEN_TTL_SECONDS, TokenService, fingerprintOf } from './token.service.js';
 import { TotpService } from './totp.service.js';
 
-/** Cinq tentatives par quart d'heure, par IP et par identifiant visé. */
+/** Five attempts per quarter of an hour, per IP and per targeted identifier. */
 const LOGIN_ATTEMPT_LIMIT = 5;
 const LOGIN_WINDOW_SECONDS = 15 * 60;
 
@@ -51,7 +51,7 @@ export class AuthService {
   ) {}
 
   // -------------------------------------------------------------------------
-  // Connexion
+  // Sign-in
   // -------------------------------------------------------------------------
 
   async login(
@@ -66,17 +66,17 @@ export class AuthService {
       where: {
         OR: [
           { email: identifier.toLowerCase() },
-          // Le nom d'utilisateur est comparé sans tenir compte de la casse :
-          // sans cela, « Julien » et « julien » seraient deux comptes distincts
-          // pour l'utilisateur alors que la base les distingue déjà.
+          // The username is compared case-insensitively: without this,
+          // "Julien" and "julien" would look like two separate accounts to the
+          // user even though the database already tells them apart.
           { username: { equals: identifier, mode: 'insensitive' } },
         ],
       },
     });
 
-    // Le hash est vérifié même sans utilisateur trouvé, contre une empreinte
-    // factice : sans cela, un identifiant inexistant répondrait en 1 ms et un
-    // identifiant valide en 50 ms, ce qui suffit à énumérer les comptes.
+    // The hash is verified even when no user was found, against a dummy
+    // digest: without this, a non-existent identifier would answer in 1ms and a
+    // valid one in 50ms, which is enough to enumerate the accounts.
     const passwordValid = user
       ? await this.passwords.verify(user.passwordHash, password)
       : await this.burnPasswordVerification(password);
@@ -89,7 +89,7 @@ export class AuthService {
         userAgent: context.userAgent,
         metadata: { identifier, reason: user ? 'bad-password' : 'unknown-user' },
       });
-      throw new UnauthorizedException('Identifiants incorrects.');
+      throw new UnauthorizedException('Incorrect credentials.');
     }
 
     if (user.suspended) {
@@ -100,16 +100,15 @@ export class AuthService {
         userAgent: context.userAgent,
         metadata: { reason: 'suspended' },
       });
-      throw new ForbiddenException('Ce compte est suspendu.');
+      throw new ForbiddenException('This account is suspended.');
     }
 
     if (user.totpConfirmed && user.totpSecret) {
       if (!totpCode) {
-        // Répondre « code requis » confirme que le mot de passe était bon.
-        // C'est le compromis habituel : l'alternative — un écran de code
-        // toujours affiché, même pour un mot de passe faux — dégrade
-        // l'expérience pour tout le monde. La limitation de débit ci-dessus est
-        // ce qui rend l'information peu exploitable.
+        // Answering "code required" confirms the password was right. That is
+        // the usual trade-off: the alternative — a code screen shown always,
+        // even for a wrong password — degrades the experience for everyone. The
+        // rate limit above is what makes the information hard to exploit.
         return { status: 'two-factor-required' };
       }
 
@@ -121,7 +120,7 @@ export class AuthService {
           ip: context.ip,
           userAgent: context.userAgent,
         });
-        throw new UnauthorizedException('Code de double authentification invalide.');
+        throw new UnauthorizedException('Invalid two-factor code.');
       }
     }
 
@@ -151,17 +150,16 @@ export class AuthService {
   }
 
   // -------------------------------------------------------------------------
-  // Rafraîchissement et révocation
+  // Refresh and revocation
   // -------------------------------------------------------------------------
 
   /**
-   * Échange un refresh token contre un nouveau couple de jetons.
+   * Exchanges a refresh token for a fresh pair of tokens.
    *
-   * La rotation est systématique et l'ancien jeton est conservé en base, révoqué.
-   * Le présenter à nouveau signale qu'il a été volé : toute la famille de
-   * sessions est alors révoquée, ce qui déconnecte aussi bien l'attaquant que
-   * l'utilisateur légitime. C'est voulu — mieux vaut une reconnexion qu'une
-   * session pillée en silence.
+   * Rotation is systematic and the old token is kept in the database, revoked.
+   * Presenting it again signals it was stolen: the whole session family is then
+   * revoked, which signs out the attacker and the legitimate user alike. That
+   * is intended — a re-login beats a session quietly plundered.
    */
   async refresh(
     refreshToken: string,
@@ -175,12 +173,12 @@ export class AuthService {
     });
 
     if (!session) {
-      throw new UnauthorizedException('Session inconnue ou expirée.');
+      throw new UnauthorizedException('Unknown or expired session.');
     }
 
     if (session.revokedAt) {
       this.logger.warn(
-        `Réutilisation d'un refresh token révoqué (utilisateur ${session.user.uuid}) : révocation de la famille ${session.family}`,
+        `Reuse of a revoked refresh token (user ${session.user.uuid}): revoking family ${session.family}`,
       );
 
       await this.prisma.session.updateMany({
@@ -196,15 +194,15 @@ export class AuthService {
         metadata: { family: session.family },
       });
 
-      throw new UnauthorizedException('Session révoquée. Reconnectez-vous.');
+      throw new UnauthorizedException('Session revoked. Sign in again.');
     }
 
     if (session.expiresAt <= new Date()) {
-      throw new UnauthorizedException('Session expirée.');
+      throw new UnauthorizedException('Session expired.');
     }
 
     if (session.user.suspended) {
-      throw new ForbiddenException('Ce compte est suspendu.');
+      throw new ForbiddenException('This account is suspended.');
     }
 
     const rotated = await this.createSession(session.user, context, session.family);
@@ -227,8 +225,8 @@ export class AuthService {
     });
 
     if (!session) {
-      // Déconnecter une session déjà absente est un succès : renvoyer une
-      // erreur laisserait un client incapable de se remettre dans un état sain.
+      // Signing out an already-absent session is a success: returning an
+      // error would leave a client unable to get back to a sane state.
       return;
     }
 
@@ -245,7 +243,7 @@ export class AuthService {
     });
   }
 
-  /** Révoque toutes les sessions d'un utilisateur. */
+  /** Revokes every session of a user. */
   async revokeAllSessions(userId: number): Promise<void> {
     await this.prisma.session.updateMany({
       where: { userId, revokedAt: null },
@@ -254,20 +252,19 @@ export class AuthService {
   }
 
   // -------------------------------------------------------------------------
-  // Double authentification
+  // Two-factor authentication
   // -------------------------------------------------------------------------
 
   /**
-   * Prépare l'activation de la 2FA : génère un secret et l'URI de provisioning.
-   * Le secret est stocké mais `totpConfirmed` reste faux tant qu'un premier
-   * code n'a pas été validé — sans quoi une application mal configurée
-   * verrouillerait le compte.
+   * Prepares turning 2FA on: generates a secret and the provisioning URI.
+   * The secret is stored but `totpConfirmed` stays false until a first code has
+   * been validated — otherwise a misconfigured app would lock the account.
    */
   async beginTwoFactorSetup(userId: number): Promise<{ secret: string; provisioningUri: string }> {
     const user = await this.prisma.user.findUniqueOrThrow({ where: { id: userId } });
 
     if (user.totpConfirmed) {
-      throw new ForbiddenException('La double authentification est déjà active.');
+      throw new ForbiddenException('Two-factor authentication is already on.');
     }
 
     const secret = this.totp.generateSecret();
@@ -283,7 +280,7 @@ export class AuthService {
     };
   }
 
-  /** Valide le premier code et active la 2FA. Retourne les codes de récupération. */
+  /** Validates the first code and turns 2FA on. Returns the recovery codes. */
   async confirmTwoFactorSetup(
     userId: number,
     code: string,
@@ -292,11 +289,11 @@ export class AuthService {
     const user = await this.prisma.user.findUniqueOrThrow({ where: { id: userId } });
 
     if (!user.totpSecret) {
-      throw new ForbiddenException("Aucune activation de double authentification n'est en cours.");
+      throw new ForbiddenException('No two-factor setup is under way.');
     }
 
     if (!this.totp.verify(this.crypto.decrypt(user.totpSecret), code)) {
-      throw new UnauthorizedException('Code invalide.');
+      throw new UnauthorizedException('Invalid code.');
     }
 
     const codes = Array.from({ length: 10 }, () => this.crypto.randomRecoveryCode());
@@ -320,14 +317,14 @@ export class AuthService {
   }
 
   /**
-   * Désactive la 2FA. Le mot de passe est redemandé : sans cela, un attaquant
-   * ayant volé une session vivante retirerait le second facteur sans effort.
+   * Turns 2FA off. The password is asked again: without it, an attacker holding
+   * a live session would remove the second factor with no effort at all.
    */
   async disableTwoFactor(userId: number, password: string, context: RequestContext): Promise<void> {
     const user = await this.prisma.user.findUniqueOrThrow({ where: { id: userId } });
 
     if (!(await this.passwords.verify(user.passwordHash, password))) {
-      throw new UnauthorizedException('Mot de passe incorrect.');
+      throw new UnauthorizedException('Incorrect password.');
     }
 
     await this.prisma.$transaction([
@@ -347,7 +344,7 @@ export class AuthService {
   }
 
   // -------------------------------------------------------------------------
-  // Mot de passe
+  // Password
   // -------------------------------------------------------------------------
 
   async changePassword(
@@ -359,7 +356,7 @@ export class AuthService {
     const user = await this.prisma.user.findUniqueOrThrow({ where: { id: userId } });
 
     if (!(await this.passwords.verify(user.passwordHash, currentPassword))) {
-      throw new UnauthorizedException('Mot de passe actuel incorrect.');
+      throw new UnauthorizedException('Current password is incorrect.');
     }
 
     await this.prisma.user.update({
@@ -367,8 +364,8 @@ export class AuthService {
       data: { passwordHash: await this.passwords.hash(newPassword) },
     });
 
-    // Un changement de mot de passe fait souvent suite à un soupçon de
-    // compromission : toutes les autres sessions doivent tomber.
+    // A password change often follows a suspicion of compromise: every other
+    // session has to fall.
     await this.revokeAllSessions(userId);
 
     await this.audit.record({
@@ -379,7 +376,7 @@ export class AuthService {
     });
   }
 
-  /** État du compte, pour l'écran « Mon compte » et l'exigence de second facteur. */
+  /** Account state, for the "My account" screen and the second-factor check. */
   async describeAccount(userId: number): Promise<{ twoFactorEnabled: boolean }> {
     const user = await this.prisma.user.findUniqueOrThrow({
       where: { id: userId },
@@ -390,15 +387,15 @@ export class AuthService {
   }
 
   /**
-   * Choix du mot de passe initial, depuis le lien reçu par courriel.
+   * Choosing the initial password, from the link received by email.
    *
-   * Le jeton porte une empreinte du mot de passe en vigueur à son émission :
-   * s'il a changé depuis — parce que le lien a déjà servi, ou qu'un
-   * administrateur est passé par là — l'empreinte ne correspond plus et le lien
-   * est refusé. C'est ce qui le rend à usage unique sans table de jetons.
+   * The token carries a fingerprint of the password in force when it was
+   * issued: if it has changed since — because the link was already used, or an
+   * administrator went through — the fingerprint no longer matches and the link
+   * is refused. That is what makes it single-use without a token table.
    *
-   * La limitation de débit s'applique comme à une connexion : le jeton est
-   * signé, mais rien n'empêche d'essayer.
+   * The rate limit applies as it does to a sign-in: the token is signed, but
+   * nothing stops anyone from trying.
    */
   async setPasswordFromToken(
     token: string,
@@ -409,18 +406,18 @@ export class AuthService {
 
     if (!claims) {
       await this.penalizeSetupFailure(context);
-      throw new UnauthorizedException('Ce lien est invalide ou a expiré.');
+      throw new UnauthorizedException('This link is invalid or has expired.');
     }
 
     const user = await this.prisma.user.findUnique({ where: { uuid: claims.userUuid } });
 
     if (!user || fingerprintOf(user.passwordHash) !== claims.fingerprint) {
       await this.penalizeSetupFailure(context);
-      throw new UnauthorizedException('Ce lien a déjà servi, ou a expiré.');
+      throw new UnauthorizedException('This link has already been used, or has expired.');
     }
 
     if (user.suspended) {
-      throw new UnauthorizedException('Ce compte est suspendu.');
+      throw new UnauthorizedException('This account is suspended.');
     }
 
     await this.prisma.user.update({
@@ -440,7 +437,7 @@ export class AuthService {
   }
 
   // -------------------------------------------------------------------------
-  // Interne
+  // Internals
   // -------------------------------------------------------------------------
 
   private loginKey(identifier: string, ip: string): string {
@@ -448,12 +445,12 @@ export class AuthService {
   }
 
   /**
-   * Décompte une tentative **ratée** de choix de mot de passe.
+   * Counts a **failed** password-setup attempt.
    *
-   * Seuls les échecs comptent, à la différence de la connexion : un lien valide
-   * est un jeton signé, il n'y a rien à deviner par force brute. Compter les
-   * réussites bloquerait un bureau entier derrière une même adresse — cinq
-   * comptes créés, et le sixième arriverait devant une porte close.
+   * Only failures count, unlike sign-in: a valid link is a signed token, there
+   * is nothing to brute-force. Counting successes would lock out a whole office
+   * behind one address — five accounts created, and the sixth would find the
+   * door shut.
    */
   private async penalizeSetupFailure(context: RequestContext): Promise<void> {
     const result = await this.rateLimiter.consume(
@@ -464,7 +461,7 @@ export class AuthService {
 
     if (!result.allowed) {
       throw new HttpException(
-        `Trop de tentatives. Réessayez dans ${result.resetInSeconds} secondes.`,
+        `Too many attempts. Try again in ${result.resetInSeconds} seconds.`,
         HttpStatus.TOO_MANY_REQUESTS,
       );
     }
@@ -485,17 +482,17 @@ export class AuthService {
         metadata: { identifier, reason: 'rate-limited' },
       });
 
-      // Nest n'expose pas d'exception dédiée au 429.
+      // Nest exposes no dedicated exception for 429.
       throw new HttpException(
-        `Trop de tentatives. Réessayez dans ${result.resetInSeconds} secondes.`,
+        `Too many attempts. Try again in ${result.resetInSeconds} seconds.`,
         HttpStatus.TOO_MANY_REQUESTS,
       );
     }
   }
 
   /**
-   * Consomme du temps CPU équivalent à une vérification réelle, pour que le
-   * temps de réponse ne trahisse pas l'inexistence d'un compte.
+   * Burns CPU time equivalent to a real verification, so that the response time
+   * does not betray the absence of an account.
    */
   private async burnPasswordVerification(password: string): Promise<boolean> {
     await this.passwords.verify(
@@ -505,7 +502,7 @@ export class AuthService {
     return false;
   }
 
-  /** Accepte un code TOTP ou un code de récupération à usage unique. */
+  /** Accepts a TOTP code or a single-use recovery code. */
   private async consumeSecondFactor(
     user: User,
     code: string,
@@ -524,9 +521,9 @@ export class AuthService {
       return false;
     }
 
-    // Marqué immédiatement : un code de récupération ne sert qu'une fois, même
-    // si deux requêtes arrivent en parallèle (la clause `usedAt: null` du
-    // updateMany fait office de verrou optimiste).
+    // Marked immediately: a recovery code serves once only, even if two
+    // requests arrive in parallel (the `usedAt: null` clause of the updateMany
+    // acts as an optimistic lock).
     const consumed = await this.prisma.recoveryCode.updateMany({
       where: { id: recovery.id, usedAt: null },
       data: { usedAt: new Date() },
@@ -552,15 +549,15 @@ export class AuthService {
   }
 
   /**
-   * Réencode le mot de passe si les paramètres Argon2 ont durci depuis sa
-   * création. C'est le seul instant où le clair est disponible.
+   * Re-encodes the password if the Argon2 parameters have hardened since it was
+   * created. This is the only moment the plaintext is available.
    */
   private async upgradePasswordHashIfNeeded(user: User, password: string): Promise<void> {
     if (!this.passwords.needsRehash(user.passwordHash)) {
       return;
     }
 
-    this.logger.log(`Réencodage du mot de passe de ${user.username} avec les paramètres courants`);
+    this.logger.log(`Re-encoding ${user.username}'s password with the current parameters`);
     await this.prisma.user.update({
       where: { id: user.id },
       data: { passwordHash: await this.passwords.hash(password) },

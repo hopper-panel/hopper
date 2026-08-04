@@ -34,7 +34,7 @@ describe('ServerPermissionResolver', () => {
     row = { id: 10, uuid: SERVER_UUID, nodeId: 2, ownerId: OWNER.id, subusers: [] };
   });
 
-  it('accorde toutes les permissions au propriétaire', async () => {
+  it('grants every permission to the owner', async () => {
     const { resolver } = makeResolver(row);
     const access = await resolver.resolve(SERVER_UUID, OWNER);
 
@@ -42,17 +42,17 @@ describe('ServerPermissionResolver', () => {
     expect(access?.permissions).toEqual([...ALL_PERMISSIONS]);
   });
 
-  it('accorde toutes les permissions à un administrateur du panel', async () => {
+  it('grants every permission to a panel administrator', async () => {
     const { resolver } = makeResolver(row);
     const access = await resolver.resolve(SERVER_UUID, ADMIN);
 
     expect(access?.permissions).toEqual([...ALL_PERMISSIONS]);
-    // Un administrateur n'est pas propriétaire : l'interface doit pouvoir
-    // afficher qu'il agit à titre administratif.
+    // An administrator is not an owner: the interface has to be able to show
+    // they are acting in an administrative capacity.
     expect(access?.isOwner).toBe(false);
   });
 
-  it("n'accorde à un sous-utilisateur que ses permissions", async () => {
+  it('grants a subuser only their own permissions', async () => {
     row.subusers = [{ permissions: [PERMISSIONS.CONTROL_CONSOLE, PERMISSIONS.FILE_READ] }];
     const { resolver } = makeResolver(row);
 
@@ -63,21 +63,21 @@ describe('ServerPermissionResolver', () => {
     expect(access?.isOwner).toBe(false);
   });
 
-  // Le garde traduit ce null en 404 : un 403 sur un serveur existant
-  // permettrait d'énumérer les serveurs des autres par essais successifs.
-  it('renvoie null pour un utilisateur sans lien avec le serveur', async () => {
+  // The guard turns this null into a 404: a 403 on an existing server
+  // would allow enumerating other people's servers by trial and error.
+  it('returns null for a user with no link to the server', async () => {
     const { resolver } = makeResolver(row);
     expect(await resolver.resolve(SERVER_UUID, STRANGER)).toBeNull();
   });
 
-  it('renvoie null pour un serveur inexistant', async () => {
+  it('returns null for a server that does not exist', async () => {
     const { resolver } = makeResolver(null);
     expect(await resolver.resolve(SERVER_UUID, ADMIN)).toBeNull();
   });
 
-  // Une permission supprimée du code dans une version ultérieure reste en base.
-  // L'interpréter comme un droit quelconque serait une élévation silencieuse.
-  it('écarte une permission inconnue stockée en base', async () => {
+  // A permission removed from the code in a later version stays in the
+  // database. Reading it as some right or other would be a silent escalation.
+  it('drops an unknown permission stored in the database', async () => {
     row.subusers = [{ permissions: [PERMISSIONS.FILE_READ, 'file.chmod', 'server.root'] }];
     const { resolver } = makeResolver(row);
 
@@ -86,7 +86,7 @@ describe('ServerPermissionResolver', () => {
     expect(access?.permissions).toEqual([PERMISSIONS.FILE_READ]);
   });
 
-  it('ne charge que le sous-utilisateur concerné', async () => {
+  it('loads only the subuser concerned', async () => {
     const { resolver, findUnique } = makeResolver(row);
     await resolver.resolve(SERVER_UUID, SUBUSER);
 
@@ -96,14 +96,14 @@ describe('ServerPermissionResolver', () => {
     expect(args.select.subusers.where.userId).toBe(SUBUSER.id);
   });
 
-  it('donne un accès vide à un sous-utilisateur sans aucune permission', async () => {
+  it('gives empty access to a subuser with no permission at all', async () => {
     row.subusers = [{ permissions: [] }];
     const { resolver } = makeResolver(row);
 
     const access = await resolver.resolve(SERVER_UUID, SUBUSER);
 
-    // L'accès existe — le serveur est visible dans sa liste — mais aucune
-    // action n'est autorisée.
+    // The access exists — the server shows in their list — but no action is
+    // allowed.
     expect(access).not.toBeNull();
     expect(access?.permissions).toEqual([]);
   });

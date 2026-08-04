@@ -12,11 +12,11 @@ import type { AuthenticatedRequest } from '../request-user.js';
 import { ServerPermissionResolver } from '../server-permission.resolver.js';
 
 /**
- * Vérifie qu'un utilisateur possède les permissions requises sur le serveur
- * désigné par le paramètre de route `:serverId`.
+ * Checks that a user holds the permissions required on the server designated by
+ * the `:serverId` route parameter.
  *
- * Enregistré globalement à la suite de `JwtAuthGuard`, mais inactif sur les
- * routes qui ne portent pas `@RequireServerPermission(...)`.
+ * Registered globally after `JwtAuthGuard`, but inert on routes that do not
+ * carry `@RequireServerPermission(...)`.
  */
 @Injectable()
 export class ServerPermissionGuard implements CanActivate {
@@ -44,21 +44,21 @@ export class ServerPermissionGuard implements CanActivate {
     const serverUuid = (request.params as Record<string, string | undefined>).serverId;
     if (!serverUuid) {
       throw new Error(
-        "@RequireServerPermission exige un paramètre de route :serverId portant l'UUID du serveur.",
+        '@RequireServerPermission needs a :serverId route parameter carrying the server UUID.',
       );
     }
 
     const access = await this.resolver.resolve(serverUuid, request.user);
 
-    // 404 et non 403 : répondre « interdit » sur un serveur existant permettrait
-    // d'énumérer les serveurs des autres utilisateurs par essais successifs.
+    // 404 and not 403: answering "forbidden" on an existing server would allow
+    // enumerating other users' servers by trial and error.
     if (!access) {
       throw new NotFoundException('Serveur introuvable.');
     }
 
     const missing = required.filter((permission) => !access.permissions.includes(permission));
     if (missing.length > 0) {
-      throw new ForbiddenException(`Permission manquante sur ce serveur : ${missing.join(', ')}.`);
+      throw new ForbiddenException(`Missing permission on this server: ${missing.join(', ')}.`);
     }
 
     request.serverAccess = access;

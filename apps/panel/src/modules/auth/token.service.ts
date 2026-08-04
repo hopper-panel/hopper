@@ -15,33 +15,33 @@ import { SignJWT, jwtVerify } from 'jose';
 import { CryptoService } from '../../common/crypto/crypto.service.js';
 import type { Environment } from '../../config/environment.js';
 
-/** Durée de vie de l'access token du panel. */
+/** Lifetime of the panel's access token. */
 export const ACCESS_TOKEN_TTL_SECONDS = 15 * 60;
-/** Durée de vie d'une session de rafraîchissement. */
+/** Lifetime of a refresh session. */
 export const REFRESH_TOKEN_TTL_SECONDS = 30 * 24 * 60 * 60;
 
 export interface AccessTokenPayload {
   sub: string;
   username: string;
   role: 'ADMIN' | 'USER';
-  /** Identifiant de session, pour révoquer un access token via sa session. */
+  /** Session identifier, to revoke an access token through its session. */
   sid: string;
 }
 
 /**
- * Émission et vérification des jetons du panel.
+ * Issuing and verifying the panel's tokens.
  *
- * Trois familles distinctes, jamais interchangeables :
+ * Three distinct families, never interchangeable:
  *
- *  • **access token** — signé avec la clé du panel, prouve l'identité auprès de
- *    l'API. Court, non stocké.
- *  • **refresh token** — chaîne opaque aléatoire, stockée hashée en base. Ce
- *    n'est pas un JWT : il doit être révocable immédiatement.
- *  • **jeton de console / URL signée** — signés avec le secret du *node*
- *    concerné, car c'est le daemon qui les vérifie, sans rappeler le panel.
+ *  • **access token** — signed with the panel's key, proves identity to the
+ *    API. Short-lived, not stored.
+ *  • **refresh token** — an opaque random string, stored hashed. It is not a
+ *    JWT: it has to be revocable immediately.
+ *  • **console token / signed URL** — signed with the secret of the *node*
+ *    concerned, because the daemon verifies them without calling the panel.
  *
- * L'audience (`aud`) sépare les familles : un jeton de console présenté à l'API
- * du panel échoue à la vérification, et réciproquement.
+ * The audience (`aud`) separates the families: a console token presented to the
+ * panel's API fails verification, and the other way round.
  */
 @Injectable()
 export class TokenService {
@@ -59,13 +59,13 @@ export class TokenService {
   // -------------------------------------------------------------------------
 
   /**
-   * Jeton d'un lien « choisissez votre mot de passe ».
+   * Token for a "choose your password" link.
    *
-   * Il porte une empreinte du mot de passe en vigueur au moment de l'émission.
-   * C'est ce qui le rend **à usage unique sans table dédiée** : dès qu'un mot
-   * de passe est choisi, l'empreinte change et le lien cesse de fonctionner —
-   * y compris pour un second clic sur le même courriel, ou pour un lien resté
-   * dans une boîte compromise après coup.
+   * It carries a fingerprint of the password in force when it was issued. That
+   * is what makes it **single-use with no dedicated table**: as soon as a
+   * password is chosen, the fingerprint changes and the link stops working —
+   * including for a second click on the same email, or for a link left in a
+   * mailbox compromised afterwards.
    */
   async signPasswordSetup(input: {
     userUuid: string;
@@ -141,8 +141,8 @@ export class TokenService {
         sid: payload.sid,
       };
     } catch {
-      // Signature invalide, jeton expiré, audience erronée : dans tous les cas
-      // la requête n'est pas authentifiée. Le détail n'intéresse pas l'appelant.
+      // Invalid signature, expired token, wrong audience: in every case the
+      // request is not authenticated. The detail is of no use to the caller.
       return null;
     }
   }
@@ -152,31 +152,31 @@ export class TokenService {
   // -------------------------------------------------------------------------
 
   /**
-   * Génère un refresh token opaque et son empreinte.
-   * Seule l'empreinte est stockée : une fuite de la base ne donne pas de
-   * session utilisable.
+   * Generates an opaque refresh token and its digest.
+   * Only the digest is stored: a database leak does not hand over a usable
+   * session.
    */
   generateRefreshToken(): { token: string; hash: string } {
     const token = this.crypto.randomString(64);
     return { token, hash: this.crypto.hashToken(token) };
   }
 
-  /** Identifiant de famille, partagé par toutes les rotations d'une session. */
+  /** Family identifier, shared by every rotation of a session. */
   generateSessionFamily(): string {
     return randomUUID();
   }
 
   // -------------------------------------------------------------------------
-  // Jetons destinés au daemon
+  // Tokens meant for the daemon
   // -------------------------------------------------------------------------
 
   /**
-   * Jeton autorisant une connexion WebSocket à la console d'un serveur.
+   * Token allowing a WebSocket connection to a server's console.
    *
-   * Signé avec le secret du node, pas avec celui du panel : le daemon le vérifie
-   * seul, sans appel réseau. C'est ce qui rend la console fluide, et c'est
-   * pourquoi la durée de vie est courte — une permission retirée dans le panel
-   * ne prend effet qu'au renouvellement.
+   * Signed with the node's secret, not the panel's: the daemon verifies it on
+   * its own, with no network call. That is what keeps the console fluid, and it
+   * is why the lifetime is short — a permission revoked in the panel only takes
+   * effect on renewal.
    */
   async signConsoleToken(input: {
     nodeUuid: string;
@@ -199,7 +199,7 @@ export class TokenService {
       .sign(Buffer.from(input.nodeJwtSecret, 'utf8'));
   }
 
-  /** Vérifie un jeton de console. Utilisé par les tests et par le daemon. */
+  /** Verifies a console token. Used by the tests and by the daemon. */
   async verifyConsoleToken(
     token: string,
     nodeUuid: string,
@@ -220,9 +220,9 @@ export class TokenService {
   }
 
   /**
-   * URL signée à usage unique pour un téléchargement ou un envoi de fichier.
-   * Très courte durée : l'URL passe en clair dans la barre d'adresse et
-   * l'historique du navigateur.
+   * Single-use signed URL for a file download or upload.
+   * Very short-lived: the URL travels in the clear through the address bar and
+   * the browser history.
    */
   async signResourceUrl(input: {
     nodeUuid: string;
@@ -263,11 +263,11 @@ export class TokenService {
 }
 
 /**
- * Empreinte courte d'une empreinte de mot de passe.
+ * Short fingerprint of a password digest.
  *
- * Le hash argon2 lui-même n'entre pas dans le jeton : celui-ci est lisible par
- * son porteur, et y placer de quoi mener une attaque hors ligne serait absurde.
- * Seize caractères suffisent à détecter un changement.
+ * The argon2 hash itself does not go into the token: the token is readable by
+ * its bearer, and putting enough there to mount an offline attack would be
+ * absurd. Sixteen characters are enough to detect a change.
  */
 export function fingerprintOf(passwordHash: string): string {
   return createHash('sha256').update(passwordHash).digest('hex').slice(0, 16);

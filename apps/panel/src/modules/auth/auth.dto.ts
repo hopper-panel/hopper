@@ -1,28 +1,28 @@
 import { z } from 'zod';
 
 /**
- * Règles de mot de passe.
+ * Password rules.
  *
- * Longueur minimale de 12 caractères et aucune règle de composition : imposer
- * « une majuscule, un chiffre, un symbole » pousse les gens vers `Password1!`,
- * qui est plus court à casser qu'une phrase de passe de 16 lettres. C'est aussi
- * la recommandation du NIST SP 800-63B depuis 2017.
+ * A 12-character minimum and no composition rule: demanding "one capital, one
+ * digit, one symbol" pushes people towards `Password1!`, which is quicker to
+ * crack than a 16-letter passphrase. It is also NIST SP 800-63B's advice since
+ * 2017.
  */
 export const passwordSchema = z
   .string()
-  .min(12, 'Le mot de passe doit contenir au moins 12 caractères.')
+  .min(12, 'The password must be at least 12 characters long.')
   .max(4096);
 
 export const loginSchema = z.object({
   /** Adresse e-mail ou nom d'utilisateur. */
   identifier: z.string().min(1).max(191),
   password: z.string().min(1).max(4096),
-  /** Code TOTP ou code de récupération, si la 2FA est active. */
+  /** TOTP code or recovery code, if 2FA is on. */
   totpCode: z.string().min(1).max(32).optional(),
 });
 
 export const refreshSchema = z.object({
-  /** Optionnel : l'interface web transmet le jeton par cookie httpOnly. */
+  /** Optional: the web interface carries the token in an httpOnly cookie. */
   refreshToken: z.string().min(1).optional(),
 });
 
@@ -32,7 +32,7 @@ export const changePasswordSchema = z
     newPassword: passwordSchema,
   })
   .refine((body) => body.currentPassword !== body.newPassword, {
-    message: 'Le nouveau mot de passe doit être différent de l’ancien.',
+    message: 'The new password must differ from the old one.',
     path: ['newPassword'],
   });
 
@@ -51,11 +51,11 @@ export type TotpCodeDto = z.infer<typeof totpCodeSchema>;
 export type DisableTwoFactorDto = z.infer<typeof disableTwoFactorSchema>;
 
 /**
- * Choix du mot de passe initial, depuis le lien reçu par courriel.
+ * Choosing the initial password, from the link received by email.
  *
- * Le jeton est borné en longueur : un JWT signé en HS256 dépasse rarement
- * quatre cents caractères, et refuser plus tôt évite de faire vérifier une
- * signature sur une charge arbitraire.
+ * The token is bounded in length: a JWT signed with HS256 rarely exceeds four
+ * hundred characters, and refusing earlier avoids verifying a signature over an
+ * arbitrary payload.
  */
 export const passwordSetupSchema = z.object({
   token: z.string().min(1).max(2048),
