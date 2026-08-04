@@ -84,7 +84,12 @@ export class UsersService {
     return toUserView(user);
   }
 
-  async create(dto: CreateUserDto, actorId: number, context: RequestContext): Promise<UserView> {
+  async create(
+    dto: CreateUserDto,
+    /** Nul quand la création vient de la ligne de commande, sans session. */
+    actorId: number | null,
+    context: RequestContext,
+  ): Promise<UserView> {
     await this.assertAvailable(dto.email, dto.username);
 
     const user = await this.prisma.user.create({
@@ -110,7 +115,7 @@ export class UsersService {
   async update(
     uuid: string,
     dto: UpdateUserDto,
-    actorId: number,
+    actorId: number | null,
     context: RequestContext,
   ): Promise<UserView> {
     const existing = await this.prisma.user.findUnique({ where: { uuid } });

@@ -17,6 +17,18 @@ dans son propre conteneur Docker.
 > ⚠️ **Statut : en développement actif, pré-alpha.** Rien n'est encore utilisable en production.
 > Suivez la [feuille de route](#feuille-de-route) pour savoir où en est le projet.
 
+## Installation
+
+```bash
+git clone https://github.com/hopper-panel/hopper.git
+cd hopper
+sudo bash install/install.sh
+```
+
+Debian 12+, Ubuntu 22.04+, Rocky ou Alma 9+. Le script pose quatre questions — domaine, nginx ou
+apache, certificat, compte administrateur — puis installe tout le reste et déclare le node local.
+Voir la [documentation d'installation](./docs/installation.md).
+
 ## Pourquoi Hopper ?
 
 Les panels existants forcent un compromis désagréable :
@@ -84,15 +96,14 @@ d'étranglement, même avec cinquante consoles ouvertes.
 hopper/
 ├── apps/
 │   ├── panel/            # API NestJS + front React (apps/panel/web)
-│   ├── daemon/           # hopperd — agent Docker sur chaque machine
-│   └── cli/              # commande `hopper`
+│   └── daemon/           # hopperd — agent Docker sur chaque machine
 ├── packages/
 │   ├── shared/           # contrat Zod panel↔daemon, permissions
 │   ├── templates/        # templates de serveurs + import d'eggs Pterodactyl
 │   └── config/           # ESLint / TypeScript partagés
 ├── docker/               # images Java, compose de dev
 ├── install/              # install.sh, units systemd, vhosts nginx & apache
-└── docs/
+└── docs/                 # installation, mise à jour, CLI, templates, sécurité
 ```
 
 ## Développement
@@ -126,6 +137,9 @@ pnpm dev
 L'interface appelle l'API en chemin relatif : Vite fait suivre `/api` vers le panel, ce qui évite
 toute configuration CORS côté client en développement.
 
+La ligne de commande d'administration s'obtient avec `pnpm --filter @hopper/panel cli <commande>`
+en développement, et `hopper <commande>` sur une machine installée — voir [docs/cli.md](./docs/cli.md).
+
 Voir [CONTRIBUTING.md](./CONTRIBUTING.md) pour les conventions de commit, les tests et le processus
 de revue.
 
@@ -136,9 +150,9 @@ de revue.
 - [x] **Phase 2** — Runtime Docker, console live, statistiques _(le jalon qui valide tout)_
 - [x] **Phase 3** — Templates de serveurs et installation automatique
 - [x] **Phase 4** — Gestionnaire de fichiers et SFTP
-- [ ] **Phase 5** — Backups, planificateur, sous-utilisateurs
-- [ ] **Phase 6** — Installeur système (nginx/apache), documentation, version 1.0
-- [ ] **Phase 7** — Bases MySQL par serveur, transfert entre nodes, passkeys, i18n
+- [x] **Phase 5** — Backups, planificateur, sous-utilisateurs
+- [x] **Phase 6** — Installeur système (nginx/apache), CLI `hopper`, documentation
+- [ ] **Phase 7** — Bases MySQL par serveur _(faites)_, transfert entre nodes, passkeys, i18n
 
 ## Sécurité
 

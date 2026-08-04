@@ -1,0 +1,50 @@
+# Hopper Panel — Apache
+#
+# Généré par install.sh. Nécessite les modules proxy, proxy_http,
+# proxy_wstunnel, rewrite, headers et ssl :
+#   a2enmod proxy proxy_http proxy_wstunnel rewrite headers ssl
+#
+# Ce fichier n'est pas écrasé lors d'une mise à jour : vos modifications restent.
+
+<VirtualHost *:80>
+    ServerName {{DOMAIN}}
+
+    # Certbot dépose son jeton ici ; tout le reste part en HTTPS.
+    Alias /.well-known/acme-challenge/ /var/www/html/.well-known/acme-challenge/
+    <Directory /var/www/html/.well-known/acme-challenge/>
+        Require all granted
+    </Directory>
+
+    RewriteEngine On
+    RewriteCond %{REQUEST_URI} !^/\.well-known/acme-challenge/
+    RewriteRule ^(.*)$ https://%{HTTP_HOST}$1 [R=301,L]
+</VirtualHost>
+
+<VirtualHost *:443>
+    ServerName {{DOMAIN}}
+
+    SSLEngine on
+    SSLCertificateFile    {{CERT}}
+    SSLCertificateKeyFile {{KEY}}
+    SSLProtocol -all +TLSv1.2 +TLSv1.3
+
+    Header always set Strict-Transport-Security "max-age=31536000; includeSubDomains"
+
+    # La console ouvre un WebSocket : sans cette réécriture, Apache traiterait
+    # la bascule comme une requête HTTP ordinaire et la connexion tomberait.
+    # Elle doit précéder les ProxyPass, qui captureraient la requête avant.
+    RewriteEngine On
+    RewriteCond %{HTTP:Upgrade} =websocket [NC]
+    RewriteCond %{HTTP:Connection} upgrade [NC]
+    RewriteRule ^/?(.*) ws://127.0.0.1:{{PORT}}/$1 [P,L]
+
+    ProxyPreserveHost On
+    ProxyPass        / http://127.0.0.1:{{PORT}}/
+    ProxyPassReverse / http://127.0.0.1:{{PORT}}/
+
+    RequestHeader set X-Forwarded-Proto "https"
+
+    # Un envoi de plugin ou de modpack ne doit pas être coupé en route.
+    ProxyTimeout 300
+    LimitRequestBody 1073741824
+</VirtualHost>

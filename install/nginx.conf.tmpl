@@ -1,0 +1,61 @@
+# Hopper Panel — nginx
+#
+# Généré par install.sh. Les valeurs entre {{ }} sont remplacées à l'installation.
+# Ce fichier n'est pas écrasé lors d'une mise à jour : vos modifications restent.
+
+server {
+    listen 80;
+    listen [::]:80;
+    server_name {{DOMAIN}};
+
+    # Certbot dépose son jeton ici ; tout le reste part en HTTPS.
+    location /.well-known/acme-challenge/ {
+        root /var/www/html;
+    }
+
+    location / {
+        return 301 https://$host$request_uri;
+    }
+}
+
+server {
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    http2 on;
+    server_name {{DOMAIN}};
+
+    ssl_certificate     {{CERT}};
+    ssl_certificate_key {{KEY}};
+
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_prefer_server_ciphers off;
+    ssl_session_cache shared:SSL:10m;
+    ssl_session_timeout 1d;
+
+    # Le panel émet déjà ses propres en-têtes de sécurité (CSP comprise) :
+    # les redéfinir ici les ferait diverger à la première mise à jour.
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+
+    # Les envois de fichiers passent par le panel, qui les relaie au daemon.
+    # La valeur par défaut de nginx — 1 Mo — refuserait le moindre plugin.
+    client_max_body_size 1024m;
+    # Un envoi lent ne doit pas être coupé au milieu : le client peut être
+    # derrière une ligne ADSL et le fichier peser plusieurs centaines de Mo.
+    client_body_timeout 300s;
+    proxy_read_timeout 300s;
+
+    location / {
+        proxy_pass http://127.0.0.1:{{PORT}};
+
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # Sans ces deux lignes, la console reste muette : le panel accepte la
+        # bascule WebSocket, mais nginx ne la transmet pas.
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+    }
+}

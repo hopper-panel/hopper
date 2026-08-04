@@ -130,7 +130,8 @@ export class NodesService {
    */
   async create(
     dto: CreateNodeDto,
-    actorId: number,
+    /** Nul quand la création vient de la ligne de commande, sans session. */
+    actorId: number | null,
     context: RequestContext,
   ): Promise<{ node: NodeView; configuration: string }> {
     const tokenId = this.crypto.randomString(NODE_TOKEN_ID_LENGTH);
@@ -221,7 +222,8 @@ export class NodesService {
    */
   async rotateToken(
     uuid: string,
-    actorId: number,
+    /** Nul quand la rotation vient de la ligne de commande, sans session. */
+    actorId: number | null,
     context: RequestContext,
   ): Promise<{ configuration: string }> {
     const existing = await this.prisma.node.findUnique({ where: { uuid } });
@@ -438,7 +440,20 @@ export class NodesService {
       api: {
         host: '0.0.0.0',
         port: node.port,
-        ssl: { enabled: node.scheme === 'https' },
+        // Les chemins de certificat sont **obligatoires** dès que `enabled` vaut
+        // vrai : sans eux, le daemon refuse de démarrer avec une configuration
+        // qu'il vient pourtant de recevoir du panel. On propose donc ceux de
+        // Let's Encrypt, de loin les plus courants — un autre émetteur se
+        // corrige en deux lignes, une configuration invalide se diagnostique en
+        // vingt minutes.
+        ssl:
+          node.scheme === 'https'
+            ? {
+                enabled: true,
+                certificatePath: `/etc/letsencrypt/live/${node.fqdn}/fullchain.pem`,
+                keyPath: `/etc/letsencrypt/live/${node.fqdn}/privkey.pem`,
+              }
+            : { enabled: false },
         // Sans cette origine, le daemon refuserait toutes les connexions
         // WebSocket venant du panel et aucune console ne s'ouvrirait.
         allowedOrigins: [this.appUrl],
