@@ -345,4 +345,48 @@ export const fr: Messages = {
 
   'schedules.afterLabel': 'après',
   'schedules.continueOnFailure': 'Poursuivre la séquence même si cette étape échoue',
+
+  'network.title': 'Réseau',
+  'network.subtitle':
+    'Un port est l’adresse sur laquelle les joueurs se connectent. Le port principal est celui écrit dans server.properties au démarrage.',
+  'network.empty': 'Aucun port attribué',
+  'network.add': 'Ajouter un port',
+  'network.adding': 'Attribution…',
+  'network.notePlaceholder': 'Note — dynmap, voice, domaine annoncé…',
+  'network.primary': 'principal',
+  'network.makePrimary': 'Définir principal',
+  'network.remove': 'Retirer',
+  'network.nextBoot':
+    'Changer le port principal prend effet au prochain démarrage : il est écrit dans la configuration du serveur au lancement, pas pendant qu’il tourne.',
+  'startup.title': 'Démarrage',
+  'startup.subtitle': 'Ce que le serveur exécute au lancement, et les variables du template.',
+  'startup.command': 'Commande de démarrage',
+  'startup.image': 'Image Docker',
+  'startup.imageHint':
+    'Version de Java qui exécute le serveur. Une image inadaptée empêche le démarrage.',
+  'startup.imageDenied': 'Vous n’avez pas la permission de changer l’image.',
+  'startup.variables': 'Variables',
+  'startup.noVariables': 'Ce template n’expose aucune variable.',
+  'startup.readOnly': 'lecture seule',
+  'startup.saved': 'enregistré',
+  'startup.saveFailed': 'Enregistrement impossible.',
+  'startup.nextBoot':
+    'Les changements prennent effet au prochain démarrage : la commande et les variables sont appliquées au lancement du conteneur.',
+  'activity.title': 'Activité',
+  'activity.subtitle': 'Ce qui a été fait sur ce serveur, par qui et depuis où.',
+  'activity.empty': 'Aucune activité',
+  'activity.emptyHint':
+    'Les actions menées sur ce serveur — commandes, fichiers, sauvegardes — apparaîtront ici.',
+  'activity.system': 'Système',
+
+  'common.previous': 'Précédent',
+  'common.next': 'Suivant',
+  'common.page': 'Page {current} sur {last}',
+  'network.count': '{used} port(s) attribué(s).',
+  'network.countLimited': '{used} port(s) attribué(s) sur {limit}.',
+  'network.noFreePorts':
+    'Aucun port libre sur ce node. Un administrateur doit en ajouter à la machine.',
+  'startup.commandHint':
+    'Définie par le template. Les {{VARIABLES}} ci-dessous y sont substituées au lancement.',
+  'activity.count': '{count} entrées',
 };

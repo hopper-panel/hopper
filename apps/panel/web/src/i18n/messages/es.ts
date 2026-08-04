@@ -339,4 +339,48 @@ export const es: Messages = {
 
   'schedules.afterLabel': 'tras',
   'schedules.continueOnFailure': 'Continuar la secuencia aunque este paso falle',
+
+  'network.title': 'Red',
+  'network.subtitle':
+    'Un puerto es la dirección a la que se conectan los jugadores. El puerto principal es el que se escribe en server.properties al arrancar.',
+  'network.empty': 'Sin puertos asignados',
+  'network.add': 'Añadir un puerto',
+  'network.adding': 'Asignando…',
+  'network.notePlaceholder': 'Nota — dynmap, voz, dominio anunciado…',
+  'network.primary': 'principal',
+  'network.makePrimary': 'Hacer principal',
+  'network.remove': 'Quitar',
+  'network.nextBoot':
+    'Cambiar el puerto principal surte efecto en el próximo arranque: se escribe en la configuración del servidor al lanzarlo, no mientras funciona.',
+  'startup.title': 'Arranque',
+  'startup.subtitle': 'Lo que el servidor ejecuta al arrancar, y las variables de la plantilla.',
+  'startup.command': 'Comando de arranque',
+  'startup.image': 'Imagen Docker',
+  'startup.imageHint':
+    'Versión de Java que ejecuta el servidor. Una imagen inadecuada impide el arranque.',
+  'startup.imageDenied': 'No tienes permiso para cambiar la imagen.',
+  'startup.variables': 'Variables',
+  'startup.noVariables': 'Esta plantilla no expone ninguna variable.',
+  'startup.readOnly': 'solo lectura',
+  'startup.saved': 'guardado',
+  'startup.saveFailed': 'No se pudo guardar.',
+  'startup.nextBoot':
+    'Los cambios surten efecto en el próximo arranque: el comando y las variables se aplican al lanzar el contenedor.',
+  'activity.title': 'Actividad',
+  'activity.subtitle': 'Lo que se ha hecho en este servidor, por quién y desde dónde.',
+  'activity.empty': 'Sin actividad',
+  'activity.emptyHint':
+    'Las acciones realizadas en este servidor — comandos, archivos, copias — aparecerán aquí.',
+  'activity.system': 'Sistema',
+
+  'common.previous': 'Anterior',
+  'common.next': 'Siguiente',
+  'common.page': 'Página {current} de {last}',
+  'network.count': '{used} puerto(s) asignado(s).',
+  'network.countLimited': '{used} de {limit} puerto(s) asignado(s).',
+  'network.noFreePorts':
+    'No hay puertos libres en este nodo. Un administrador debe añadirlos a la máquina.',
+  'startup.commandHint':
+    'La define la plantilla. Las {{VARIABLES}} de abajo se sustituyen al arrancar.',
+  'activity.count': '{count} entradas',
 };

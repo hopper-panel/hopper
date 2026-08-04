@@ -338,4 +338,48 @@ export const ru: Messages = {
 
   'schedules.afterLabel': 'через',
   'schedules.continueOnFailure': 'Продолжать последовательность, даже если шаг не удался',
+
+  'network.title': 'Сеть',
+  'network.subtitle':
+    'Порт — это адрес, к которому подключаются игроки. Основной порт записывается в server.properties при запуске.',
+  'network.empty': 'Портов нет',
+  'network.add': 'Добавить порт',
+  'network.adding': 'Назначение…',
+  'network.notePlaceholder': 'Заметка — dynmap, голосовой чат, домен…',
+  'network.primary': 'основной',
+  'network.makePrimary': 'Сделать основным',
+  'network.remove': 'Убрать',
+  'network.nextBoot':
+    'Смена основного порта вступит в силу при следующем запуске: он записывается в конфигурацию сервера при старте, а не на ходу.',
+  'startup.title': 'Запуск',
+  'startup.subtitle': 'Что сервер выполняет при старте и переменные шаблона.',
+  'startup.command': 'Команда запуска',
+  'startup.image': 'Образ Docker',
+  'startup.imageHint':
+    'Версия Java, на которой работает сервер. Неподходящий образ не даст ему запуститься.',
+  'startup.imageDenied': 'У вас нет права менять образ.',
+  'startup.variables': 'Переменные',
+  'startup.noVariables': 'Этот шаблон не предоставляет переменных.',
+  'startup.readOnly': 'только чтение',
+  'startup.saved': 'сохранено',
+  'startup.saveFailed': 'Не удалось сохранить.',
+  'startup.nextBoot':
+    'Изменения вступят в силу при следующем запуске: команда и переменные применяются при старте контейнера.',
+  'activity.title': 'Активность',
+  'activity.subtitle': 'Что делали на этом сервере, кто и откуда.',
+  'activity.empty': 'Активности нет',
+  'activity.emptyHint':
+    'Действия на этом сервере — команды, файлы, резервные копии — появятся здесь.',
+  'activity.system': 'Система',
+
+  'common.previous': 'Назад',
+  'common.next': 'Вперёд',
+  'common.page': 'Страница {current} из {last}',
+  'network.count': 'Портов назначено: {used}.',
+  'network.countLimited': 'Назначено {used} из {limit} портов.',
+  'network.noFreePorts':
+    'На этой ноде нет свободных портов. Администратор должен добавить их на машину.',
+  'startup.commandHint':
+    'Задаётся шаблоном. Значения {{VARIABLES}} ниже подставляются при запуске.',
+  'activity.count': 'Записей: {count}',
 };

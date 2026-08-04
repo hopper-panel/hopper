@@ -343,4 +343,48 @@ export const de: Messages = {
 
   'schedules.afterLabel': 'nach',
   'schedules.continueOnFailure': 'Ablauf fortsetzen, auch wenn dieser Schritt fehlschlägt',
+
+  'network.title': 'Netzwerk',
+  'network.subtitle':
+    'Ein Port ist die Adresse, zu der Spieler verbinden. Der Hauptport ist der, der beim Start in server.properties geschrieben wird.',
+  'network.empty': 'Keine Ports zugewiesen',
+  'network.add': 'Port hinzufügen',
+  'network.adding': 'Wird zugewiesen…',
+  'network.notePlaceholder': 'Notiz — dynmap, Voice, angekündigte Domain…',
+  'network.primary': 'Hauptport',
+  'network.makePrimary': 'Als Hauptport setzen',
+  'network.remove': 'Entfernen',
+  'network.nextBoot':
+    'Ein Wechsel des Hauptports greift beim nächsten Start: er wird beim Starten in die Serverkonfiguration geschrieben, nicht im laufenden Betrieb.',
+  'startup.title': 'Start',
+  'startup.subtitle': 'Was der Server beim Start ausführt, und die Variablen der Vorlage.',
+  'startup.command': 'Startbefehl',
+  'startup.image': 'Docker-Image',
+  'startup.imageHint':
+    'Java-Version, die den Server ausführt. Ein unpassendes Image verhindert den Start.',
+  'startup.imageDenied': 'Du darfst das Image nicht ändern.',
+  'startup.variables': 'Variablen',
+  'startup.noVariables': 'Diese Vorlage stellt keine Variablen bereit.',
+  'startup.readOnly': 'schreibgeschützt',
+  'startup.saved': 'gespeichert',
+  'startup.saveFailed': 'Speichern nicht möglich.',
+  'startup.nextBoot':
+    'Änderungen greifen beim nächsten Start: Befehl und Variablen werden beim Starten des Containers angewendet.',
+  'activity.title': 'Aktivität',
+  'activity.subtitle': 'Was auf diesem Server getan wurde, von wem und von wo.',
+  'activity.empty': 'Keine Aktivität',
+  'activity.emptyHint':
+    'Aktionen auf diesem Server — Befehle, Dateien, Sicherungen — erscheinen hier.',
+  'activity.system': 'System',
+
+  'common.previous': 'Zurück',
+  'common.next': 'Weiter',
+  'common.page': 'Seite {current} von {last}',
+  'network.count': '{used} Port(s) zugewiesen.',
+  'network.countLimited': '{used} von {limit} Port(s) zugewiesen.',
+  'network.noFreePorts':
+    'Kein freier Port auf diesem Node. Ein Administrator muss der Maschine welche hinzufügen.',
+  'startup.commandHint':
+    'Von der Vorlage vorgegeben. Die {{VARIABLES}} unten werden beim Start ersetzt.',
+  'activity.count': '{count} Einträge',
 };

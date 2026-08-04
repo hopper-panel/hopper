@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { PageHeader } from '../components/PageHeader';
 import { Badge, Button, Card, EmptyState, Spinner } from '../components/ui';
+import { useTranslation } from '../i18n';
 import { api, type Paginated } from '../lib/api';
 import { formatDate } from '../lib/format';
 
@@ -10,26 +11,27 @@ interface Entry {
   uuid: string;
   event: string;
   description: string;
-  /** Null pour une action du système : planificateur, daemon. */
+  /** Null for a system action: scheduler, daemon. */
   actor: { username: string } | null;
   ip: string | null;
   createdAt: string;
 }
 
 export function ServerActivityPage() {
+  const { t } = useTranslation();
   const { uuid = '' } = useParams();
   const [page, setPage] = useState(1);
 
   const activity = useQuery({
     queryKey: ['server', uuid, 'activity', page],
     queryFn: () => api.get<Paginated<Entry>>(`/api/servers/${uuid}/activity?page=${page}`),
-    // La page consultée ne doit pas se dérober sous les yeux : le journal se
+    // The page being read must not shift under the eye: the log is
     // lit, il ne se surveille pas en direct.
     refetchOnWindowFocus: false,
   });
 
   if (activity.isLoading) {
-    return <Spinner label="Chargement du journal…" />;
+    return <Spinner label={t('common.loading')} />;
   }
 
   const entries = activity.data?.data ?? [];
@@ -37,16 +39,10 @@ export function ServerActivityPage() {
 
   return (
     <>
-      <PageHeader
-        title="Activité"
-        description="Ce qui a été fait sur ce serveur, par qui et depuis où."
-      />
+      <PageHeader title={t('activity.title')} description={t('activity.subtitle')} />
 
       {entries.length === 0 ? (
-        <EmptyState
-          title="Aucune activité"
-          description="Les actions menées sur ce serveur — commandes, fichiers, sauvegardes — apparaîtront ici."
-        />
+        <EmptyState title={t('activity.empty')} description={t('activity.emptyHint')} />
       ) : (
         <Card className="p-0">
           <ul>
@@ -59,9 +55,9 @@ export function ServerActivityPage() {
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="text-sm font-medium text-content">
                       {/* Une action sans acteur vient du planificateur ou du
-                          daemon : l'attribuer à personne serait faux, et à un
+                          daemon: crediting nobody would be wrong, and crediting
                           utilisateur encore plus. */}
-                      {entry.actor?.username ?? 'Système'}
+                      {entry.actor?.username ?? t('activity.system')}
                     </span>
                     <code className="font-mono text-xs text-content-subtle">{entry.event}</code>
                   </div>
@@ -82,19 +78,19 @@ export function ServerActivityPage() {
       {meta && meta.lastPage > 1 ? (
         <div className="mt-4 flex items-center justify-between gap-3">
           <Button onClick={() => setPage((current) => current - 1)} disabled={page <= 1}>
-            Précédent
+            {t('common.previous')}
           </Button>
 
           <span className="text-sm text-content-muted">
-            Page {meta.currentPage} sur {meta.lastPage}
-            <Badge>{meta.total} entrées</Badge>
+            {t('common.page', { current: meta.currentPage, last: meta.lastPage })}
+            <Badge>{t('activity.count', { count: meta.total })}</Badge>
           </span>
 
           <Button
             onClick={() => setPage((current) => current + 1)}
             disabled={page >= meta.lastPage}
           >
-            Suivant
+            {t('common.next')}
           </Button>
         </div>
       ) : null}

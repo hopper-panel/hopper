@@ -353,6 +353,48 @@ export const en = {
 
   'schedules.afterLabel': 'after',
   'schedules.continueOnFailure': 'Continue the sequence even if this step fails',
+
+  'network.title': 'Network',
+  'network.subtitle':
+    'A port is the address players connect to. The primary port is the one written into server.properties at start-up.',
+  'network.empty': 'No ports assigned',
+  'network.add': 'Add a port',
+  'network.adding': 'Assigning…',
+  'network.notePlaceholder': 'Note — dynmap, voice, announced domain…',
+  'network.primary': 'primary',
+  'network.makePrimary': 'Make primary',
+  'network.remove': 'Remove',
+  'network.nextBoot':
+    'Changing the primary port takes effect on the next start: it is written into the server configuration at launch, not while it runs.',
+  'startup.title': 'Startup',
+  'startup.subtitle': 'What the server runs at launch, and the template variables.',
+  'startup.command': 'Startup command',
+  'startup.image': 'Docker image',
+  'startup.imageHint': 'Java version running the server. A mismatched image prevents start-up.',
+  'startup.imageDenied': 'You do not have permission to change the image.',
+  'startup.variables': 'Variables',
+  'startup.noVariables': 'This template exposes no variables.',
+  'startup.readOnly': 'read-only',
+  'startup.saved': 'saved',
+  'startup.saveFailed': 'Could not save.',
+  'startup.nextBoot':
+    'Changes take effect on the next start: the command and the variables are applied when the container launches.',
+  'activity.title': 'Activity',
+  'activity.subtitle': 'What was done on this server, by whom and from where.',
+  'activity.empty': 'No activity',
+  'activity.emptyHint':
+    'Actions taken on this server — commands, files, backups — will show up here.',
+  'activity.system': 'System',
+
+  'common.previous': 'Previous',
+  'common.next': 'Next',
+  'common.page': 'Page {current} of {last}',
+  'network.count': '{used} port(s) assigned.',
+  'network.countLimited': '{used} of {limit} port(s) assigned.',
+  'network.noFreePorts':
+    'No free port on this node. An administrator has to add some to the machine.',
+  'startup.commandHint': 'Set by the template. The {{VARIABLES}} below are substituted at launch.',
+  'activity.count': '{count} entries',
 } as const;
 
 export type MessageKey = keyof typeof en;

@@ -4,6 +4,7 @@ import { useParams } from 'react-router-dom';
 import { PageHeader } from '../components/PageHeader';
 import { Alert, Badge, Button, Card, Input, Spinner } from '../components/ui';
 import { ApiError, api } from '../lib/api';
+import { useTranslation } from '../i18n';
 import { useServerContext } from '../lib/server-context';
 
 interface Variable {
@@ -27,6 +28,7 @@ export function ServerStartupPage() {
   const { uuid = '' } = useParams();
   const queryClient = useQueryClient();
   const { can } = useServerContext();
+  const { t } = useTranslation();
 
   const [values, setValues] = useState<Record<string, string>>({});
   const [image, setImage] = useState<string | null>(null);
@@ -40,8 +42,8 @@ export function ServerStartupPage() {
   });
 
   // Les champs partent des valeurs du serveur, mais la saisie en cours ne doit
-  // pas être écrasée par un rechargement : la copie locale n'est faite qu'à la
-  // première arrivée des données, et après chaque enregistrement.
+  // not be overwritten by a refetch: the local copy is taken on the first
+  // arrival of the data, and after each save.
   useEffect(() => {
     if (startup.data && image === null) {
       setValues(
@@ -69,12 +71,12 @@ export function ServerStartupPage() {
     },
     onError: (error: unknown) => {
       setSaved(false);
-      setFailure(error instanceof ApiError ? error.message : 'Enregistrement impossible.');
+      setFailure(error instanceof ApiError ? error.message : t('startup.saveFailed'));
     },
   });
 
   if (startup.isLoading || !startup.data) {
-    return <Spinner label="Chargement des paramètres de démarrage…" />;
+    return <Spinner label={t('common.loading')} />;
   }
 
   const data = startup.data;
@@ -89,12 +91,12 @@ export function ServerStartupPage() {
   return (
     <>
       <PageHeader
-        title="Démarrage"
-        description="Ce que le serveur exécute au lancement, et les variables du template."
+        title={t('startup.title')}
+        description={t('startup.subtitle')}
         action={
           canEdit ? (
             <div className="flex items-center gap-2">
-              {saved && !dirty ? <Badge tone="online">enregistré</Badge> : null}
+              {saved && !dirty ? <Badge tone="online">{t('startup.saved')}</Badge> : null}
               <Button
                 variant="primary"
                 disabled={!dirty || save.isPending}
@@ -112,7 +114,7 @@ export function ServerStartupPage() {
                   })
                 }
               >
-                {save.isPending ? 'Enregistrement…' : 'Enregistrer'}
+                {save.isPending ? t('common.saving') : t('common.save')}
               </Button>
             </div>
           ) : null
@@ -122,7 +124,7 @@ export function ServerStartupPage() {
       {failure ? (
         <div className="mb-4">
           {/* Les refus de validation arrivent en plusieurs lignes, une par
-              variable : les aplatir rendrait illisible ce qui est à corriger. */}
+              variable: flattening them would hide what needs fixing. */}
           <Alert tone="danger">
             <span className="whitespace-pre-line">{failure}</span>
           </Alert>
@@ -131,21 +133,18 @@ export function ServerStartupPage() {
 
       <div className="grid gap-4 lg:grid-cols-3">
         <Card className="lg:col-span-2">
-          <h2 className="mb-2 text-sm font-medium text-content">Commande de démarrage</h2>
+          <h2 className="mb-2 text-sm font-medium text-content">{t('startup.command')}</h2>
           <pre className="overflow-x-auto rounded-lg bg-[#14161c] p-3 font-mono text-xs leading-relaxed text-content">
             {data.startupCommand}
           </pre>
           {/* Le gabarit appartient au template : le laisser modifier par
-              l'utilisateur d'un serveur reviendrait à lui donner le choix du
-              programme exécuté dans le conteneur. */}
-          <p className="mt-2 text-xs text-content-muted">
-            Définie par le template. Les <code>{'{{VARIABLES}}'}</code> ci-dessous y sont
-            substituées au lancement.
-          </p>
+              a server user would amount to letting them choose which program
+              runs inside the container. */}
+          <p className="mt-2 text-xs text-content-muted">{t('startup.commandHint')}</p>
         </Card>
 
         <Card>
-          <h2 className="mb-2 text-sm font-medium text-content">Image Docker</h2>
+          <h2 className="mb-2 text-sm font-medium text-content">{t('startup.image')}</h2>
 
           <select
             className="w-full rounded-lg border border-border-subtle bg-surface px-3 py-2 text-sm text-content disabled:opacity-60"
@@ -159,26 +158,24 @@ export function ServerStartupPage() {
               </option>
             ))}
             {/* L'image en place peut ne plus figurer dans le template : la
-                montrer quand même évite d'afficher une autre valeur que celle
-                réellement utilisée. */}
+                showing it anyway avoids displaying a value other than the one
+                actually in use. */}
             {data.dockerImages.every((candidate) => candidate.image !== data.dockerImage) ? (
               <option value={data.dockerImage}>{data.dockerImage}</option>
             ) : null}
           </select>
 
           <p className="mt-2 text-xs text-content-muted">
-            {canChangeImage
-              ? 'Version de Java qui exécute le serveur. Une image inadaptée empêche le démarrage.'
-              : 'Vous n’avez pas la permission de changer l’image.'}
+            {canChangeImage ? t('startup.imageHint') : t('startup.imageDenied')}
           </p>
         </Card>
       </div>
 
-      <h2 className="mb-3 mt-8 text-lg font-semibold text-content">Variables</h2>
+      <h2 className="mb-3 mt-8 text-lg font-semibold text-content">{t('startup.variables')}</h2>
 
       {data.variables.length === 0 ? (
         <Card>
-          <p className="text-sm text-content-muted">Ce template n’expose aucune variable.</p>
+          <p className="text-sm text-content-muted">{t('startup.noVariables')}</p>
         </Card>
       ) : (
         <div className="grid gap-4 lg:grid-cols-2">
@@ -189,7 +186,7 @@ export function ServerStartupPage() {
                 <code className="font-mono text-xs text-content-subtle">
                   {variable.envVariable}
                 </code>
-                {!variable.editable ? <Badge>lecture seule</Badge> : null}
+                {!variable.editable ? <Badge>{t('startup.readOnly')}</Badge> : null}
               </div>
 
               <Input
@@ -216,10 +213,7 @@ export function ServerStartupPage() {
         </div>
       )}
 
-      <p className="mt-4 text-xs text-content-muted">
-        Les changements prennent effet au <strong>prochain démarrage</strong> : la commande et les
-        variables sont appliquées au lancement du conteneur.
-      </p>
+      <p className="mt-4 text-xs text-content-muted">{t('startup.nextBoot')}</p>
     </>
   );
 }

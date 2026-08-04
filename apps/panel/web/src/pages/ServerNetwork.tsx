@@ -4,6 +4,7 @@ import { useParams } from 'react-router-dom';
 import { PageHeader } from '../components/PageHeader';
 import { Alert, Badge, Button, Card, EmptyState, Input, Spinner } from '../components/ui';
 import { ApiError, api } from '../lib/api';
+import { useTranslation } from '../i18n';
 import { useServerContext } from '../lib/server-context';
 
 interface Allocation {
@@ -23,6 +24,7 @@ export function ServerNetworkPage() {
   const { uuid = '' } = useParams();
   const queryClient = useQueryClient();
   const { can } = useServerContext();
+  const { t } = useTranslation();
 
   const [failure, setFailure] = useState<string | null>(null);
 
@@ -33,13 +35,13 @@ export function ServerNetworkPage() {
 
   const refresh = (): void => {
     void queryClient.invalidateQueries({ queryKey: ['server', uuid, 'allocations'] });
-    // Le port principal figure dans l'en-tête du serveur : sans cela, il y
+    // The primary port shows in the server header: without this it would
     // afficherait encore l'ancien.
     void queryClient.invalidateQueries({ queryKey: ['server', uuid] });
   };
 
   const fail = (error: unknown): void => {
-    setFailure(error instanceof ApiError ? error.message : 'Opération impossible.');
+    setFailure(error instanceof ApiError ? error.message : t('common.operationFailed'));
   };
 
   const setAlias = useMutation({
@@ -80,7 +82,7 @@ export function ServerNetworkPage() {
   });
 
   if (allocations.isLoading) {
-    return <Spinner label="Chargement des ports…" />;
+    return <Spinner label={t('common.loading')} />;
   }
 
   const list = allocations.data?.data ?? [];
@@ -90,11 +92,12 @@ export function ServerNetworkPage() {
   return (
     <>
       <PageHeader
-        title="Réseau"
+        title={t('network.title')}
         description={
           meta
-            ? `${meta.used} port${meta.used > 1 ? 's' : ''} attribué${meta.used > 1 ? 's' : ''}` +
-              (meta.limit > 0 ? ` sur ${meta.limit} autorisé${meta.limit > 1 ? 's' : ''}.` : '.')
+            ? meta.limit > 0
+              ? t('network.countLimited', { used: meta.used, limit: meta.limit })
+              : t('network.count', { used: meta.used })
             : undefined
         }
         action={
@@ -104,7 +107,7 @@ export function ServerNetworkPage() {
               onClick={() => add.mutate()}
               disabled={add.isPending || full || meta.availableOnNode === 0}
             >
-              {add.isPending ? 'Attribution…' : 'Ajouter un port'}
+              {add.isPending ? t('network.adding') : t('network.add')}
             </Button>
           ) : null
         }
@@ -118,17 +121,12 @@ export function ServerNetworkPage() {
 
       {meta && meta.limit > 0 && meta.availableOnNode === 0 && !full ? (
         <div className="mb-4">
-          <Alert tone="info">
-            Aucun port libre sur ce node. Un administrateur doit en ajouter à la machine.
-          </Alert>
+          <Alert tone="info">{t('network.noFreePorts')}</Alert>
         </div>
       ) : null}
 
       {list.length === 0 ? (
-        <EmptyState
-          title="Aucun port attribué"
-          description="Un port est l’adresse sur laquelle les joueurs se connectent. Le port principal est celui écrit dans server.properties au démarrage."
-        />
+        <EmptyState title={t('network.empty')} description={t('network.subtitle')} />
       ) : (
         <div className="flex flex-col gap-2">
           {list.map((allocation) => (
@@ -146,10 +144,7 @@ export function ServerNetworkPage() {
         </div>
       )}
 
-      <p className="mt-4 text-xs text-content-muted">
-        Changer le port principal prend effet au <strong>prochain démarrage</strong> : il est écrit
-        dans la configuration du serveur au lancement, pas pendant qu’il tourne.
-      </p>
+      <p className="mt-4 text-xs text-content-muted">{t('network.nextBoot')}</p>
     </>
   );
 }
@@ -171,6 +166,7 @@ function AllocationRow({
   onPrimary: () => void;
   onRemove: () => void;
 }) {
+  const { t } = useTranslation();
   const [alias, setAlias] = useState(allocation.alias ?? '');
 
   return (
@@ -197,11 +193,11 @@ function AllocationRow({
         <div className="min-w-48 flex-1">
           <Input
             value={alias}
-            placeholder="Note — dynmap, voice, domaine annoncé…"
+            placeholder={t('network.notePlaceholder')}
             disabled={!canUpdate}
             onChange={(event) => setAlias(event.target.value)}
-            // Enregistré à la sortie du champ plutôt qu'à chaque frappe : une
-            // requête par caractère saturerait l'API pour un champ libre.
+            // Saved on blur rather than on every keystroke: one request per
+            // character would flood the API for a free-text field.
             onBlur={() => {
               if (alias !== (allocation.alias ?? '')) {
                 onAlias(alias);
@@ -212,19 +208,19 @@ function AllocationRow({
 
         <div className="flex flex-wrap items-center gap-2">
           {allocation.primary ? (
-            <Badge tone="online">principal</Badge>
+            <Badge tone="online">{t('network.primary')}</Badge>
           ) : canUpdate ? (
             <Button onClick={onPrimary} disabled={busy}>
-              Définir principal
+              {t('network.makePrimary')}
             </Button>
           ) : null}
 
           {/* Le port principal n'est pas retirable : le serveur n'aurait plus
-              d'adresse d'écoute. Masquer le bouton évite un refus qui
-              ressemblerait à une panne. */}
+              listen address. Hiding the button avoids a refusal that would
+              look like a breakage. */}
           {canDelete && !allocation.primary ? (
             <Button variant="danger" onClick={onRemove} disabled={busy}>
-              Retirer
+              {t('network.remove')}
             </Button>
           ) : null}
         </div>
