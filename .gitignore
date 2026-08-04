@@ -1,4 +1,4 @@
-# Dépendances
+# Dependencies
 node_modules/
 .pnpm-store/
 
@@ -11,17 +11,17 @@ out/
 # Turborepo
 .turbo/
 
-# Environnement — ne JAMAIS committer de secrets
+# Environment — NEVER commit secrets
 .env
 .env.*
 !.env.example
 
-# Données locales de dev
+# Local dev data
 #
-# `.hopper-dev` est la racine du daemon en développement : elle contient les
-# volumes des serveurs, c'est-à-dire des mondes Minecraft et des .jar de
-# plusieurs dizaines de mégaoctets. Sans motif non ancré, un `git add -A` lancé
-# après un test en indexe cent cinquante d'un coup.
+# `.hopper-dev` is the daemon root in development: it holds the server volumes,
+# that is Minecraft worlds and .jar files weighing tens of megabytes. Without an
+# unanchored pattern, a `git add -A` run after a test stages a hundred and fifty
+# of them at once.
 .hopper-dev/
 data/
 volumes/
@@ -40,7 +40,7 @@ coverage/
 playwright-report/
 test-results/
 
-# Éditeurs / OS
+# Editors / OS
 .vscode/*
 !.vscode/extensions.json
 !.vscode/settings.recommended.json
@@ -49,7 +49,7 @@ test-results/
 Thumbs.db
 desktop.ini
 
-# Certificats et clés générés localement
+# Certificates and keys generated locally
 *.pem
 *.key
 !**/fixtures/**/*.pem

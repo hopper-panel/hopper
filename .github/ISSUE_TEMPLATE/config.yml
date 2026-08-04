@@ -1,8 +1,8 @@
 blank_issues_enabled: false
 contact_links:
-  - name: 🔒 Faille de sécurité
+  - name: 🔒 Security vulnerability
     url: https://github.com/hopper-panel/hopper/security/advisories/new
-    about: Signalement privé — n'ouvrez jamais d'issue publique pour une vulnérabilité.
-  - name: 💬 Question ou idée
+    about: Private report — never open a public issue for a vulnerability.
+  - name: 💬 Question or idea
     url: https://github.com/hopper-panel/hopper/discussions
-    about: Pour les questions d'usage et les idées à débattre avant d'écrire du code.
+    about: For usage questions and ideas worth discussing before writing code.

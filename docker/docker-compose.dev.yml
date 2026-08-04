@@ -1,6 +1,6 @@
-# Services d'appoint pour le développement local.
-# Ne PAS utiliser en production : les mots de passe sont en clair et les ports
-# sont publiés sur la machine.
+# Supporting services for local development.
+# Do NOT use in production: the passwords are in clear text and the ports are
+# published on the host.
 name: hopper-dev
 
 services:
@@ -37,7 +37,7 @@ services:
       timeout: 5s
       retries: 5
 
-  # Bucket S3 local pour tester le driver de backup sans compte externe.
+  # Local S3 bucket, to exercise the backup driver without an external account.
   # Console web sur http://localhost:9001 (hopperadmin / hopperadmin).
   minio:
     image: minio/minio:latest

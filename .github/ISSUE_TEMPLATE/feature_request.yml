@@ -1,34 +1,34 @@
-name: ✨ Proposition de fonctionnalité
-description: Suggérer une amélioration
+name: ✨ Feature request
+description: Suggest an improvement
 labels: ['enhancement', 'triage']
 body:
   - type: textarea
     id: problem
     attributes:
-      label: Quel problème cela résout-il ?
-      description: Décrivez la gêne concrète, pas la solution que vous imaginez.
-      placeholder: "Quand je gère 20 serveurs, je n'ai aucun moyen de voir lesquels ont crashé cette nuit."
+      label: What problem does this solve?
+      description: Describe the concrete annoyance, not the solution you have in mind.
+      placeholder: "Running 20 servers, I have no way of seeing which ones crashed last night."
     validations:
       required: true
 
   - type: textarea
     id: proposal
     attributes:
-      label: Solution envisagée
+      label: Solution you have in mind
     validations:
       required: true
 
   - type: textarea
     id: alternatives
     attributes:
-      label: Alternatives considérées
+      label: Alternatives considered
 
   - type: checkboxes
     id: scope
     attributes:
-      label: Vérifications
+      label: Checks
       options:
-        - label: J'ai consulté la feuille de route du README et cette fonctionnalité n'y figure pas déjà.
+        - label: I have read the roadmap in the README and this feature is not already on it.
           required: true
-        - label: J'ai cherché dans les issues et discussions existantes.
+        - label: I have searched the existing issues and discussions.
           required: true

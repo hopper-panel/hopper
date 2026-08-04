@@ -1,27 +1,27 @@
-name: 🐛 Rapport de bug
-description: Signaler un comportement incorrect
+name: 🐛 Bug report
+description: Report incorrect behaviour
 labels: ['bug', 'triage']
 body:
   - type: markdown
     attributes:
       value: |
-        **Ne signalez pas une faille de sécurité ici.** Voir [SECURITY.md](../blob/main/SECURITY.md).
+        **Do not report a security vulnerability here.** See [SECURITY.md](../blob/main/SECURITY.md).
 
   - type: textarea
     id: description
     attributes:
       label: Description
-      description: Que s'est-il passé, et qu'attendiez-vous à la place ?
+      description: What happened, and what did you expect instead?
     validations:
       required: true
 
   - type: textarea
     id: reproduction
     attributes:
-      label: Étapes de reproduction
+      label: Steps to reproduce
       placeholder: |
-        1. Créer un serveur Paper 1.21
-        2. Cliquer sur Démarrer
+        1. Create a Paper 1.21 server
+        2. Click Start
         3. …
     validations:
       required: true
@@ -29,36 +29,36 @@ body:
   - type: dropdown
     id: component
     attributes:
-      label: Composant concerné
+      label: Component concerned
       options:
         - Panel (API)
-        - Panel (interface web)
+        - Panel (web interface)
         - Daemon (hopperd)
         - SFTP
-        - Installeur
-        - Templates de serveurs
-        - Je ne sais pas
+        - Installer
+        - Server templates
+        - I do not know
     validations:
       required: true
 
   - type: input
     id: version
     attributes:
-      label: Version de Hopper
-      placeholder: 'v0.1.0 ou commit git'
+      label: Hopper version
+      placeholder: 'v0.1.0 or a git commit'
     validations:
       required: true
 
   - type: textarea
     id: environment
     attributes:
-      label: Environnement
+      label: Environment
       placeholder: |
-        OS : Debian 13
-        Docker : 27.3.1
-        Node : 22.15.0
-        Base de données : PostgreSQL 17
-        Reverse proxy : nginx
+        OS: Debian 13
+        Docker: 27.3.1
+        Node: 22.15.0
+        Database: PostgreSQL 17
+        Reverse proxy: nginx
     validations:
       required: true
 
@@ -66,5 +66,5 @@ body:
     id: logs
     attributes:
       label: Logs
-      description: Journaux du panel et/ou du daemon. Retirez tout jeton ou mot de passe.
+      description: Panel and/or daemon logs. Strip any token or password.
       render: shell
