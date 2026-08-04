@@ -1,5 +1,6 @@
 import { useMutation } from '@tanstack/react-query';
 import { useState } from 'react';
+import { ApiKeysCard } from '../components/ApiKeysCard';
 import { PageHeader } from '../components/PageHeader';
 import { Alert, Badge, Button, Card, Field, Input } from '../components/ui';
 import { ApiError, api } from '../lib/api';
@@ -26,6 +27,10 @@ export function AccountPage() {
       <div className="grid gap-4 lg:grid-cols-2">
         <PasswordCard />
         <TwoFactorCard />
+      </div>
+
+      <div className="mt-4">
+        <ApiKeysCard />
       </div>
     </div>
   );

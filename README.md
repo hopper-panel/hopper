@@ -59,6 +59,8 @@ Hopper vise le milieu :
 | 💾 **Backups**                  | Locaux ou S3 (MinIO, Backblaze, Wasabi), restauration en un clic    |
 | ⏰ **Planificateur**            | Restart quotidien, backup nocturne, commandes programmées           |
 | 👥 **Sous-utilisateurs**        | Partagez un serveur avec votre staff, permission par permission     |
+| 🔔 **Notifications**            | Discord ou webhook signé : serveur tombé, sauvegarde terminée       |
+| 🔑 **Clés d'API**               | Pilotez vos serveurs depuis un script, avec des portées             |
 | 🖧 **Multi-machines**            | Un panel, autant de nodes que nécessaire                            |
 
 ## Architecture

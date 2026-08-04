@@ -117,6 +117,12 @@ export function describeEvent(event: string, metadata: Metadata): string {
     case AUDIT_EVENTS.DATABASE_DELETED:
       return 'A supprimé une base de données.';
 
+    // -- Clés d'API ----------------------------------------------------------
+    case AUDIT_EVENTS.API_KEY_CREATED:
+      return `A créé une clé d’API${quoted(text(metadata, 'memo'))}.`;
+    case AUDIT_EVENTS.API_KEY_DELETED:
+      return 'A révoqué une clé d’API.';
+
     // -- Notifications sortantes --------------------------------------------
     case AUDIT_EVENTS.WEBHOOK_CREATED:
       // L'URL figure dans le message : c'est une requête que le panel émettra

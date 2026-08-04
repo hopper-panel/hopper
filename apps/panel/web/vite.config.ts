@@ -24,5 +24,24 @@ export default defineConfig({
     // supprimer une fois sur deux. Le panel lit ce dossier au démarrage.
     outDir: 'dist',
     emptyOutDir: true,
+    rollupOptions: {
+      output: {
+        /**
+         * Le terminal pèse à lui seul près de la moitié du paquet, et n'est
+         * utile que sur la console. En un seul fichier, chaque mise à jour du
+         * panel — même une correction d'une ligne dans un écran d'admin —
+         * invalidait le cache du navigateur pour tout, xterm compris.
+         *
+         * Les découpes sont faites par dépendance et non par route : le
+         * découpage par route imposerait des imports différés partout, pour un
+         * gain moindre — c'est le code tiers qui pèse, pas le nôtre.
+         */
+        manualChunks: {
+          terminal: ['@xterm/xterm', '@xterm/addon-fit'],
+          react: ['react', 'react-dom', 'react-router-dom'],
+          data: ['@tanstack/react-query', 'zod'],
+        },
+      },
+    },
   },
 });
