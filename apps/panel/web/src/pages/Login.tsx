@@ -1,10 +1,26 @@
+import { useQuery } from '@tanstack/react-query';
 import { useState, type FormEvent } from 'react';
-import { ApiError } from '../lib/api';
+import { useTranslation } from '../i18n';
+import { ApiError, api } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { Alert, Button, Card, Field, Input } from '../components/ui';
 
+/**
+ * Sign-in page.
+ *
+ * Public, so it reads the instance name from the branding endpoint rather than
+ * from the session: there is none yet.
+ */
 export function LoginPage() {
   const { login } = useAuth();
+  const { t } = useTranslation();
+
+  const branding = useQuery({
+    queryKey: ['panel', 'branding'],
+    queryFn: () => api.get<{ name: string }>('/api/panel'),
+  });
+
+  const panelName = branding.data?.name ?? 'Hopper';
 
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
@@ -25,13 +41,13 @@ export function LoginPage() {
         totpCode: totpCode.trim() || undefined,
       });
 
-      // L'API ne réclame le second facteur qu'une fois le mot de passe validé :
+      // The API asks for the second factor only once the password checks out:
       // on bascule sur le champ de code sans redemander les identifiants.
       if (result.status === 'two-factor-required') {
         setNeedsTotp(true);
       }
     } catch (caught) {
-      setError(caught instanceof ApiError ? caught.message : 'Connexion impossible. Réessayez.');
+      setError(caught instanceof ApiError ? caught.message : t('login.failed'));
       setTotpCode('');
     } finally {
       setSubmitting(false);
@@ -45,9 +61,9 @@ export function LoginPage() {
           <div aria-hidden className="text-4xl">
             🪣
           </div>
-          <h1 className="mt-3 text-2xl font-semibold text-content">Hopper Panel</h1>
+          <h1 className="mt-3 text-2xl font-semibold text-content">{panelName}</h1>
           <p className="mt-1 text-sm text-content-muted">
-            {needsTotp ? 'Saisissez votre code de vérification' : 'Connectez-vous pour continuer'}
+            {needsTotp ? t('login.totpTitle') : t('login.title')}
           </p>
         </div>
 
@@ -56,10 +72,7 @@ export function LoginPage() {
             {error ? <Alert>{error}</Alert> : null}
 
             {needsTotp ? (
-              <Field
-                label="Code de vérification"
-                hint="Code à 6 chiffres de votre application, ou un code de récupération."
-              >
+              <Field label={t('login.totpTitle')} hint={t('login.totpHint')}>
                 <Input
                   value={totpCode}
                   onChange={(event) => setTotpCode(event.target.value)}
@@ -72,7 +85,7 @@ export function LoginPage() {
               </Field>
             ) : (
               <>
-                <Field label="Adresse e-mail ou nom d'utilisateur">
+                <Field label={t('login.identifier')}>
                   <Input
                     value={identifier}
                     onChange={(event) => setIdentifier(event.target.value)}
@@ -82,7 +95,7 @@ export function LoginPage() {
                   />
                 </Field>
 
-                <Field label="Mot de passe">
+                <Field label={t('login.password')}>
                   <Input
                     type="password"
                     value={password}
@@ -95,7 +108,7 @@ export function LoginPage() {
             )}
 
             <Button type="submit" variant="primary" className="w-full" disabled={submitting}>
-              {submitting ? 'Connexion…' : 'Se connecter'}
+              {submitting ? t('login.submitting') : t('login.submit')}
             </Button>
 
             {needsTotp ? (

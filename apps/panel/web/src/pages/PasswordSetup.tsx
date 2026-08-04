@@ -2,15 +2,17 @@ import { useMutation } from '@tanstack/react-query';
 import { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Alert, Button, Card, Field, Input } from '../components/ui';
+import { useTranslation } from '../i18n';
 import { ApiError, api } from '../lib/api';
 
 /**
- * Choix du mot de passe initial, depuis le lien reçu par courriel.
+ * Initial password choice, from the link received by mail.
  *
- * Page publique : son visiteur n'a précisément pas encore de quoi se connecter.
- * Le jeton de l'URL tient lieu d'authentification, et ne vaut qu'une fois.
+ * Public by necessity: its visitor has nothing to sign in with yet. The token
+ * in the URL stands in for authentication, and works once.
  */
 export function PasswordSetupPage() {
+  const { t } = useTranslation();
   const [params] = useSearchParams();
   const token = params.get('token') ?? '';
 
@@ -43,29 +45,23 @@ export function PasswordSetupPage() {
 
         <Card>
           {token === '' ? (
-            <Alert tone="danger">
-              Ce lien est incomplet. Ouvrez-le depuis le courriel reçu, sans le recopier à la main.
-            </Alert>
+            <Alert tone="danger">{t('setup.incomplete')}</Alert>
           ) : done ? (
             <>
-              <Alert tone="info">
-                Mot de passe enregistré. Vous pouvez maintenant vous connecter.
-              </Alert>
+              <Alert tone="info">{t('setup.done')}</Alert>
 
               <div className="mt-4 flex justify-end">
                 <a href="/">
-                  <Button variant="primary">Aller à la connexion</Button>
+                  <Button variant="primary">{t('setup.goToLogin')}</Button>
                 </a>
               </div>
             </>
           ) : (
             <>
               <h2 className="mb-1 text-sm font-semibold uppercase tracking-wide text-content">
-                Choisissez votre mot de passe
+                {t('setup.title')}
               </h2>
-              <p className="mb-4 text-sm text-content-muted">
-                Ce lien ne fonctionne qu’une fois. Il protège l’accès à vos serveurs comme au SFTP.
-              </p>
+              <p className="mb-4 text-sm text-content-muted">{t('setup.intro')}</p>
 
               {failure ? (
                 <div className="mb-4">
@@ -80,7 +76,7 @@ export function PasswordSetupPage() {
                   submit.mutate();
                 }}
               >
-                <Field label="Mot de passe" hint="Douze caractères au minimum.">
+                <Field label={t('account.newPassword')} hint={t('account.passwordHint')}>
                   <Input
                     type="password"
                     value={password}
@@ -91,8 +87,8 @@ export function PasswordSetupPage() {
                 </Field>
 
                 <Field
-                  label="Confirmation"
-                  error={mismatch ? 'Les deux saisies diffèrent.' : undefined}
+                  label={t('account.confirmation')}
+                  error={mismatch ? t('account.mismatch') : undefined}
                 >
                   <Input
                     type="password"
@@ -107,7 +103,7 @@ export function PasswordSetupPage() {
                   variant="primary"
                   disabled={submit.isPending || mismatch || password === ''}
                 >
-                  {submit.isPending ? 'Enregistrement…' : 'Enregistrer'}
+                  {submit.isPending ? t('common.saving') : t('common.save')}
                 </Button>
               </form>
             </>

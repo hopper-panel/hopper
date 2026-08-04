@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { ApiError, api } from '../lib/api';
+import { useTranslation, type MessageKey } from '../i18n';
 import { useAuth } from '../lib/auth';
 import { formatDate } from '../lib/format';
 import { CopyButton } from './CopyButton';
@@ -17,34 +18,40 @@ interface ApiKey {
   createdAt: string;
 }
 
-const SCOPES: { value: string; label: string; description: string; adminOnly?: boolean }[] = [
+const SCOPES: {
+  value: string;
+  label: MessageKey;
+  description: MessageKey;
+  adminOnly?: boolean;
+}[] = [
   {
     value: 'read',
-    label: 'Lecture',
-    description: 'Consulter les serveurs, fichiers et sauvegardes.',
+    label: 'apiKeys.scopeRead',
+    description: 'apiKeys.scopeReadHint',
   },
   {
     value: 'write',
-    label: 'Écriture',
-    description: 'Agir : démarrer, arrêter, écrire un fichier, lancer une sauvegarde.',
+    label: 'apiKeys.scopeWrite',
+    description: 'apiKeys.scopeWriteHint',
   },
   {
     value: 'admin',
-    label: 'Administration',
-    description: 'Atteindre les routes d’administration de l’instance.',
+    label: 'apiKeys.scopeAdmin',
+    description: 'apiKeys.scopeAdminHint',
     adminOnly: true,
   },
 ];
 
 /**
- * Clés d'API du compte.
+ * API keys of the signed-in account.
  *
- * Une clé n'accorde jamais plus que ce que son propriétaire possède déjà : elle
- * emprunte son accès, elle ne l'élargit pas. C'est ce qui permet de la ranger
- * dans « Mon compte » plutôt que dans l'administration.
+ * A key never grants more than its owner already holds: it borrows their
+ * access, it does not widen it. That is what lets it live under "my account"
+ * rather than under administration.
  */
 export function ApiKeysCard() {
   const { user } = useAuth();
+  const { t, locale } = useTranslation();
   const queryClient = useQueryClient();
 
   const [creating, setCreating] = useState(false);
@@ -101,13 +108,15 @@ export function ApiKeysCard() {
   return (
     <Card>
       <div className="mb-4 flex items-center justify-between gap-3">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-content">Clés d’API</h2>
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-content">
+          {t('apiKeys.title')}
+        </h2>
 
         {!creating ? (
-          <Button onClick={() => setCreating(true)}>Créer une clé</Button>
+          <Button onClick={() => setCreating(true)}>{t('apiKeys.create')}</Button>
         ) : (
           <Button variant="ghost" onClick={() => setCreating(false)}>
-            Annuler
+            {t('common.cancel')}
           </Button>
         )}
       </div>
@@ -123,7 +132,7 @@ export function ApiKeysCard() {
       {issued ? (
         <div className="mb-4">
           <Alert tone="info">
-            Copiez cette clé maintenant : elle ne sera plus jamais affichée.
+            {t('apiKeys.issued')}
             <span className="mt-2 flex items-center gap-2 break-all rounded-lg bg-surface px-3 py-2 font-mono text-xs text-content">
               {issued}
               <CopyButton value={issued} />
@@ -134,7 +143,7 @@ export function ApiKeysCard() {
 
       {creating ? (
         <div className="mb-4 flex flex-col gap-4 rounded-lg border border-border-subtle bg-surface p-4">
-          <Field label="À quoi sert cette clé ?" hint="C’est ce qui vous dira laquelle révoquer.">
+          <Field label={t('apiKeys.memo')} hint={t('apiKeys.memoHint')}>
             <Input
               value={memo}
               onChange={(event) => setMemo(event.target.value)}
@@ -143,7 +152,7 @@ export function ApiKeysCard() {
           </Field>
 
           <div>
-            <p className="mb-2 text-sm font-medium text-content">Portée</p>
+            <p className="mb-2 text-sm font-medium text-content">{t('apiKeys.scope')}</p>
 
             <div className="flex flex-col gap-1">
               {SCOPES.filter((scope) => !scope.adminOnly || user?.role === 'ADMIN').map((scope) => {
@@ -167,8 +176,10 @@ export function ApiKeysCard() {
                       }
                     />
                     <span className="min-w-0">
-                      <span className="block text-sm text-content">{scope.label}</span>
-                      <span className="block text-xs text-content-muted">{scope.description}</span>
+                      <span className="block text-sm text-content">{t(scope.label)}</span>
+                      <span className="block text-xs text-content-muted">
+                        {t(scope.description)}
+                      </span>
                     </span>
                   </label>
                 );
@@ -176,10 +187,7 @@ export function ApiKeysCard() {
             </div>
           </div>
 
-          <Field
-            label="Adresses autorisées"
-            hint="Facultatif. Séparées par des virgules ; laissé vide, aucune restriction."
-          >
+          <Field label={t('apiKeys.allowedIps')} hint={t('apiKeys.allowedIpsHint')}>
             <Input
               value={allowedIps}
               onChange={(event) => setAllowedIps(event.target.value)}
@@ -194,17 +202,14 @@ export function ApiKeysCard() {
               disabled={create.isPending || memo.trim() === '' || scopes.length === 0}
               onClick={() => create.mutate()}
             >
-              {create.isPending ? 'Création…' : 'Créer'}
+              {create.isPending ? t('common.saving') : t('common.create')}
             </Button>
           </div>
         </div>
       ) : null}
 
       {list.length === 0 ? (
-        <p className="text-sm text-content-muted">
-          Aucune clé. Une clé d’API sert à piloter vos serveurs depuis un script ou un bot, avec vos
-          propres accès.
-        </p>
+        <p className="text-sm text-content-muted">{t('apiKeys.empty')}</p>
       ) : (
         <ul className="flex flex-col gap-2">
           {list.map((key) => (
@@ -226,8 +231,8 @@ export function ApiKeysCard() {
 
                 <p className="mt-1 text-xs text-content-subtle">
                   {key.lastUsedAt === null
-                    ? 'jamais utilisée'
-                    : `dernière utilisation le ${formatDate(key.lastUsedAt)}`}
+                    ? t('apiKeys.neverUsed')
+                    : t('apiKeys.lastUsed', { date: formatDate(key.lastUsedAt, locale) })}
                   {key.allowedIps.length > 0 ? ` · depuis ${key.allowedIps.join(', ')}` : null}
                   {key.expiresAt === null ? null : ` · expire le ${formatDate(key.expiresAt)}`}
                 </p>
@@ -237,12 +242,12 @@ export function ApiKeysCard() {
                 variant="danger"
                 disabled={revoke.isPending}
                 onClick={() => {
-                  if (window.confirm(`Révoquer la clé « ${key.memo} » ?`)) {
+                  if (window.confirm(t('apiKeys.revokeConfirm', { memo: key.memo }))) {
                     revoke.mutate(key.identifier);
                   }
                 }}
               >
-                Révoquer
+                {t('apiKeys.revoke')}
               </Button>
             </li>
           ))}
