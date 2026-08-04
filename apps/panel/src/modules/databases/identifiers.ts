@@ -1,35 +1,34 @@
 /**
- * Fabrication et échappement des identifiants MySQL.
+ * Building and escaping MySQL identifiers.
  *
- * **C'est le point d'injection du module.** Une requête préparée protège les
- * *valeurs*, mais un nom de base ou d'utilisateur est un **identifiant** : il ne
- * peut pas être passé en paramètre, il faut l'écrire dans le texte de la
- * requête. `CREATE DATABASE ?` n'existe pas.
+ * **This is the module's injection point.** A prepared statement protects
+ * *values*, but a database or user name is an **identifier**: it cannot be
+ * passed as a parameter, it has to be written into the text of the query.
+ * `CREATE DATABASE ?` does not exist.
  *
- * Deux barrières se superposent, et aucune ne suffit seule :
+ * Two barriers stack, and neither is enough on its own:
  *
- *  1. **Validation stricte à l'entrée** — un identifiant n'accepte que des
- *     lettres, des chiffres et le souligné. Rien de ce qui pourrait clore une
- *     citation, ouvrir un commentaire ou terminer une instruction ne passe.
- *  2. **Échappement à l'écriture** — l'identifiant est encadré de backticks et
- *     les backticks internes sont doublés, comme MySQL l'exige. La validation
- *     les exclut déjà ; le doublement reste là pour que la fonction soit sûre
- *     même appelée avec une valeur qui n'aurait pas été validée.
+ *  1. **Strict validation on input** — an identifier accepts letters, digits
+ *     and the underscore only. Nothing that could close a quote, open a comment
+ *     or end a statement gets through.
+ *  2. **Escaping on write** — the identifier is wrapped in backticks and inner
+ *     backticks are doubled, as MySQL requires. Validation already excludes
+ *     them; the doubling stays so the function is safe even when called with a
+ *     value that was never validated.
  *
- * Le nom demandé par l'utilisateur n'est de plus jamais utilisé tel quel : il
- * est préfixé par l'identifiant du serveur. Deux serveurs ne peuvent donc pas
- * se disputer un nom, ni deviner celui du voisin.
+ * The name the user asks for is moreover never used as is: it is prefixed with
+ * the server's identifier. Two servers therefore cannot fight over a name, nor
+ * guess their neighbour's.
  */
 
 /** Longueur maximale d'un nom de base MySQL. */
 const MAX_DATABASE_NAME = 64;
 
 /**
- * Longueur maximale d'un nom d'utilisateur MySQL.
+ * Longest a MySQL user name may be.
  *
- * 32 caractères depuis MySQL 5.7 — et 16 avant. On s'en tient à 32, en
- * réservant assez de place au préfixe pour que le suffixe aléatoire garde son
- * entropie.
+ * 32 characters since MySQL 5.7 — and 16 before. We stick to 32, reserving
+ * enough room for the prefix that the random suffix keeps its entropy.
  */
 const MAX_USER_NAME = 32;
 
@@ -40,13 +39,13 @@ export class IdentifierError extends Error {
   }
 }
 
-/** Un identifiant sûr : lettres, chiffres, souligné, ne commençant pas par un chiffre. */
+/** A safe identifier: letters, digits, underscore, not starting with a digit. */
 const SAFE_IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
 /**
- * Valide la partie du nom choisie par l'utilisateur.
+ * Validates the part of the name chosen by the user.
  *
- * @throws {IdentifierError} sur tout caractère hors de l'alphabet autorisé.
+ * @throws {IdentifierError} on any character outside the allowed alphabet.
  */
 export function assertSafeName(name: string): string {
   const trimmed = name.trim();
@@ -56,13 +55,13 @@ export function assertSafeName(name: string): string {
   }
 
   if (trimmed.length > 32) {
-    throw new IdentifierError('Le nom de la base ne peut pas dépasser 32 caractères.');
+    throw new IdentifierError('The database name cannot exceed 32 characters.');
   }
 
   if (!SAFE_IDENTIFIER.test(trimmed)) {
     throw new IdentifierError(
-      'Le nom ne peut contenir que des lettres, des chiffres et des soulignés, et doit ' +
-        'commencer par une lettre.',
+      'The name may contain only letters, digits and underscores, and has to ' +
+        'start with a letter.',
     );
   }
 
@@ -70,12 +69,11 @@ export function assertSafeName(name: string): string {
 }
 
 /**
- * Encadre un identifiant de backticks.
+ * Wraps an identifier in backticks.
  *
- * Le doublement des backticks internes est la seule façon prévue par MySQL
- * d'en insérer un dans un identifiant cité. Il ne devrait jamais servir — la
- * validation les exclut — mais une fonction d'échappement qui suppose son
- * entrée déjà propre n'échappe rien.
+ * Doubling inner backticks is the only way MySQL provides to put one inside a
+ * quoted identifier. It should never be needed — validation excludes them — but
+ * an escaping function that assumes its input is already clean escapes nothing.
  */
 export function quoteIdentifier(identifier: string): string {
   if (identifier.includes('\0')) {
@@ -90,24 +88,24 @@ export function databaseNameFor(serverId: number, name: string): string {
   const full = `s${serverId}_${assertSafeName(name)}`;
 
   if (full.length > MAX_DATABASE_NAME) {
-    throw new IdentifierError(`Le nom complet dépasserait ${MAX_DATABASE_NAME} caractères.`);
+    throw new IdentifierError(`The full name would exceed ${MAX_DATABASE_NAME} characters.`);
   }
 
   return full;
 }
 
 /**
- * Nom d'utilisateur d'une base : `u<serveur>_<aléa>`.
+ * User name for a database: `u<server>_<random>`.
  *
- * Aléatoire et non dérivé du nom de la base : deux bases d'un même serveur ont
- * ainsi des comptes distincts, et supprimer l'une ne coupe pas l'accès à
- * l'autre.
+ * Random rather than derived from the database name: two databases of the same
+ * server thus get distinct accounts, and deleting one does not cut access to
+ * the other.
  */
 export function userNameFor(serverId: number, random: string): string {
   const full = `u${serverId}_${random}`;
 
   if (full.length > MAX_USER_NAME) {
-    throw new IdentifierError(`Le nom d'utilisateur dépasserait ${MAX_USER_NAME} caractères.`);
+    throw new IdentifierError(`The user name would exceed ${MAX_USER_NAME} characters.`);
   }
 
   if (!SAFE_IDENTIFIER.test(full)) {
@@ -118,12 +116,12 @@ export function userNameFor(serverId: number, random: string): string {
 }
 
 /**
- * Motif d'hôte autorisé à se connecter.
+ * Host pattern allowed to connect.
  *
- * MySQL accepte une adresse, un nom d'hôte, ou `%` comme joker. La valeur est
- * placée dans une **chaîne** de la requête `CREATE USER … @ '…'`, donc passable
- * en paramètre — mais elle est validée quand même, parce qu'un motif fantaisiste
- * produit un compte qui ne se connecte de nulle part, sans que rien ne le dise.
+ * MySQL accepts an address, a host name, or `%` as a wildcard. The value goes
+ * into a **string** of the `CREATE USER … @ '…'` query, so it could be passed
+ * as a parameter — but it is validated anyway, because a fanciful pattern
+ * produces an account that connects from nowhere, with nothing to say so.
  */
 export function assertSafeHostPattern(remote: string): string {
   const trimmed = remote.trim();
@@ -136,11 +134,11 @@ export function assertSafeHostPattern(remote: string): string {
     throw new IdentifierError('Le motif de connexion est trop long.');
   }
 
-  // Lettres, chiffres, point, tiret, souligné, deux-points (IPv6) et les
-  // jokers `%` et `_` de MySQL.
+  // Letters, digits, dot, hyphen, underscore, colon (IPv6) and MySQL's `%` and
+  // `_` wildcards.
   if (!/^[A-Za-z0-9._:%-]+$/.test(trimmed)) {
     throw new IdentifierError(
-      "Motif de connexion invalide : une adresse, un nom d'hôte, ou % pour n'importe où.",
+      'Invalid connection pattern: an address, a host name, or % for anywhere.',
     );
   }
 

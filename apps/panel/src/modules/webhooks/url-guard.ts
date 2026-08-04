@@ -2,27 +2,26 @@ import { lookup } from 'node:dns/promises';
 import { isIP } from 'node:net';
 
 /**
- * Garde anti-SSRF des notifications sortantes.
+ * Anti-SSRF guard for outgoing notifications.
  *
- * Une notification est une **requête émise par le panel vers une adresse
- * choisie par l'utilisateur**. Sans contrôle, un sous-utilisateur pointerait
- * son webhook sur `http://169.254.169.254/latest/meta-data/iam/` et se ferait
- * livrer les identifiants de la machine, ou balaierait le réseau interne en
- * lisant les codes de réponse. C'est la faille SSRF que `SECURITY.md` place
- * explicitement dans le périmètre.
+ * A notification is a **request the panel makes to an address chosen by the
+ * user**. Without a check, a subuser would point their webhook at
+ * `http://169.254.169.254/latest/meta-data/iam/` and have the machine's
+ * credentials delivered to them, or sweep the internal network by reading
+ * response codes. This is the SSRF flaw `SECURITY.md` puts explicitly in scope.
  *
- * Le contrôle porte sur les **adresses résolues**, pas sur le nom : un domaine
- * public qui résout en 127.0.0.1 est le contournement le plus courant.
+ * The check applies to the **resolved addresses**, not the name: a public
+ * domain resolving to 127.0.0.1 is the most common bypass.
  */
 
 export class UnsafeWebhookUrlError extends Error {}
 
 /**
- * Plages IPv4 interdites, en notation CIDR.
+ * Forbidden IPv4 ranges, in CIDR notation.
  *
- * `100.64.0.0/10` — le CGNAT — y figure : chez un hébergeur qui l'utilise, il
- * mène à d'autres clients. `0.0.0.0/8` aussi : sur Linux, s'y connecter vise
- * l'hôte local.
+ * `100.64.0.0/10` — CGNAT — is there: at a host that uses it, it leads to other
+ * customers. `0.0.0.0/8` too: on Linux, connecting there targets the local
+ * host.
  */
 const BLOCKED_IPV4: [string, number][] = [
   ['0.0.0.0', 8],
@@ -60,7 +59,7 @@ function toInteger(address: string): number | null {
   return value;
 }
 
-/** Vrai pour une adresse qui ne doit jamais être jointe depuis le panel. */
+/** True for an address the panel must never reach. */
 export function isBlockedAddress(address: string): boolean {
   const version = isIP(address);
 
@@ -73,9 +72,9 @@ export function isBlockedAddress(address: string): boolean {
 
     return BLOCKED_IPV4.some(([network, bits]) => {
       const base = toInteger(network)!;
-      // `>>> 0` : en JavaScript les opérateurs binaires travaillent sur 32 bits
-      // signés, et un décalage sur une adresse au-delà de 127.x.x.x donnerait un
-      // nombre négatif — donc une comparaison fausse.
+      // `>>> 0`: in JavaScript the bitwise operators work on signed 32-bit
+      // integers, and a shift on an address beyond 127.x.x.x would give a
+      // negative number — hence a wrong comparison.
       const mask = bits === 0 ? 0 : (0xffffffff << (32 - bits)) >>> 0;
       return (value & mask) >>> 0 === base;
     });
@@ -84,8 +83,8 @@ export function isBlockedAddress(address: string): boolean {
   if (version === 6) {
     const normalized = address.toLowerCase();
 
-    // Une adresse IPv4 encapsulée (`::ffff:127.0.0.1`) doit être jugée sur sa
-    // partie v4 : elle atteint exactement la même machine.
+    // A mapped IPv4 address (`::ffff:127.0.0.1`) has to be judged on its v4
+    // part: it reaches exactly the same machine.
     const mapped = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/.exec(normalized);
 
     if (mapped) {
@@ -98,12 +97,12 @@ export function isBlockedAddress(address: string): boolean {
 
     const head = normalized.split(':')[0] ?? '';
 
-    // fc00::/7 (adresses locales uniques) et fe80::/10 (lien-local).
+    // fc00::/7 (unique local addresses) and fe80::/10 (link-local).
     return /^f[cd]/.test(head) || /^fe[89ab]/.test(head);
   }
 
-  // Ni v4 ni v6 : ce n'est pas une adresse, l'appelant n'aurait pas dû nous la
-  // passer. Refuser est le comportement sûr.
+  // Neither v4 nor v6: this is not an address, the caller should not have
+  // passed it. Refusing is the safe behaviour.
   return true;
 }
 
@@ -112,20 +111,20 @@ export type Resolver = (host: string) => Promise<{ address: string }[]>;
 const systemResolver: Resolver = (host) => lookup(host, { all: true });
 
 /**
- * Valide l'URL d'une notification, résolution DNS comprise.
+ * Validates a notification's URL, DNS resolution included.
  *
- * Rend le nom d'hôte validé. Lève `UnsafeWebhookUrlError` avec un message
- * destiné à l'utilisateur.
+ * Returns the validated host name. Throws `UnsafeWebhookUrlError` with a
+ * message meant for the user.
  *
- * Reste hors de portée : le rebinding DNS, où le nom résout en adresse publique
- * ici puis en adresse privée au moment de la requête. S'en protéger imposerait
- * d'épingler l'adresse dans le client HTTP, ce que `fetch` ne permet pas. La
- * vérification est donc refaite avant chaque envoi, ce qui réduit la fenêtre
- * sans la fermer.
+ * Out of reach: DNS rebinding, where the name resolves to a public address here
+ * then to a private one at request time. Protecting against it would mean
+ * pinning the address in the HTTP client, which `fetch` does not allow. The
+ * check is therefore redone before every send, which narrows the window without
+ * closing it.
  */
 export async function assertSafeWebhookUrl(
   raw: string,
-  /** Injectable pour les tests : la résolution réelle dépend du réseau. */
+  /** Injectable for the tests: real resolution depends on the network. */
   resolve: Resolver = systemResolver,
 ): Promise<string> {
   let url: URL;
@@ -133,25 +132,25 @@ export async function assertSafeWebhookUrl(
   try {
     url = new URL(raw);
   } catch {
-    throw new UnsafeWebhookUrlError('Adresse invalide.');
+    throw new UnsafeWebhookUrlError('Invalid address.');
   }
 
   if (url.protocol !== 'https:' && url.protocol !== 'http:') {
-    throw new UnsafeWebhookUrlError('Seules les adresses http et https sont acceptées.');
+    throw new UnsafeWebhookUrlError('Only http and https addresses are accepted.');
   }
 
-  // Des identifiants dans l'URL partiraient en clair dans les journaux du
-  // destinataire comme dans les nôtres.
+  // Credentials in the URL would travel in the clear into the recipient's logs
+  // as well as our own.
   if (url.username !== '' || url.password !== '') {
-    throw new UnsafeWebhookUrlError('L’adresse ne doit pas contenir d’identifiants.');
+    throw new UnsafeWebhookUrlError('The address must not contain credentials.');
   }
 
-  // `hostname` conserve les crochets d'une adresse IPv6 littérale.
+  // `hostname` keeps the brackets of a literal IPv6 address.
   const host = url.hostname.replace(/^\[|\]$/g, '');
 
   if (isIP(host) !== 0) {
     if (isBlockedAddress(host)) {
-      throw new UnsafeWebhookUrlError('Cette adresse appartient à un réseau interne.');
+      throw new UnsafeWebhookUrlError('This address belongs to an internal network.');
     }
 
     return host;
@@ -161,18 +160,18 @@ export async function assertSafeWebhookUrl(
   try {
     resolved = await resolve(host);
   } catch {
-    throw new UnsafeWebhookUrlError('Ce nom de domaine ne résout pas.');
+    throw new UnsafeWebhookUrlError('This domain name does not resolve.');
   }
 
   if (resolved.length === 0) {
-    throw new UnsafeWebhookUrlError('Ce nom de domaine ne résout pas.');
+    throw new UnsafeWebhookUrlError('This domain name does not resolve.');
   }
 
-  // **Toutes** les adresses doivent être publiques, pas seulement la première :
-  // un nom qui résout en une adresse publique et une adresse privée serait
-  // sinon accepté, et le système pourrait joindre la seconde.
+  // **Every** address has to be public, not only the first: a name resolving
+  // to one public and one private address would otherwise be accepted, and the
+  // system could reach the second.
   if (resolved.some((entry) => isBlockedAddress(entry.address))) {
-    throw new UnsafeWebhookUrlError('Ce nom de domaine mène à un réseau interne.');
+    throw new UnsafeWebhookUrlError('This domain name leads to an internal network.');
   }
 
   return host;

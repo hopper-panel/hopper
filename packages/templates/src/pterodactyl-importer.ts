@@ -7,19 +7,19 @@ import {
 } from './definition.js';
 
 /**
- * Conversion d'un « egg » Pterodactyl vers un template Hopper.
+ * Converting a Pterodactyl egg into a Hopper template.
  *
- * L'intérêt est pratique : des centaines d'eggs existent, maintenus par la
- * communauté, pour des jeux et des modpacks que Hopper ne livrera jamais
- * lui-même. Les reprendre à la main serait absurde.
+ * The point is practical: hundreds of eggs exist, maintained by the community,
+ * for games and modpacks Hopper will never ship itself. Redoing them by hand
+ * would be absurd.
  *
- * Le format des eggs a beaucoup varié. Cet importeur accepte les révisions
- * PTDL_v1 et PTDL_v2, et tolère les champs absents plutôt que d'exiger un
- * fichier parfait : un egg incomplet doit produire un template utilisable
- * qu'un administrateur corrigera, pas une erreur qui le renvoie à son éditeur.
+ * The egg format has varied a great deal. This importer accepts the PTDL_v1 and
+ * PTDL_v2 revisions, and tolerates missing fields rather than demand a perfect
+ * file: an incomplete egg should produce a usable template an administrator
+ * will fix, not an error that sends them back to their editor.
  */
 
-/** Schéma tolérant : tout ce qui n'est pas indispensable est optionnel. */
+/** Lenient schema: anything not indispensable is optional. */
 const eggSchema = z.object({
   _comment: z.string().optional(),
   meta: z.object({ version: z.string().optional() }).optional(),
@@ -28,7 +28,7 @@ const eggSchema = z.object({
   description: z.string().optional(),
   uuid: z.string().optional(),
 
-  /** PTDL_v2 : objet { "Java 21": "image" }. PTDL_v1 : tableau de chaînes. */
+  /** PTDL_v2: object { "Java 21": "image" }. PTDL_v1: array of strings. */
   docker_images: z.union([z.record(z.string(), z.string()), z.array(z.string())]).optional(),
   /** PTDL_v1 : une seule image. */
   image: z.string().optional(),
@@ -86,17 +86,17 @@ export class EggImportError extends Error {
 export interface EggImportResult {
   template: TemplateDefinition;
   /**
-   * Points nécessitant une relecture humaine.
+   * Points needing a human read-through.
    *
-   * Un egg importé n'est presque jamais utilisable tel quel : les images
-   * Docker pointent vers celles de Pterodactyl, et les commandes d'arrêt
-   * exotiques ne se traduisent pas toujours. Les signaler vaut mieux que de
-   * laisser l'administrateur découvrir le problème au premier démarrage.
+   * An imported egg is almost never usable as is: the Docker images point at
+   * Pterodactyl's own, and exotic stop commands do not always translate.
+   * Flagging them beats letting the administrator find the problem on the first
+   * start.
    */
   warnings: string[];
 }
 
-/** Pterodactyl écrit tantôt des booléens, tantôt 0/1. */
+/** Pterodactyl writes booleans sometimes, 0/1 other times. */
 function toBoolean(value: unknown, fallback: boolean): boolean {
   if (typeof value === 'boolean') return value;
   if (typeof value === 'number') return value !== 0;
@@ -104,11 +104,11 @@ function toBoolean(value: unknown, fallback: boolean): boolean {
 }
 
 /**
- * Normalise les images Docker.
+ * Normalises the Docker images.
  *
- * Un objet JSON perdrait son ordre en base : on produit un tableau, en
- * conservant l'ordre de déclaration de l'egg, qui reflète l'intention de son
- * auteur (la première est celle qu'il recommande).
+ * A JSON object would lose its order in the database: an array is produced,
+ * keeping the egg's declaration order, which reflects its author's intent (the
+ * first is the one they recommend).
  */
 function convertImages(egg: PterodactylEgg, warnings: string[]): DockerImageOption[] {
   const images: DockerImageOption[] = [];
@@ -124,14 +124,14 @@ function convertImages(egg: PterodactylEgg, warnings: string[]): DockerImageOpti
   }
 
   if (images.length === 0) {
-    throw new EggImportError('Cet egg ne déclare aucune image Docker.');
+    throw new EggImportError('This egg declares no Docker image.');
   }
 
   const foreign = images.filter((option) => !option.image.startsWith('ghcr.io/hopper-panel/'));
 
   if (foreign.length > 0) {
     warnings.push(
-      `Les images de cet egg proviennent d'ailleurs (${foreign[0]!.image}). Elles fonctionneront, mais ne bénéficient pas du durcissement des images Hopper : vérifiez qu'elles exécutent un utilisateur non root d'UID 988.`,
+      `This egg's images come from elsewhere (${foreign[0]!.image}). They will work, but they do not benefit from the hardening of Hopper's images: check that they run a non-root user with UID 988.`,
     );
   }
 
@@ -139,17 +139,17 @@ function convertImages(egg: PterodactylEgg, warnings: string[]): DockerImageOpti
 }
 
 /**
- * Traduit la commande d'arrêt.
+ * Translates the stop command.
  *
- * Pterodactyl accepte une commande brute (`stop`) ou un signal préfixé
- * (`^C` pour SIGINT dans les eggs anciens).
+ * Pterodactyl accepts a raw command (`stop`) or a prefixed signal (`^C` for
+ * SIGINT in older eggs).
  */
 function convertStop(raw: string | undefined, warnings: string[]): string {
   const value = raw?.trim();
 
   if (!value) {
     warnings.push(
-      "Aucune commande d'arrêt : le serveur recevra SIGTERM. Si le jeu ne sauvegarde pas à ce signal, précisez sa commande d'arrêt.",
+      'No stop command: the server will receive SIGTERM. If the game does not save on that signal, specify its stop command.',
     );
     return 'signal:SIGTERM';
   }
@@ -164,7 +164,7 @@ function convertStop(raw: string | undefined, warnings: string[]): string {
 
   if (value.toUpperCase() === 'SIGKILL') {
     warnings.push(
-      "L'egg demande un arrêt par SIGKILL, qui coupe le processus sans sauvegarde. Une commande d'arrêt propre est préférable.",
+      'The egg asks for a SIGKILL stop, which cuts the process without saving. A clean stop command is preferable.',
     );
     return 'signal:SIGKILL';
   }
@@ -172,7 +172,7 @@ function convertStop(raw: string | undefined, warnings: string[]): string {
   return `command:${value}`;
 }
 
-/** Le bloc `config` d'un egg est tantôt un objet, tantôt une chaîne JSON. */
+/** An egg's `config` block is sometimes an object, sometimes a JSON string. */
 function parseJsonBlock(raw: unknown): Record<string, unknown> {
   if (raw && typeof raw === 'object') {
     return raw as Record<string, unknown>;
@@ -190,12 +190,12 @@ function parseJsonBlock(raw: unknown): Record<string, unknown> {
 }
 
 /**
- * Extrait la ligne de détection de démarrage.
+ * Extracts the startup detection line.
  *
- * Pterodactyl la stocke comme une sous-chaîne à chercher, pas comme une
- * expression régulière. On l'échappe donc avant de la transmettre à Hopper, qui
- * la compile : un egg contenant `Done (` produirait sinon une regex invalide,
- * et le serveur ne passerait jamais « en ligne ».
+ * Pterodactyl stores it as a substring to look for, not as a regular
+ * expression. It is therefore escaped before being handed to Hopper, which
+ * compiles it: an egg containing `Done (` would otherwise produce an invalid
+ * regex, and the server would never go "online".
  */
 function convertStartupDetection(raw: unknown, warnings: string[]): string | undefined {
   const block = parseJsonBlock(raw);
@@ -211,14 +211,14 @@ function convertStartupDetection(raw: unknown, warnings: string[]): string | und
 
   if (!value || value.trim() === '') {
     warnings.push(
-      "Aucun marqueur de démarrage : le serveur sera considéré « en ligne » dès que son conteneur tourne, sans attendre qu'il accepte les connexions.",
+      'No startup marker: the server will count as "online" as soon as its container runs, without waiting for it to accept connections.',
     );
     return undefined;
   }
 
   if (Array.isArray(done) && done.length > 1) {
     warnings.push(
-      `L'egg déclare plusieurs marqueurs de démarrage ; seul le premier (« ${value} ») est repris.`,
+      `The egg declares several startup markers; only the first ("${value}") is kept.`,
     );
   }
 
@@ -233,11 +233,11 @@ function convertVariables(egg: PterodactylEgg, warnings: string[]): TemplateVari
   const variables: TemplateVariableDefinition[] = [];
 
   for (const variable of egg.variables ?? []) {
-    // Un nom non conforme à POSIX ferait échouer l'`export` du script
-    // d'installation, avec un message que personne ne relie à l'egg.
+    // A name that does not follow POSIX would fail the `export` in the install
+    // script, with a message nobody connects back to the egg.
     if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(variable.env_variable)) {
       warnings.push(
-        `Variable « ${variable.env_variable} » ignorée : son nom n'est pas un identifiant d'environnement valide.`,
+        `Variable "${variable.env_variable}" ignored: its name is not a valid environment identifier.`,
       );
       continue;
     }
@@ -257,9 +257,9 @@ function convertVariables(egg: PterodactylEgg, warnings: string[]): TemplateVari
 }
 
 export interface ImportOptions {
-  /** Groupe d'accueil du template importé. */
+  /** Group the imported template lands in. */
   group: string;
-  /** Clé du template. Dérivée du nom de l'egg si absente. */
+  /** Template key. Derived from the egg's name if absent. */
   key?: string;
 }
 
@@ -268,7 +268,7 @@ export function importPterodactylEgg(raw: unknown, options: ImportOptions): EggI
 
   if (!parsed.success) {
     throw new EggImportError(
-      'Ce fichier ne ressemble pas à un egg Pterodactyl.',
+      'This file does not look like a Pterodactyl egg.',
       parsed.error.issues.map(
         (issue) => `${issue.path.join('.') || '(racine)'} : ${issue.message}`,
       ),
@@ -281,24 +281,24 @@ export function importPterodactylEgg(raw: unknown, options: ImportOptions): EggI
   const version = egg.meta?.version;
   if (version && version !== 'PTDL_v1' && version !== 'PTDL_v2') {
     warnings.push(
-      `Révision d'egg inconnue (${version}). L'import a été tenté, mais relisez le résultat.`,
+      `Unknown egg revision (${version}). The import was attempted, but read the result over.`,
     );
   }
 
   const installation = egg.scripts?.installation;
 
   if (!installation?.script || installation.script.trim() === '') {
-    throw new EggImportError("Cet egg ne contient aucun script d'installation.");
+    throw new EggImportError('This egg contains no install script.');
   }
 
   if (!egg.startup || egg.startup.trim() === '') {
-    throw new EggImportError('Cet egg ne déclare aucune commande de démarrage.');
+    throw new EggImportError('This egg declares no startup command.');
   }
 
   const configFiles = parseJsonBlock(egg.config?.files);
   if (Object.keys(configFiles).length > 0) {
     warnings.push(
-      "Les fichiers de configuration de cet egg n'ont pas été repris : leur format diffère de celui de Hopper. Vérifiez que le port d'écoute est bien appliqué au démarrage.",
+      "This egg's configuration files were not carried over: their format differs from Hopper's. Check that the listening port is applied at startup.",
     );
   }
 
@@ -307,7 +307,7 @@ export function importPterodactylEgg(raw: unknown, options: ImportOptions): EggI
     group: options.group,
     name: egg.name,
     description: egg.description ?? '',
-    author: egg.author ?? 'Importé de Pterodactyl',
+    author: egg.author ?? 'Imported from Pterodactyl',
     dockerImages: convertImages(egg, warnings),
     startup: egg.startup.trim(),
     stopCommand: convertStop(egg.config?.stop, warnings),
@@ -330,22 +330,22 @@ export function importPterodactylEgg(raw: unknown, options: ImportOptions): EggI
 export function slugify(value: string): string {
   const slug = value
     .normalize('NFD')
-    // Retire les diacritiques laissés par la décomposition : « é » devient
-    // « e » plutôt que d'être supprimé entièrement.
+    // Strips the diacritics left by the decomposition: "é" becomes "e" rather
+    // than being removed entirely.
     .replace(/[̀-ͯ]/g, '')
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
     .slice(0, 60);
 
-  // Un nom entièrement composé de caractères non latins — du cyrillique, des
-  // idéogrammes — se réduirait à une chaîne vide, que le schéma refuse. On
-  // dérive alors une clé du nom lui-même : deux imports du même egg doivent
-  // produire la même clé, sans quoi l'upsert créerait un doublon à chaque fois.
+  // A name made entirely of non-Latin characters — Cyrillic, ideograms — would
+  // reduce to an empty string, which the schema refuses. A key is then derived
+  // from the name itself: two imports of the same egg have to produce the same
+  // key, without which the upsert would create a duplicate every time.
   return slug === '' ? `egg-${fingerprint(value)}` : slug;
 }
 
-/** Empreinte courte et stable d'une chaîne, en base 36. */
+/** Short, stable digest of a string, in base 36. */
 function fingerprint(value: string): string {
   let hash = 2166136261;
 

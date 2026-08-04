@@ -33,18 +33,18 @@ describe('isBlockedAddress', () => {
     },
   );
 
-  it('laisse passer une adresse IPv6 publique', () => {
+  it('lets a public IPv6 address through', () => {
     expect(isBlockedAddress('2001:4860:4860::8888')).toBe(false);
   });
 
-  it('refuse ce qui n’est pas une adresse', () => {
+  it('refuses what is not an address', () => {
     expect(isBlockedAddress('pas-une-adresse')).toBe(true);
     expect(isBlockedAddress('')).toBe(true);
   });
 
-  it('ne se trompe pas au-delà de 127.0.0.0/8', () => {
-    // Le piège : un masque calculé sans `>>> 0` devient négatif au-delà de
-    // 127.x.x.x, et toutes les adresses hautes passeraient pour privées.
+  it('does not get it wrong beyond 127.0.0.0/8', () => {
+    // The trap: a mask computed without `>>> 0` goes negative beyond
+    // 127.x.x.x, and every high address would pass for private.
     expect(isBlockedAddress('128.0.0.1')).toBe(false);
     expect(isBlockedAddress('200.1.2.3')).toBe(false);
   });
@@ -52,8 +52,8 @@ describe('isBlockedAddress', () => {
 
 describe('assertSafeWebhookUrl', () => {
   /**
-   * Résolveur simulé : la vraie résolution dépend du réseau de la machine de
-   * test, et un domaine inexistant y met plusieurs secondes à échouer.
+   * Simulated resolver: real resolution depends on the test machine's network,
+   * and a non-existent domain takes several seconds to fail there.
    */
   const resolver =
     (map: Record<string, string[]>) =>
@@ -70,40 +70,40 @@ describe('assertSafeWebhookUrl', () => {
     await expect(assertSafeWebhookUrl(url, resolver({}))).rejects.toThrow(extract);
   };
 
-  it('accepte une adresse publique littérale', async () => {
+  it('accepts a literal public address', async () => {
     await expect(assertSafeWebhookUrl('https://1.1.1.1/hook')).resolves.toBe('1.1.1.1');
   });
 
-  it('refuse la boucle locale', async () => {
-    await rejects('http://127.0.0.1:8080/interne', /réseau interne/);
+  it('refuses the loopback', async () => {
+    await rejects('http://127.0.0.1:8080/internal', /internal network/);
   });
 
-  it('refuse le service de métadonnées du cloud', async () => {
-    await rejects('http://169.254.169.254/latest/meta-data/', /réseau interne/);
+  it('refuses the cloud metadata service', async () => {
+    await rejects('http://169.254.169.254/latest/meta-data/', /internal network/);
   });
 
-  it('refuse une adresse IPv6 locale entre crochets', async () => {
-    await rejects('http://[::1]:9000/', /réseau interne/);
+  it('refuses a bracketed local IPv6 address', async () => {
+    await rejects('http://[::1]:9000/', /internal network/);
   });
 
-  it('refuse un protocole non HTTP', async () => {
-    await rejects('file:///etc/passwd', /http et https/);
-    await rejects('gopher://exemple.fr/', /http et https/);
+  it('refuses a non-HTTP scheme', async () => {
+    await rejects('file:///etc/passwd', /http and https/);
+    await rejects('gopher://example.com/', /http and https/);
   });
 
-  it('refuse des identifiants dans l’adresse', async () => {
-    await rejects('https://julien:secret@exemple.fr/hook', /identifiants/);
+  it('refuses credentials in the address', async () => {
+    await rejects('https://julien:secret@example.com/hook', /credentials/);
   });
 
-  it('refuse une adresse illisible', async () => {
-    await rejects('pas une url', /invalide/);
+  it('refuses an unreadable address', async () => {
+    await rejects('not a url', /Invalid address/);
   });
 
-  it('refuse un nom qui ne résout pas', async () => {
-    await rejects('https://inconnu.exemple/', /ne résout pas/);
+  it('refuses a name that does not resolve', async () => {
+    await rejects('https://unknown.example/', /does not resolve/);
   });
 
-  it('accepte un nom qui résout en adresse publique', async () => {
+  it('accepts a name resolving to a public address', async () => {
     await expect(
       assertSafeWebhookUrl(
         'https://discord.com/api/webhooks/1/x',
@@ -112,25 +112,25 @@ describe('assertSafeWebhookUrl', () => {
     ).resolves.toBe('discord.com');
   });
 
-  it('refuse un nom public qui résout en adresse privée', async () => {
-    // Le contournement classique : le nom est parfaitement banal, c'est la
-    // réponse DNS qui pointe à l'intérieur.
+  it('refuses a public name resolving to a private address', async () => {
+    // The classic bypass: the name is perfectly ordinary, it is the DNS answer
+    // that points inside.
     await expect(
       assertSafeWebhookUrl(
         'https://interne.exemple/',
         resolver({ 'interne.exemple': ['10.0.0.5'] }),
       ),
-    ).rejects.toThrow(/réseau interne/);
+    ).rejects.toThrow(/internal network/);
   });
 
-  it('refuse dès qu’une seule des adresses est privée', async () => {
-    // Une réponse DNS mêlant une adresse publique et une privée passerait si
-    // l'on ne regardait que la première.
+  it('refuses as soon as a single address is private', async () => {
+    // A DNS answer mixing a public and a private address would get through if
+    // only the first were looked at.
     await expect(
       assertSafeWebhookUrl(
         'https://mixte.exemple/',
         resolver({ 'mixte.exemple': ['93.184.216.34', '127.0.0.1'] }),
       ),
-    ).rejects.toThrow(/réseau interne/);
+    ).rejects.toThrow(/internal network/);
   });
 });
