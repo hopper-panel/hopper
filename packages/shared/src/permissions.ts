@@ -1,18 +1,17 @@
 import { z } from 'zod';
 
 /**
- * Permissions accordables à un sous-utilisateur sur un serveur.
+ * Permissions grantable to a subuser on one server.
  *
- * Le format est `<domaine>.<action>`. Le propriétaire d'un serveur et les
- * administrateurs du panel les possèdent toutes implicitement — elles ne sont
- * stockées en base que pour les sous-utilisateurs.
+ * Format is `<domain>.<action>`. Server owners and panel administrators hold
+ * them all implicitly — they are stored only for subusers.
  *
- * Ce fichier est la source de vérité : le panel les vérifie côté API, le daemon
- * les reçoit dans le JWT de console et les applique par opération (WebSocket,
- * fichiers, SFTP). N'ajoutez jamais une permission d'un seul côté.
+ * This file is the source of truth: the panel checks them on the API side, the
+ * daemon receives them in the console JWT and applies them per operation
+ * (WebSocket, files, SFTP). Never add a permission on one side only.
  */
 export const PERMISSIONS = {
-  /** Voir la console et le nom du serveur. Implicite pour tout sous-utilisateur. */
+  /** See the console and the server name. Implicit for every subuser. */
   WEBSOCKET_CONNECT: 'websocket.connect',
 
   CONTROL_CONSOLE: 'control.console',
@@ -26,7 +25,7 @@ export const PERMISSIONS = {
   USER_DELETE: 'user.delete',
 
   FILE_READ: 'file.read',
-  /** Lire le contenu d'un fichier, pas seulement lister le répertoire. */
+  /** Read file contents, not just list the directory. */
   FILE_READ_CONTENT: 'file.read-content',
   FILE_CREATE: 'file.create',
   FILE_UPDATE: 'file.update',
@@ -72,14 +71,14 @@ export const PERMISSIONS = {
 
 export type Permission = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
 
-/** Schéma Zod dérivé de la constante ci-dessus : une seule liste à maintenir. */
+/** Zod schema derived from the constant above: one list to maintain. */
 export const permissionSchema = z.enum(PERMISSIONS);
 
 export const ALL_PERMISSIONS: readonly Permission[] = Object.values(PERMISSIONS);
 
 const PERMISSION_SET = new Set<string>(ALL_PERMISSIONS);
 
-/** Permissions accordées d'office à tout sous-utilisateur ajouté à un serveur. */
+/** Granted to every subuser as soon as they are added to a server. */
 export const IMPLICIT_PERMISSIONS: readonly Permission[] = [PERMISSIONS.WEBSOCKET_CONNECT];
 
 export function isPermission(value: string): value is Permission {
@@ -87,19 +86,16 @@ export function isPermission(value: string): value is Permission {
 }
 
 /**
- * Retire les valeurs inconnues d'une liste de permissions.
+ * Drops unknown values from a permission list.
  *
- * Utile après une lecture en base : une permission supprimée du code dans une
- * version ultérieure ne doit pas faire échouer le chargement d'un sous-utilisateur.
+ * Useful after a database read: a permission removed from the code in a later
+ * version must not break loading a subuser.
  */
 export function sanitizePermissions(values: readonly string[]): Permission[] {
   return values.filter(isPermission);
 }
 
-/**
- * Groupes utilisés pour l'affichage dans l'interface, avec un libellé lisible.
- * L'ordre des clés est celui du rendu.
- */
+/** Display groups for the interface. Key order is render order. */
 export const PERMISSION_GROUPS: Record<
   string,
   { label: string; description: string; permissions: Permission[] }
@@ -219,9 +215,9 @@ export const PERMISSION_GROUPS: Record<
 };
 
 /**
- * Libellé et description de chaque permission.
+ * Label and description of each permission.
  *
- * Au même endroit que l'énumération, et non dans l'interface : une permission
+ * Next to the enumeration rather than in the interface: a permission
  * ajoutée sans son explication se verrait immédiatement — la table est
  * exhaustive par construction — alors qu'une table tenue à part dériverait en
  * silence, et l'utilisateur se retrouverait à cocher une case dont personne ne

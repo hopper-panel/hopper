@@ -1,42 +1,36 @@
 import { z } from 'zod';
 
 /**
- * Configuration complète d'un serveur, telle qu'envoyée par le panel au daemon.
+ * Everything the daemon knows about a server.
  *
- * C'est la seule vue que le daemon a d'un serveur : il n'accède jamais à la base
- * de données. Toute information dont le daemon a besoin pour démarrer, arrêter,
- * surveiller ou réinstaller un serveur doit se trouver ici.
+ * The daemon never reaches the database: whatever it needs to start, stop,
+ * watch or reinstall a server has to be in here.
  */
 
-/** Format d'un fichier de configuration que le daemon sait réécrire au démarrage. */
 export const configParserSchema = z.enum(['properties', 'yaml', 'json', 'ini', 'xml', 'file']);
 export type ConfigParser = z.infer<typeof configParserSchema>;
 
 export const configReplacementSchema = z.object({
-  /**
-   * Chemin de la valeur dans le fichier, notation pointée.
-   * Ex. `server-port` pour un .properties, `settings.bungeecord` pour un YAML.
-   */
+  /** Dotted path, e.g. `server-port` or `settings.bungeecord`. */
   match: z.string().min(1),
-  /** Ne remplacer que si la valeur actuelle vaut ceci. Sinon, on écrase toujours. */
+  /** Replace only if the current value equals this. Otherwise always overwrite. */
   ifValue: z.string().optional(),
-  /** Gabarit de la nouvelle valeur, ex. `{{server.build.default.port}}`. */
   replaceWith: z.string(),
 });
 
 export const configFileSchema = z.object({
-  /** Chemin relatif à la racine du serveur. Le daemon refuse tout chemin sortant. */
+  /** Relative to the server root. The daemon rejects any path leading outside. */
   file: z.string().min(1),
   parser: configParserSchema,
   replacements: z.array(configReplacementSchema),
 });
 
 /**
- * Comment arrêter proprement le serveur.
+ * How to stop the server cleanly.
  *
- * `command` envoie une chaîne sur stdin (`stop` pour un serveur Minecraft) et
- * attend la fin du processus. `signal` envoie un signal au PID 1 du conteneur.
- * Dans les deux cas, un SIGKILL suit après `timeoutSeconds`.
+ * `command` writes a string to stdin (`stop` for Minecraft) and waits for the
+ * process to end; `signal` signals PID 1 of the container. Either way a SIGKILL
+ * follows after `stopTimeoutSeconds`.
  */
 export const stopConfigurationSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('command'), value: z.string().min(1) }),
@@ -54,58 +48,47 @@ export const allocationSchema = z.object({
 });
 
 export const serverAllocationsSchema = z.object({
-  /** Allocation injectée dans `server-port` et annoncée aux joueurs. */
+  /** Injected into `server-port` and announced to players. */
   default: allocationSchema,
-  /** Ports supplémentaires exposés (dynmap, plugin de voice chat, query…). */
+  /** Extra exposed ports: dynmap, voice chat, query… */
   additional: z.array(allocationSchema).default([]),
 });
 
-/**
- * Limites appliquées au conteneur. Toutes sont des limites dures : le noyau les
- * fait respecter, le daemon ne fait que les transmettre à Docker.
- */
+/** Hard container limits: the kernel enforces them, the daemon only relays them. */
 export const serverBuildSchema = z.object({
-  /** 0 = illimité. */
+  /** 0 means unlimited. */
   memoryBytes: z.number().int().nonnegative(),
   /**
-   * Swap autorisé en plus de la mémoire. -1 = illimité, 0 = swap interdit.
-   * Docker attend `memory + swap` : la conversion est faite par le daemon.
+   * Swap allowed on top of memory. -1 unlimited, 0 forbidden. Docker expects
+   * `memory + swap`; the daemon converts.
    */
   swapBytes: z.number().int().min(-1),
-  /** Pourcentage d'un cœur : 200 = deux cœurs. 0 = illimité. */
+  /** Percent of one core: 200 means two cores. 0 means unlimited. */
   cpuPercent: z.number().int().nonnegative(),
-  /** Épinglage sur des cœurs précis, ex. `0-3` ou `0,2`. Vide = pas d'épinglage. */
+  /** Pinning, e.g. `0-3` or `0,2`. Empty means no pinning. */
   cpuSet: z.string().default(''),
-  /** Poids d'E/S bloc, 10 à 1000. */
   ioWeight: z.number().int().min(10).max(1000).default(500),
-  /** 0 = illimité. Vérifié par le daemon, pas par Docker (volumes bind). */
+  /** 0 means unlimited. Enforced by the daemon, not Docker (bind mounts). */
   diskBytes: z.number().int().nonnegative(),
-  /**
-   * Nombre maximal de processus dans le conteneur. Garde-fou contre les fork
-   * bombs déclenchées par un plugin : ne jamais mettre 0 en production.
-   */
+  /** Guard against a plugin fork bomb: never set 0 in production. */
   pidsLimit: z.number().int().positive().default(512),
   /**
-   * Désactiver l'OOM killer laisse un serveur qui déborde geler l'hôte au lieu
-   * d'être tué. À n'activer que sur demande explicite de l'opérateur.
+   * Disabling the OOM killer lets an overflowing server freeze the host instead
+   * of being killed. Only on an explicit operator request.
    */
   oomKillDisabled: z.boolean().default(false),
 });
 
 export const serverContainerSchema = z.object({
-  /** Image Docker complète, ex. `ghcr.io/hopper-panel/java:21`. */
   image: z.string().min(1),
-  /** Le daemon doit recréer le conteneur au prochain démarrage. */
+  /** The daemon must recreate the container on the next start. */
   requiresRebuild: z.boolean().default(false),
 });
 
-/** Ce que le daemon doit exécuter pour installer le serveur avant son premier démarrage. */
 export const installConfigurationSchema = z.object({
-  /** Image du conteneur d'installation, distincte de l'image d'exécution. */
+  /** Install image, distinct from the runtime image. */
   containerImage: z.string().min(1),
-  /** Interpréteur du script, ex. `/bin/bash`. */
   entrypoint: z.string().min(1).default('/bin/bash'),
-  /** Contenu du script d'installation. */
   script: z.string(),
 });
 
@@ -113,21 +96,20 @@ export const serverConfigurationSchema = z.object({
   uuid: z.uuid(),
   meta: serverMetaSchema,
 
-  /** Un serveur suspendu ne peut ni démarrer, ni être modifié, ni servir en SFTP. */
+  /** A suspended server cannot start, be modified, or serve over SFTP. */
   suspended: z.boolean().default(false),
 
   /**
-   * Gabarit de la commande de démarrage, ex.
+   * Startup command template, e.g.
    * `java -Xms128M -Xmx{{SERVER_MEMORY}}M -jar {{SERVER_JARFILE}}`.
    *
-   * Le daemon découpe ce gabarit en arguments AVANT de substituer les variables,
-   * puis exécute le résultat sans passer par un shell. Une valeur de variable
-   * contenant un espace, un `;` ou un `$` ne peut donc pas injecter d'argument
-   * ni de commande supplémentaire.
+   * The daemon splits this into arguments BEFORE substituting variables, then
+   * executes without a shell. A variable holding a space, a `;` or a `$` can
+   * therefore inject neither an argument nor a command.
    */
   invocation: z.string().min(1),
 
-  /** Variables du template, injectées comme variables d'environnement du conteneur. */
+  /** Template variables, passed as container environment variables. */
   environment: z.record(z.string(), z.string()).default({}),
 
   allocations: serverAllocationsSchema,
@@ -135,22 +117,20 @@ export const serverConfigurationSchema = z.object({
   container: serverContainerSchema,
 
   stop: stopConfigurationSchema,
-  /** Délai avant SIGKILL si l'arrêt propre n'aboutit pas. */
   stopTimeoutSeconds: z.number().int().positive().max(600).default(30),
 
   /**
-   * Expression régulière signalant que le serveur est prêt.
-   * Ex. `\)! For help, type "help"` pour un serveur Bukkit.
-   * Absente, le serveur passe `running` dès que le conteneur tourne.
+   * Pattern announcing the server is ready, e.g. `\)! For help, type "help"`.
+   * Without it the server turns `running` as soon as the container runs.
    */
   startupDetection: z.string().optional(),
 
-  /** Fichiers réécrits par le daemon juste avant chaque démarrage. */
+  /** Rewritten by the daemon right before every start. */
   configFiles: z.array(configFileSchema).default([]),
 
   /**
-   * Fichiers que l'utilisateur ne peut ni lire, ni modifier, ni supprimer, même
-   * avec toutes les permissions. Motifs glob relatifs à la racine du serveur.
+   * Files the user can neither read, write nor delete, whatever their
+   * permissions. Glob patterns relative to the server root.
    */
   fileDenylist: z.array(z.string()).default([]),
 
