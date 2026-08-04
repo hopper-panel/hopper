@@ -9,6 +9,7 @@ import { Alert, Badge, Button, Card, EmptyState, Spinner } from '../components/u
 import { ApiError, api } from '../lib/api';
 import { cx } from '../lib/cx';
 import { formatBytes, formatDate } from '../lib/format';
+import { useTranslation } from '../i18n';
 import { useServerContext } from '../lib/server-context';
 
 interface FileEntry {
@@ -35,14 +36,15 @@ interface UploadProgress {
 /** Extensions reconnues comme archives extractibles par le daemon. */
 const ARCHIVE = /\.(tar\.gz|tgz)$/i;
 
-/** Extensions que l'éditeur ouvre volontiers. */
+/** Extensions the editor happily opens. */
 const EDITABLE = /\.(ya?ml|properties|json|txt|log|toml|conf|cfg|ini|sh|md|xml|csv)$/i;
 
 export function ServerFilesPage() {
   const { uuid = '' } = useParams();
   // Permissions fournies par `ServerLayout` : les interroger de nouveau ici
-  // refaisait la même requête à chaque changement d'onglet.
+  // repeated the same request on every tab change.
   const { can } = useServerContext();
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
   const directory = params.get('d') ?? '/';
@@ -104,12 +106,12 @@ export function ServerFilesPage() {
   });
 
   /**
-   * Déplace plusieurs entrées vers un même dossier.
+   * Moves several entries into the same folder.
    *
-   * Une requête par entrée, faute d'opération groupée côté daemon. En cas
-   * d'échec à mi-parcours, ce qui a déjà bougé reste déplacé : la liste est
-   * rafraîchie dans tous les cas pour que l'état affiché soit celui du disque,
-   * et non celui qu'on espérait.
+   * One request per entry, for want of a bulk operation on the daemon side. If
+   * it fails halfway, what already moved stays moved: the listing is refreshed
+   * either way, so what is displayed is what is on disk rather than what was
+   * hoped for.
    */
   const move = useMutation({
     mutationFn: async (input: { files: string[]; target: string }) => {
@@ -124,10 +126,7 @@ export function ServerFilesPage() {
   });
 
   function moveSelection(): void {
-    const target = window.prompt(
-      `Déplacer ${selection.size} élément(s) vers quel dossier ?`,
-      directory,
-    );
+    const target = window.prompt(t('files.movePrompt', { count: selection.size }), directory);
 
     if (target?.trim()) {
       move.mutate({ files: [...selection], target: target.trim() });
@@ -141,16 +140,15 @@ export function ServerFilesPage() {
   });
 
   /**
-   * Envoi de fichiers.
+   * File upload.
    *
-   * Un par un, et non tous en parallèle : sur une connexion domestique, dix
-   * envois simultanés se partagent la bande passante et n'aboutissent qu'à la
-   * fin, sans qu'aucun ne progresse visiblement entre-temps.
+   * One at a time rather than in parallel: on a home connection ten concurrent
+   * uploads share the same bandwidth and all finish at the end, with none
+   * visibly progressing in between.
    *
-   * `fetch` direct plutôt que le client de l'API : le corps est le fichier
-   * lui-même, sans enveloppe JSON, et le navigateur le lit en flux depuis le
-   * disque — un modpack de deux gigaoctets ne passe jamais par la mémoire de
-   * l'onglet.
+   * Plain `fetch` rather than the API client: the body is the file itself, with
+   * no JSON envelope, and the browser streams it from disk — a two-gigabyte
+   * modpack never goes through the tab's memory.
    */
   const upload = useMutation({
     mutationFn: async (files: File[]) => {
@@ -172,7 +170,8 @@ export function ServerFilesPage() {
           const detail = (await response.json().catch(() => null)) as { message?: string } | null;
           throw new ApiError(
             response.status,
-            detail?.message ?? `Envoi de « ${file.name} » impossible (HTTP ${response.status}).`,
+            detail?.message ??
+              t('files.uploadFailed', { name: file.name, status: response.status }),
           );
         }
       }
@@ -189,8 +188,8 @@ export function ServerFilesPage() {
     }
   }
 
-  // Échap annule la sélection : c'est le geste attendu pour sortir d'un mode,
-  // et cela évite de viser « Annuler » à l'autre bout de la barre.
+  // Escape clears the selection: the expected way out of a mode, and it saves
+  // aiming for "Cancel" at the far end of the bar.
   useEffect(() => {
     if (selection.size === 0) {
       return;
@@ -213,23 +212,19 @@ export function ServerFilesPage() {
   if (listing.error) {
     return (
       <Alert>
-        {listing.error instanceof ApiError
-          ? listing.error.message
-          : 'Impossible de lister ce dossier.'}{' '}
+        {listing.error instanceof ApiError ? listing.error.message : t('files.listFailed')}{' '}
         <button className="underline" onClick={() => navigateTo('/')}>
-          Revenir à la racine
+          {t('files.backToRoot')}
         </button>
       </Alert>
     );
   }
 
   /**
-   * Ouvre une entrée : parcourir un dossier, éditer un fichier lisible,
-   * télécharger le reste.
+   * Opens an entry: browse a folder, edit a readable file, download the rest.
    *
-   * Appelée aussi bien par le nom que par la ligne entière — les deux doivent
-   * faire exactement la même chose, sans quoi la cible du clic changerait le
-   * résultat.
+   * Called both from the name and from the whole row — they must do exactly the
+   * same thing, or where you click would change what happens.
    */
   function openEntry(entry: FileEntry): void {
     if (entry.directory) {
@@ -250,24 +245,22 @@ export function ServerFilesPage() {
   }
 
   /**
-   * Clic sur la ligne, en dehors de ses commandes propres.
+   * Click on the row, outside its own controls.
    *
-   * La case à cocher et le menu portent `data-row-control` : un clic qui en
-   * provient ne doit pas ouvrir l'entrée, sans quoi cocher une case
-   * quitterait le dossier.
+   * The checkbox and the menu carry `data-row-control`: a click coming from
+   * them must not open the entry, or ticking a box would leave the folder.
    *
-   * Un glissement de sélection de texte se termine aussi par un `click` : on
-   * l'ignore, faute de quoi sélectionner un nom de fichier pour le copier
-   * ouvrirait le fichier.
+   * A text-selection drag also ends in a `click`: it is ignored, otherwise
+   * selecting a filename to copy it would open the file.
    */
   function handleRowClick(event: MouseEvent, entry: FileEntry): void {
     if ((event.target as HTMLElement).closest('[data-row-control]')) {
       return;
     }
 
-    // On n'ignore le clic que s'il existe **vraiment** une sélection étendue.
-    // `getSelection()` peut rendre `null`, et un `?.` mal placé ferait alors
-    // ignorer tous les clics.
+    // The click is ignored only if a selection really is stretched.
+    // `getSelection()` can return `null`, and a misplaced `?.` would then
+    // swallow every click.
     const selection = window.getSelection();
 
     if (selection && !selection.isCollapsed) {
@@ -283,8 +276,8 @@ export function ServerFilesPage() {
   }
 
   const entries = listing.data?.entries ?? [];
-  // Ne porte que sur le dossier affiché : la sélection est vidée à chaque
-  // navigation, elle ne peut donc pas contenir d'entrée venue d'ailleurs.
+  // Scoped to the displayed folder: the selection is cleared on every
+  // navigation, so it cannot hold an entry from elsewhere.
   const allSelected = entries.length > 0 && entries.every((entry) => selection.has(entry.path));
   const someSelected = selection.size > 0 && !allSelected;
   const mutationError = [
@@ -317,8 +310,8 @@ export function ServerFilesPage() {
                   className="hidden"
                   onChange={(event) => {
                     sendFiles(event.target.files);
-                    // Remis à zéro : sans cela, renvoyer deux fois le même
-                    // fichier n'émettrait pas de second `change`.
+                    // Reset: without it, sending the same file twice would not
+                    // fire a second `change`.
                     event.target.value = '';
                   }}
                 />
@@ -327,11 +320,11 @@ export function ServerFilesPage() {
                   onClick={() => fileInputRef.current?.click()}
                   disabled={upload.isPending}
                 >
-                  {upload.isPending ? 'Envoi…' : 'Envoyer'}
+                  {upload.isPending ? t('files.uploading') : t('files.upload')}
                 </Button>
               </>
             ) : null}
-            <Button onClick={() => void listing.refetch()}>Actualiser</Button>
+            <Button onClick={() => void listing.refetch()}>{t('files.refresh')}</Button>
           </div>
         }
       />
@@ -351,31 +344,29 @@ export function ServerFilesPage() {
         </Card>
       ) : null}
 
-      {/* Barre flottante plutôt qu'encart au-dessus de la liste : elle reste
-          atteignable quel que soit l'endroit où l'on a fait défiler, alors
-          qu'un encart en tête de page disparaît dès qu'on sélectionne
-          au-delà du premier écran. */}
+      {/* A floating bar rather than a box above the list: it stays reachable
+          wherever one has scrolled, while a box at the top of the page
+          disappears as soon as the selection goes past the first screen. */}
       {selection.size > 0 ? (
         <div
           role="region"
-          aria-label="Actions sur la sélection"
+          aria-label={t('files.selectionActions')}
           className="fixed bottom-6 left-1/2 z-30 -translate-x-1/2"
         >
           <div className="flex flex-wrap items-center gap-3 rounded-xl border border-border-subtle bg-surface-raised px-4 py-3 shadow-xl">
             <span className="text-sm text-content">
-              {selection.size} élément{selection.size > 1 ? 's' : ''} sélectionné
-              {selection.size > 1 ? 's' : ''}
+              {t('files.selected', { count: selection.size })}
             </span>
 
             {can('file.update') ? (
               <Button onClick={moveSelection} disabled={move.isPending}>
-                {move.isPending ? 'Déplacement…' : 'Déplacer'}
+                {move.isPending ? t('files.moving') : t('files.move')}
               </Button>
             ) : null}
 
             {can('file.archive') ? (
               <Button onClick={() => compress.mutate([...selection])} disabled={compress.isPending}>
-                {compress.isPending ? 'Compression…' : 'Compresser'}
+                {compress.isPending ? t('files.compressing') : t('files.compress')}
               </Button>
             ) : null}
 
@@ -384,24 +375,24 @@ export function ServerFilesPage() {
                 variant="danger"
                 disabled={deleteMutation.isPending}
                 onClick={() => {
-                  if (window.confirm(`Supprimer définitivement ${selection.size} élément(s) ?`)) {
+                  if (window.confirm(t('files.deleteSelection', { count: selection.size }))) {
                     deleteMutation.mutate([...selection]);
                   }
                 }}
               >
-                Supprimer
+                {t('common.delete')}
               </Button>
             ) : null}
 
             <Button variant="ghost" onClick={() => setSelection(new Set())}>
-              Annuler
+              {t('common.cancel')}
             </Button>
           </div>
         </div>
       ) : null}
 
-      {/* Le glisser-déposer couvre toute la zone de liste, y compris un dossier
-          vide — c'est justement là qu'on veut déposer quelque chose. */}
+      {/* Drag and drop covers the whole listing area, empty folder included —
+          that is precisely where one wants to drop something. */}
       <div
         onDragOver={(event: DragEvent) => {
           if (!can('file.create')) return;
@@ -418,19 +409,15 @@ export function ServerFilesPage() {
         className={cx(
           'rounded-lg transition-colors',
           dropping && 'outline-dashed outline-2 outline-offset-4 outline-accent',
-          // La barre flottante recouvrirait sinon les dernières lignes, qui
-          // sont précisément celles qu'on vient de cocher en descendant.
+          // Otherwise the floating bar would cover the last rows, which are
+          // precisely the ones just ticked on the way down.
           selection.size > 0 && 'pb-24',
         )}
       >
         {entries.length === 0 ? (
           <EmptyState
-            title="Dossier vide"
-            description={
-              can('file.create')
-                ? 'Glissez des fichiers ici pour les envoyer.'
-                : 'Rien à afficher ici.'
-            }
+            title={t('files.emptyFolder')}
+            description={can('file.create') ? t('files.dropHint') : t('files.nothingHere')}
           />
         ) : (
           <Card className="p-0">
@@ -440,11 +427,11 @@ export function ServerFilesPage() {
                   <th className="w-10 px-4 py-3">
                     <input
                       type="checkbox"
-                      aria-label="Tout sélectionner dans ce dossier"
+                      aria-label={t('files.selectAll')}
                       checked={allSelected}
-                      // L'état intermédiaire n'existe pas en HTML : il se pose
-                      // par le DOM. Sans lui, une sélection partielle
-                      // s'afficherait comme « rien de sélectionné ».
+                      // The indeterminate state does not exist in HTML: it is
+                      // set through the DOM. Without it a partial selection
+                      // would read as "nothing selected".
                       ref={(element) => {
                         if (element) {
                           element.indeterminate = someSelected;
@@ -460,9 +447,9 @@ export function ServerFilesPage() {
                     />
                   </th>
                   <th className="px-4 py-3 font-medium">Nom</th>
-                  <th className="px-4 py-3 font-medium">Taille</th>
-                  <th className="px-4 py-3 font-medium">Permissions</th>
-                  <th className="px-4 py-3 font-medium">Modifié</th>
+                  <th className="px-4 py-3 font-medium">{t('files.columnSize')}</th>
+                  <th className="px-4 py-3 font-medium">{t('files.columnPermissions')}</th>
+                  <th className="px-4 py-3 font-medium">{t('files.columnModified')}</th>
                   <th className="px-4 py-3" />
                 </tr>
               </thead>
@@ -497,7 +484,7 @@ export function ServerFilesPage() {
                     <td className="px-4 py-2" data-row-control>
                       <input
                         type="checkbox"
-                        aria-label={`Sélectionner ${entry.name}`}
+                        aria-label={t('files.selectOne', { name: entry.name })}
                         checked={selection.has(entry.path)}
                         onChange={(event) => {
                           const next = new Set(selection);
@@ -529,11 +516,11 @@ export function ServerFilesPage() {
                           label={`Actions sur ${entry.name}`}
                           actions={[
                             {
-                              label: 'Renommer',
+                              label: t('files.rename'),
                               icon: '✎',
                               hidden: !can('file.update'),
                               onSelect: () => {
-                                const name = window.prompt('Nouveau nom', entry.name);
+                                const name = window.prompt(t('files.renamePrompt'), entry.name);
                                 if (name?.trim() && name.trim() !== entry.name) {
                                   rename.mutate({
                                     from: entry.path,
@@ -543,12 +530,12 @@ export function ServerFilesPage() {
                               },
                             },
                             {
-                              label: 'Déplacer',
+                              label: t('files.repath'),
                               icon: '↱',
                               hidden: !can('file.update'),
                               onSelect: () => {
                                 const target = window.prompt(
-                                  'Nouveau chemin, depuis la racine du serveur',
+                                  t('files.repathPrompt'),
                                   `/${entry.path}`,
                                 );
                                 if (target?.trim() && target.trim() !== `/${entry.path}`) {
@@ -557,7 +544,7 @@ export function ServerFilesPage() {
                               },
                             },
                             {
-                              label: 'Copier',
+                              label: t('files.copy'),
                               icon: '⧉',
                               hidden: !can('file.create'),
                               onSelect: () =>
@@ -567,12 +554,15 @@ export function ServerFilesPage() {
                                 }),
                             },
                             {
-                              label: 'Permissions',
+                              label: t('files.permissions'),
                               icon: '⚿',
                               hidden: !can('file.update'),
                               onSelect: () => {
                                 const mode = window.prompt(
-                                  `Droits de « ${entry.name} », en octal (actuellement ${entry.mode})`,
+                                  t('files.permissionsPrompt', {
+                                    name: entry.name,
+                                    mode: entry.mode,
+                                  }),
                                   entry.directory ? '755' : '644',
                                 );
                                 if (mode?.trim()) {
@@ -581,7 +571,7 @@ export function ServerFilesPage() {
                               },
                             },
                             {
-                              label: 'Télécharger',
+                              label: t('files.download'),
                               icon: '↓',
                               hidden: entry.directory || !can('file.read-content'),
                               onSelect: () => {
@@ -589,13 +579,13 @@ export function ServerFilesPage() {
                               },
                             },
                             {
-                              label: 'Archiver',
+                              label: t('files.archive'),
                               icon: '🗜',
                               hidden: !can('file.archive'),
                               onSelect: () => compress.mutate([entry.path]),
                             },
                             {
-                              label: 'Extraire',
+                              label: t('files.extract'),
                               icon: '📦',
                               hidden:
                                 entry.directory ||
@@ -604,14 +594,12 @@ export function ServerFilesPage() {
                               onSelect: () => decompress.mutate(entry.path),
                             },
                             {
-                              label: 'Supprimer',
+                              label: t('common.delete'),
                               icon: '🗑',
                               destructive: true,
                               hidden: !can('file.delete'),
                               onSelect: () => {
-                                if (
-                                  window.confirm(`Supprimer définitivement « ${entry.name} » ?`)
-                                ) {
+                                if (window.confirm(t('files.deleteOne', { name: entry.name }))) {
                                   deleteMutation.mutate([entry.path]);
                                 }
                               },
@@ -632,36 +620,31 @@ export function ServerFilesPage() {
 }
 
 function CreateDirectoryButton({ onCreate }: { onCreate: (name: string) => void }) {
+  const { t } = useTranslation();
+
   return (
     <Button
       onClick={() => {
-        const name = window.prompt('Nom du nouveau dossier');
+        const name = window.prompt(t('files.newFolderPrompt'));
         if (name?.trim()) {
           onCreate(name.trim());
         }
       }}
     >
-      Nouveau dossier
+      {t('files.newFolder')}
     </Button>
   );
 }
 
 /**
- * Nom d'un fichier, cliquable.
+ * The name of an entry.
  *
- * La ligne entière ouvre déjà l'entrée, mais le nom reste une commande à part
- * entière : c'est lui qui porte le focus au clavier, et c'est un vrai lien pour
- * un fichier téléchargeable — le clic du milieu et « enregistrer sous »
- * fonctionnent alors comme partout ailleurs. Une ligne cliquable seule
- * n'offrirait rien de tout cela.
+ * The whole row already opens the entry, but the name stays a control of its
+ * own: it carries keyboard focus, and it is a real link for a downloadable file
+ * — middle click and "save as" have to work.
  *
- * Chaque commande arrête la propagation : sans quoi le gestionnaire de la ligne
- * se déclencherait à son tour et l'entrée s'ouvrirait deux fois.
- *
- * Le nom n'est pas souligné : c'est le surlignage de la ligne qui indique
- * qu'elle est cliquable. Souligner en plus ne marquait que le texte, alors que
- * toute la ligne réagit — l'affordance désignait une cible plus petite que la
- * vraie.
+ * Every control stops propagation: otherwise the row handler would fire too and
+ * the entry would open twice.
  */
 function FileName({
   entry,
@@ -674,6 +657,7 @@ function FileName({
   canRead: boolean;
   onOpen: () => void;
 }) {
+  const { t } = useTranslation();
   const icon = entry.directory ? '📁' : entry.symlink ? '🔗' : '📄';
 
   const label = (
@@ -682,11 +666,11 @@ function FileName({
         {icon}
       </span>
       {entry.name}
-      {/* Un lien est signalé : son contenu peut pointer ailleurs, et le daemon
-          refusera de l'ouvrir s'il sort du volume. */}
+      {/* Symlinks are flagged: they may point elsewhere, and the daemon will
+          refuse to open one that leaves the volume. */}
       {entry.symlink ? (
         <span className="ml-2">
-          <Badge tone="warn">lien</Badge>
+          <Badge tone="warn">{t('files.symlink')}</Badge>
         </span>
       ) : null}
     </>
@@ -696,7 +680,7 @@ function FileName({
     return <span className="text-content-muted">{label}</span>;
   }
 
-  // Un fichier non éditable est un téléchargement : un vrai lien, pas un bouton.
+  // A non-editable file is a download: a real link, not a button.
   if (!entry.directory && !EDITABLE.test(entry.name)) {
     return (
       <a
@@ -726,11 +710,11 @@ function downloadUrl(serverUuid: string, path: string): string {
   return `/api/servers/${serverUuid}/files/download?file=${encodeURIComponent(path)}`;
 }
 
-/** `paper.yml` → `paper copie.yml`, pour ne pas écraser l'original. */
+/** `paper.yml` -> `paper copy.yml`, so the original is not overwritten. */
 function copyNameFor(name: string): string {
   const dot = name.lastIndexOf('.');
 
-  return dot > 0 ? `${name.slice(0, dot)} copie${name.slice(dot)}` : `${name} copie`;
+  return dot > 0 ? `${name.slice(0, dot)} copy${name.slice(dot)}` : `${name} copy`;
 }
 
 /** Dernier segment d'un chemin : `plugins/Essentials.jar` → `Essentials.jar`. */
