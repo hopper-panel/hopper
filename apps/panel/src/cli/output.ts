@@ -1,13 +1,12 @@
 /**
- * Sortie de la ligne de commande.
+ * Command-line output.
  *
- * Sans dépendance de coloration : six séquences ANSI suffisent, et une
- * bibliothèque de plus serait chargée à chaque démarrage du panel puisque la
- * CLI vit dans le même paquet.
+ * No colouring dependency: six ANSI sequences are enough, and one more library
+ * would be loaded on every panel start since the CLI lives in the same package.
  *
- * Les couleurs sont supprimées dès que la sortie n'est pas un terminal :
- * `hopper doctor > rapport.txt` doit produire un fichier lisible, et
- * l'installeur redirige la sortie.
+ * Colours are dropped as soon as the output is not a terminal:
+ * `hopper doctor > report.txt` has to produce a readable file, and the
+ * installer redirects the output.
  */
 const enabled = process.stdout.isTTY === true && process.env.NO_COLOR === undefined;
 
@@ -29,7 +28,7 @@ export function line(text = ''): void {
   process.stdout.write(`${text}\n`);
 }
 
-/** Résultat d'une vérification de `doctor`. */
+/** Result of one `doctor` check. */
 export type Level = 'ok' | 'warn' | 'fail';
 
 export function report(level: Level, label: string, detail?: string): void {
@@ -38,11 +37,11 @@ export function report(level: Level, label: string, detail?: string): void {
 }
 
 /**
- * Message d'erreur fatale.
+ * Fatal error message.
  *
- * Sur la sortie d'erreur, pour qu'un script qui capture la sortie standard
- * — l'installeur récupère ainsi un `daemon.yml` — ne se retrouve pas avec un
- * message d'erreur au milieu du fichier produit.
+ * On the error stream, so that a script capturing standard output — this is how
+ * the installer collects a `daemon.yml` — does not end up with an error message
+ * in the middle of the file it produced.
  */
 export function fatal(message: string): never {
   process.stderr.write(`${red('✗')} ${message}\n`);

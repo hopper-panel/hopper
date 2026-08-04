@@ -2,57 +2,57 @@ import { describe, expect, it } from 'vitest';
 import { parseFlags, textOf } from './flags.js';
 
 describe('parseFlags', () => {
-  it('lit une option et sa valeur', () => {
+  it('reads an option and its value', () => {
     expect(parseFlags(['--username', 'julien']).get('username')).toBe('julien');
   });
 
-  it('accepte la forme collée', () => {
+  it('accepts the joined form', () => {
     expect(parseFlags(['--username=julien']).get('username')).toBe('julien');
   });
 
-  it('garde une valeur contenant un signe égal', () => {
-    // Un mot de passe engendré en base64 se termine souvent par « = ».
+  it('keeps a value containing an equals sign', () => {
+    // A base64-generated password often ends with "=".
     expect(parseFlags(['--password=aG9wcGVy==']).get('password')).toBe('aG9wcGVy==');
   });
 
-  it('traite une option sans valeur comme un drapeau', () => {
+  it('treats an option with no value as a flag', () => {
     expect(parseFlags(['--admin']).get('admin')).toBe(true);
   });
 
-  it('ne prend pas l’option suivante pour la valeur d’un drapeau', () => {
-    // Le piège : `--admin --username x` doit créer un administrateur nommé x,
-    // et non un utilisateur ordinaire nommé x avec `admin=--username`.
+  it('does not take the next option as a flag value', () => {
+    // The trap: `--admin --username x` has to create an administrator named x,
+    // not an ordinary user named x with `admin=--username`.
     const flags = parseFlags(['--admin', '--username', 'x']);
 
     expect(flags.get('admin')).toBe(true);
     expect(flags.get('username')).toBe('x');
   });
 
-  it('ignore ce qui n’est pas une option', () => {
+  it('ignores what is not an option', () => {
     expect([...parseFlags(['doctor', 'bruit', '--verbose']).keys()]).toEqual(['verbose']);
   });
 
-  it('retient la dernière valeur d’une option répétée', () => {
+  it('keeps the last value of a repeated option', () => {
     expect(parseFlags(['--name', 'a', '--name', 'b']).get('name')).toBe('b');
   });
 
-  it('accepte une valeur vide explicite', () => {
+  it('accepts an explicitly empty value', () => {
     expect(parseFlags(['--description=']).get('description')).toBe('');
   });
 });
 
 describe('textOf', () => {
-  it('rend la valeur textuelle', () => {
+  it('returns the textual value', () => {
     expect(textOf(parseFlags(['--name', 'paris']), 'name')).toBe('paris');
   });
 
-  it('rend undefined pour une option absente', () => {
+  it('returns undefined for a missing option', () => {
     expect(textOf(parseFlags([]), 'name')).toBeUndefined();
   });
 
-  it('rend undefined pour une option nue', () => {
-    // `--password` sans valeur ne doit pas passer pour un mot de passe vide :
-    // il serait accepté par le schéma, haché, et impossible à retrouver.
+  it('returns undefined for a bare option', () => {
+    // `--password` with no value must not pass for an empty password: it would
+    // be accepted by the schema, hashed, and impossible to recover.
     expect(textOf(parseFlags(['--password']), 'password')).toBeUndefined();
   });
 });

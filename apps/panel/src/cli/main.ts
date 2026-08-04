@@ -9,18 +9,18 @@ import { parseFlags, type Flags } from './flags.js';
 import { fatal, line } from './output.js';
 
 /**
- * Ligne de commande d'administration — `hopper`.
+ * The administration command line — `hopper`.
  *
- * Elle vit **dans le paquet du panel**, et non dans un paquet à part comme le
- * prévoyait le plan. La raison est pratique : chaque commande a besoin du
- * client Prisma généré, du hachage argon2id et de la clé de chiffrement du
- * panel. Un paquet séparé en referait sa propre copie, et la moindre divergence
- * de réglage se solderait par un compte créé en ligne de commande que le panel
- * refuserait — un défaut long à diagnostiquer pour un gain d'architecture nul.
+ * It lives **inside the panel's package**, not in a package of its own as the
+ * plan called for. The reason is practical: every command needs the generated
+ * Prisma client, argon2id hashing and the panel's encryption key. A separate
+ * package would make its own copy of each, and the slightest divergence in
+ * settings would end in an account created from the command line that the panel
+ * refuses — a defect slow to diagnose for no architectural gain.
  *
- * Les commandes s'exécutent dans un contexte Nest sans serveur HTTP : elles
- * réutilisent donc les services du panel, avec leurs validations et leur
- * journal d'audit, plutôt que d'écrire en base derrière leur dos.
+ * The commands run in a Nest context with no HTTP server: they therefore reuse
+ * the panel's services, with their validations and their audit log, rather than
+ * write to the database behind their back.
  */
 
 interface Command {
@@ -33,30 +33,30 @@ interface Command {
 const COMMANDS: Command[] = [
   {
     name: 'doctor',
-    summary: 'Diagnostique l’installation : configuration, base, nodes, Docker.',
+    summary: 'Diagnoses the installation: configuration, database, nodes, Docker.',
     run: (context) => runDoctor(context),
   },
   {
     name: 'user:create',
-    summary: 'Crée un compte.',
+    summary: 'Creates an account.',
     usage: 'hopper user:create --email a@b.c --username julien [--admin] [--password …]',
     run: (context, flags) => createUser(context, flags),
   },
   {
     name: 'user:password',
-    summary: 'Réinitialise le mot de passe d’un compte.',
+    summary: 'Resets an account password.',
     usage: 'hopper user:password --username julien [--password …]',
     run: (context, flags) => resetPassword(context, flags),
   },
   {
     name: 'node:create',
-    summary: 'Déclare un node et rend son daemon.yml.',
+    summary: 'Declares a node and returns its daemon.yml.',
     usage: 'hopper node:create --name local --fqdn panel.example.com [--scheme http]',
     run: (context, flags) => nodeCreate(context, flags),
   },
   {
     name: 'node:token',
-    summary: 'Renouvelle le jeton d’un node et rend son daemon.yml.',
+    summary: 'Renews a node token and returns its daemon.yml.',
     usage: 'hopper node:token --node <uuid ou nom> [--output /etc/hopper/daemon.yml]',
     run: (context, flags) => nodeToken(context, flags),
   },
@@ -98,12 +98,12 @@ async function main(): Promise<void> {
     fatal(`Commande inconnue : ${name}`);
   }
 
-  // Le contexte charge la configuration, donc `.env` : lancer la commande
-  // depuis un autre répertoire que celui du panel échouerait ici, avec un
-  // message plus clair qu'une erreur de connexion à la base.
+  // The context loads the configuration, so `.env`: running the command from
+  // a directory other than the panel's would fail here, with a message clearer
+  // than a database connection error.
   const context = await NestFactory.createApplicationContext(AppModule, {
-    // Les journaux de démarrage de Nest n'ont rien à faire dans la sortie d'une
-    // commande dont on capture parfois le résultat dans un fichier.
+    // Nest's startup logs have no business in the output of a command whose
+    // result is sometimes captured into a file.
     logger: ['error'],
   });
 

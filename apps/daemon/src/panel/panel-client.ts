@@ -12,11 +12,11 @@ import type { DaemonConfig } from '../config/schema.js';
 import type { Logger } from '../logger.js';
 
 /**
- * Client HTTP du daemon vers le panel.
+ * The daemon's HTTP client towards the panel.
  *
- * Le daemon n'a aucune base de données : sa connaissance des serveurs vient
- * entièrement d'ici. Il s'authentifie avec le même jeton de node que celui
- * qu'il accepte en entrée — le panel le vérifie contre sa copie chiffrée.
+ * The daemon has no database: what it knows of the servers comes entirely from
+ * here. It authenticates with the same node token as the one it accepts on
+ * input — the panel checks it against its encrypted copy.
  */
 export class PanelClient {
   constructor(
@@ -29,11 +29,11 @@ export class PanelClient {
   }
 
   /**
-   * Récupère tous les serveurs que ce node doit héberger.
+   * Fetches every server this node has to host.
    *
-   * Paginé : une instance qui héberge des centaines de serveurs ne doit pas
-   * exiger une seule réponse de plusieurs mégaoctets, ni un temps de traitement
-   * qui ferait expirer la requête.
+   * Paginated: an instance hosting hundreds of servers must not demand a single
+   * multi-megabyte response, nor a processing time that would make the request
+   * expire.
    */
   async fetchServers(): Promise<ServerConfiguration[]> {
     const servers: ServerConfiguration[] = [];
@@ -53,8 +53,8 @@ export class PanelClient {
       if (!response.ok) {
         throw new Error(
           response.status === 401
-            ? 'Le panel a refusé le jeton de ce node. Régénérez-le depuis la page du node.'
-            : `Le panel a répondu ${response.status} sur ${REMOTE_ROUTES.servers}.`,
+            ? 'The panel refused this node token. Regenerate it from the node page.'
+            : `The panel answered ${response.status} on ${REMOTE_ROUTES.servers}.`,
         );
       }
 
@@ -62,7 +62,7 @@ export class PanelClient {
 
       if (!parsed.success) {
         throw new Error(
-          'Réponse du panel illisible : les versions du panel et du daemon sont probablement incompatibles.',
+          'Unreadable answer from the panel: the panel and daemon versions are probably incompatible.',
         );
       }
 
@@ -71,17 +71,17 @@ export class PanelClient {
       page += 1;
     } while (page <= lastPage);
 
-    this.logger.info({ count: servers.length }, 'Serveurs récupérés depuis le panel');
+    this.logger.info({ count: servers.length }, 'Servers fetched from the panel');
 
     return servers;
   }
 
   /**
-   * Rapporte l'issue d'une installation.
+   * Reports the outcome of an installation.
    *
-   * C'est ce rappel qui fait passer le serveur de « Installation » à « Prêt »
-   * dans l'interface : sans lui, un serveur parfaitement installé resterait
-   * affiché comme en cours d'installation indéfiniment.
+   * This callback is what moves the server from "Installing" to "Ready" in the
+   * interface: without it, a perfectly installed server would keep showing as
+   * installing forever.
    */
   async reportInstall(serverUuid: string, successful: boolean, reinstall = false): Promise<void> {
     const response = await fetch(
@@ -98,18 +98,18 @@ export class PanelClient {
     );
 
     if (!response.ok) {
-      throw new Error(`Le panel a répondu ${response.status} au rapport d'installation.`);
+      throw new Error(`The panel answered ${response.status} to the install report.`);
     }
   }
 
   /**
-   * Signale au panel un changement d'état.
+   * Tells the panel about a state change.
    *
-   * Le panel ne stocke pas cet état — il ne saurait pas le tenir à jour — mais
-   * il en a besoin au vol pour les notifications sortantes. L'échec de cet
-   * appel n'a donc aucune conséquence sur le serveur : il est journalisé, pas
-   * réessayé, et le délai est court pour ne pas retenir le daemon sur un panel
-   * indisponible.
+   * The panel does not store this state — it could not keep it up to date — but
+   * it needs it on the fly for outgoing notifications. A failure of this call
+   * therefore has no consequence for the server: it is logged, not retried, and
+   * the timeout is short so as not to hold the daemon on an unavailable
+   * panel.
    */
   async reportStatus(serverUuid: string, report: StatusReport): Promise<void> {
     const response = await fetch(
@@ -126,21 +126,21 @@ export class PanelClient {
     );
 
     if (!response.ok) {
-      throw new Error(`Le panel a répondu ${response.status} au rapport d'état.`);
+      throw new Error(`The panel answered ${response.status} to the status report.`);
     }
   }
 
   /**
-   * Signale au panel le sort d'une sauvegarde.
+   * Tells the panel the fate of a backup.
    *
-   * C'est ce rappel qui donne à la sauvegarde sa taille, son empreinte et son
-   * verdict. Sans lui, elle resterait « en cours » : le panel ne peut pas
-   * deviner qu'une archive est close, et surveiller le disque à sa place
-   * inverserait la répartition des rôles.
+   * This callback is what gives the backup its size, its digest and its
+   * verdict. Without it, the backup would stay "running": the panel cannot
+   * guess an archive has been closed, and watching the disk on its behalf would
+   * invert the division of roles.
    *
-   * Le délai est large car le panel écrit en base et peut appliquer la
-   * rétention dans la foulée — une sauvegarde réussie ne doit pas être comptée
-   * en échec pour une seconde de trop.
+   * The timeout is generous because the panel writes to the database and may
+   * apply retention in the same breath — a successful backup must not be
+   * counted as failed over one second too many.
    */
   async reportBackup(backupUuid: string, report: BackupReport): Promise<void> {
     const response = await fetch(
@@ -157,17 +157,16 @@ export class PanelClient {
     );
 
     if (!response.ok) {
-      throw new Error(`Le panel a répondu ${response.status} au rapport de sauvegarde.`);
+      throw new Error(`The panel answered ${response.status} to the backup report.`);
     }
   }
 
   /**
-   * Authentifie une connexion SFTP auprès du panel.
+   * Authenticates an SFTP connection with the panel.
    *
-   * Le daemon ne connaît ni les comptes, ni les mots de passe, ni les
-   * permissions : il délègue entièrement. C'est aussi ce qui permet au panel
-   * d'appliquer sa limitation de débit sur les tentatives SFTP, au même titre
-   * que sur les connexions web.
+   * The daemon knows neither the accounts, nor the passwords, nor the
+   * permissions: it delegates entirely. That is also what lets the panel apply
+   * its rate limit to SFTP attempts, just as it does to web sign-ins.
    */
   async authenticateSftp(request: SftpAuthRequest): Promise<SftpAuthResponse> {
     const response = await fetch(new URL(REMOTE_ROUTES.sftpAuth, this.config.panel.url), {
@@ -181,13 +180,13 @@ export class PanelClient {
     });
 
     if (!response.ok) {
-      throw new Error(`Authentification refusée par le panel (HTTP ${response.status}).`);
+      throw new Error(`Authentication refused by the panel (HTTP ${response.status}).`);
     }
 
     const parsed = sftpAuthResponseSchema.safeParse(await response.json());
 
     if (!parsed.success) {
-      throw new Error("Réponse d'authentification SFTP illisible.");
+      throw new Error('Unreadable SFTP authentication answer.');
     }
 
     return parsed.data;

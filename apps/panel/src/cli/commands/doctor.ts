@@ -12,18 +12,17 @@ import { PANEL_VERSION } from '../../version.js';
 import { heading, line, report, type Level } from '../output.js';
 
 /**
- * Diagnostic d'une installation.
+ * Diagnosing an installation.
  *
- * La commande répond à une question précise : « pourquoi ça ne marche pas ? ».
- * Elle vérifie donc les points qui se cassent réellement — secret par défaut,
- * base non migrée, node injoignable, socket Docker absent — et pas ce qui
- * ferait joli dans un rapport.
+ * The command answers one precise question: "why is this not working?". It
+ * therefore checks the points that actually break — default secret, unmigrated
+ * database, unreachable node, missing Docker socket — and not what would look
+ * good in a report.
  *
- * Trois niveaux : un échec empêche le panel de fonctionner, un avertissement
- * signale une configuration qui marchera mais mordra plus tard (un secret
- * faible, un panel en clair sur l'extérieur). Seuls les échecs changent le code
- * de sortie, pour qu'un `hopper doctor` en fin d'installation puisse être
- * enchaîné à un `&&`.
+ * Three levels: a failure stops the panel from working, a warning flags a
+ * configuration that will work but will bite later (a weak secret, a panel
+ * exposed in the clear). Only failures change the exit code, so that a
+ * `hopper doctor` at the end of an installation can be chained with `&&`.
  */
 
 interface Check {
@@ -42,12 +41,12 @@ export async function runDoctor(context: INestApplicationContext): Promise<numbe
 
   const sections: { title: string; checks: Check[] }[] = [];
 
-  sections.push({ title: 'Système', checks: await systemChecks() });
+  sections.push({ title: 'System', checks: await systemChecks() });
   sections.push({ title: 'Configuration', checks: await configurationChecks(config) });
-  sections.push({ title: 'Base de données', checks: await databaseChecks(prisma) });
+  sections.push({ title: 'Database', checks: await databaseChecks(prisma) });
   sections.push({ title: 'Redis', checks: await redisChecks(config) });
   sections.push({ title: 'Nodes', checks: await nodeChecks(context) });
-  sections.push({ title: 'Hôte Docker', checks: await dockerChecks() });
+  sections.push({ title: 'Docker host', checks: await dockerChecks() });
 
   line(`\nHopper ${PANEL_VERSION} — diagnostic`);
 
@@ -63,16 +62,16 @@ export async function runDoctor(context: INestApplicationContext): Promise<numbe
   const failures = all.filter((check) => check.level === 'fail').length;
   const warnings = all.filter((check) => check.level === 'warn').length;
 
-  heading('Résultat');
+  heading('Result');
 
   if (failures > 0) {
-    report('fail', `${failures} problème(s) bloquant(s), ${warnings} avertissement(s)`);
+    report('fail', `${failures} blocking problem(s), ${warnings} warning(s)`);
     return 1;
   }
 
   report(
     warnings > 0 ? 'warn' : 'ok',
-    warnings > 0 ? `Aucun blocage, ${warnings} avertissement(s)` : 'Installation saine',
+    warnings > 0 ? `Nothing blocking, ${warnings} warning(s)` : 'Installation healthy',
   );
 
   return 0;
@@ -87,24 +86,24 @@ async function systemChecks(): Promise<Check[]> {
   checks.push(
     major >= 22
       ? ok('Node', `v${process.versions.node}`)
-      : fail('Node', `v${process.versions.node} — la version 22 au moins est requise`),
+      : fail('Node', `v${process.versions.node} — version 22 at least is required`),
   );
 
-  // Sans cgroup v2, les limites mémoire posées sur les conteneurs sont
-  // approximatives et un serveur peut emporter la machine entière.
+  // Without cgroup v2, the memory limits set on the containers are
+  // approximate and one server can take the whole machine down.
   const controllers = await readTextFile('/sys/fs/cgroup/cgroup.controllers');
 
   if (controllers === null) {
     checks.push(
       process.platform === 'linux'
-        ? warn('cgroup v2', 'non monté — les limites mémoire seront ignorées')
-        : warn('cgroup v2', `absent sur ${process.platform}, normal hors Linux`),
+        ? warn('cgroup v2', 'not mounted — the memory limits will be ignored')
+        : warn('cgroup v2', `absent on ${process.platform}, normal outside Linux`),
     );
   } else {
     checks.push(
       controllers.includes('memory')
-        ? ok('cgroup v2', 'contrôleur mémoire disponible')
-        : fail('cgroup v2', 'contrôleur mémoire absent des contrôleurs délégués'),
+        ? ok('cgroup v2', 'memory controller available')
+        : fail('cgroup v2', 'memory controller missing from the delegated controllers'),
     );
   }
 
@@ -122,19 +121,16 @@ async function configurationChecks(config: ConfigService<Environment, true>): Pr
 
   checks.push(
     environment === 'production'
-      ? ok('Environnement', 'production')
-      : warn(
-          'Environnement',
-          `${environment} — les cookies de session ne sont pas marqués « secure »`,
-        ),
+      ? ok('Environment', 'production')
+      : warn('Environment', `${environment} — the session cookies are not marked "secure"`),
   );
 
   checks.push(
-    secret.includes('changez-moi')
-      ? fail('Secret d’application', 'la valeur d’exemple est encore en place')
+    secret.includes('replace-me')
+      ? fail('Application secret', 'the example value is still in place')
       : secret.length < 43
-        ? warn('Secret d’application', `${secret.length} caractères — 48 recommandés`)
-        : ok('Secret d’application', `${secret.length} caractères`),
+        ? warn('Application secret', `${secret.length} characters — 48 recommended`)
+        : ok('Application secret', `${secret.length} characters`),
   );
 
   const url = safeUrl(appUrl);
@@ -142,48 +138,48 @@ async function configurationChecks(config: ConfigService<Environment, true>): Pr
 
   checks.push(
     localhost && environment === 'production'
-      ? fail('URL publique', `${appUrl} — les consoles WebSocket seront refusées`)
+      ? fail('Public URL', `${appUrl} — the WebSocket consoles will be refused`)
       : url?.protocol === 'http:' && !localhost
-        ? warn('URL publique', `${appUrl} — sans TLS, les sessions circulent en clair`)
-        : ok('URL publique', appUrl),
+        ? warn('Public URL', `${appUrl} — without TLS, sessions travel in the clear`)
+        : ok('Public URL', appUrl),
   );
 
-  checks.push(ok('Écoute', `${host}:${port}`));
+  checks.push(ok('Listening', `${host}:${port}`));
   checks.push(await environmentFileCheck());
 
   return checks;
 }
 
 /**
- * Droits du fichier `.env`.
+ * Permissions of the `.env` file.
  *
- * Il porte `APP_SECRET` et le mot de passe de la base : lisible par tous, il
- * donne à n'importe quel compte de la machine de quoi déchiffrer les jetons de
- * node et se connecter à la base. Le cas se présente après une installation
- * manuelle, ou quand le fichier a été recopié depuis une autre machine.
+ * It carries `APP_SECRET` and the database password: world-readable, it gives
+ * any account on the machine what it needs to decrypt the node tokens and
+ * connect to the database. This happens after a manual installation, or when
+ * the file was copied over from another machine.
  */
 async function environmentFileCheck(): Promise<Check> {
   const path = join(process.cwd(), '.env');
 
-  // Les droits POSIX n'ont pas de sens sur Windows, où la valeur rendue par
-  // `stat` est toujours 0666 : la vérification y crierait au loup.
+  // POSIX permissions make no sense on Windows, where the value `stat` returns
+  // is always 0666: the check would cry wolf there.
   if (process.platform !== 'linux') {
-    return ok('Fichier .env', `droits non vérifiés sur ${process.platform}`);
+    return ok('.env file', `permissions not checked on ${process.platform}`);
   }
 
   const info = await stat(path).catch(() => null);
 
   if (info === null) {
-    return warn('Fichier .env', `${path} introuvable — la configuration vient de l’environnement`);
+    return warn('.env file', `${path} not found — the configuration comes from the environment`);
   }
 
   const mode = info.mode & 0o777;
 
   return (mode & 0o077) === 0
-    ? ok('Fichier .env', `mode ${mode.toString(8).padStart(3, '0')}`)
+    ? ok('.env file', `mode ${mode.toString(8).padStart(3, '0')}`)
     : fail(
-        'Fichier .env',
-        `mode ${mode.toString(8).padStart(3, '0')} — lisible au-delà de son propriétaire : chmod 600 ${path}`,
+        '.env file',
+        `mode ${mode.toString(8).padStart(3, '0')} — readable beyond its owner: chmod 600 ${path}`,
       );
 }
 
@@ -192,23 +188,23 @@ async function databaseChecks(prisma: PrismaService): Promise<Check[]> {
 
   try {
     await prisma.$queryRaw`SELECT 1`;
-    checks.push(ok('Connexion'));
+    checks.push(ok('Connection'));
   } catch (error: unknown) {
-    checks.push(fail('Connexion', messageOf(error)));
-    // Tout le reste dépend de la connexion : insister produirait cinq échecs
-    // qui décrivent la même panne.
+    checks.push(fail('Connection', messageOf(error)));
+    // Everything else depends on the connection: insisting would produce five
+    // failures describing the same outage.
     return checks;
   }
 
   const pending = await pendingMigrations(prisma);
 
   if (pending === null) {
-    checks.push(warn('Migrations', 'répertoire prisma/migrations introuvable'));
+    checks.push(warn('Migrations', 'prisma/migrations directory not found'));
   } else {
     checks.push(
       pending.length === 0
-        ? ok('Migrations', 'schéma à jour')
-        : fail('Migrations', `${pending.length} en attente : ${pending.join(', ')}`),
+        ? ok('Migrations', 'schema up to date')
+        : fail('Migrations', `${pending.length} pending: ${pending.join(', ')}`),
     );
   }
 
@@ -220,21 +216,21 @@ async function databaseChecks(prisma: PrismaService): Promise<Check[]> {
 
   checks.push(
     admins > 0
-      ? ok('Administrateurs', String(admins))
-      : fail('Administrateurs', 'aucun compte administrateur — personne ne peut se connecter'),
+      ? ok('Administrators', String(admins))
+      : fail('Administrators', 'no administrator account — nobody can sign in'),
   );
 
-  checks.push(ok('Inventaire', `${nodes} node(s), ${servers} serveur(s)`));
+  checks.push(ok('Inventory', `${nodes} node(s), ${servers} server(s)`));
 
   return checks;
 }
 
 /**
- * Migrations présentes sur disque mais absentes de la table de suivi.
+ * Migrations present on disk but absent from the tracking table.
  *
- * Comparer les noms plutôt que d'appeler `prisma migrate status` : la CLI de
- * Prisma n'est pas installée sur une machine de production, où seul le code
- * compilé est déployé.
+ * Comparing names rather than calling `prisma migrate status`: Prisma's CLI is
+ * not installed on a production machine, where only the compiled code is
+ * deployed.
  */
 async function pendingMigrations(prisma: PrismaService): Promise<string[] | null> {
   const directory = join(process.cwd(), 'prisma', 'migrations');
@@ -266,12 +262,12 @@ async function redisChecks(config: ConfigService<Environment, true>): Promise<Ch
 
   if (url === undefined) {
     return [
-      warn('Redis', 'absent — la limitation de débit repart de zéro à chaque redémarrage du panel'),
+      warn('Redis', 'absent — the rate limit restarts from zero on every panel restart'),
     ];
   }
 
-  // `lazyConnect` et un délai court : sans eux, ioredis réessaie indéfiniment
-  // et le diagnostic ne rend jamais la main sur un Redis éteint.
+  // `lazyConnect` and a short timeout: without them, ioredis retries forever
+  // and the diagnostic never returns on a Redis that is switched off.
   const client = new Redis(url, {
     lazyConnect: true,
     connectTimeout: 2000,
@@ -301,11 +297,11 @@ async function nodeChecks(context: INestApplicationContext): Promise<Check[]> {
   });
 
   if (declared.length === 0) {
-    return [warn('Aucun node déclaré', 'aucun serveur ne peut être créé')];
+    return [warn('No node declared', 'no server can be created')];
   }
 
-  // En parallèle : un node injoignable consomme son délai complet, et les
-  // enchaîner ferait durer le diagnostic autant qu'il y a de machines mortes.
+  // In parallel: an unreachable node burns its whole timeout, and chaining
+  // them would make the diagnostic last as long as there are dead machines.
   return Promise.all(
     declared.map(async (node) => {
       const connection = await nodes.getConnection(node.uuid).catch(() => null);
@@ -313,7 +309,7 @@ async function nodeChecks(context: INestApplicationContext): Promise<Check[]> {
       if (!connection) {
         return fail(
           node.name,
-          'secrets illisibles — APP_SECRET a changé ? `hopper node:token` les régénère',
+          'unreadable secrets — did APP_SECRET change? `hopper node:token` regenerates them',
         );
       }
 
@@ -334,9 +330,9 @@ async function dockerChecks(): Promise<Check[]> {
     .catch(() => false);
 
   if (!exists) {
-    // Le panel n'a aucune raison de parler à Docker : cette section ne concerne
-    // que les machines qui hébergent aussi un daemon.
-    return [ok('Docker', 'aucun socket ici — cette machine n’héberge pas de node')];
+    // The panel has no reason to talk to Docker: this section only concerns
+    // machines that also host a daemon.
+    return [ok('Docker', 'no socket here — this machine does not host a node')];
   }
 
   const checks: Check[] = [];
@@ -344,8 +340,8 @@ async function dockerChecks(): Promise<Check[]> {
 
   checks.push(
     version === null
-      ? fail('Docker', 'socket présent mais interrogation impossible — droits insuffisants ?')
-      : ok('Docker', `moteur ${version}`),
+      ? fail('Docker', 'socket present but cannot be queried — insufficient permissions?')
+      : ok('Docker', `engine ${version}`),
   );
 
   const volumes = '/var/lib/hopper/volumes';
@@ -353,14 +349,14 @@ async function dockerChecks(): Promise<Check[]> {
 
   checks.push(
     info === null
-      ? warn('Volumes', `${volumes} absent — il sera créé au premier serveur`)
+      ? warn('Volumes', `${volumes} absent — it will be created with the first server`)
       : ok('Volumes', volumes),
   );
 
   return checks;
 }
 
-/** Interroge `/version` du moteur Docker sur son socket Unix. */
+/** Queries the Docker engine's `/version` over its Unix socket. */
 function dockerVersion(socketPath: string): Promise<string | null> {
   return new Promise((resolve) => {
     const call = request({ socketPath, path: '/version', timeout: 2000 }, (response) => {

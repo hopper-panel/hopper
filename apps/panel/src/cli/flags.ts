@@ -1,17 +1,17 @@
 /**
- * Options de la ligne de commande.
+ * Command-line options.
  *
- * Dans son propre module et non dans `main.ts` : ce dernier lance la commande
- * dès son import, ce qui rendrait l'analyseur intestable.
+ * In its own module rather than in `main.ts`: the latter runs the command as
+ * soon as it is imported, which would make the parser untestable.
  */
 export type Flags = Map<string, string | true>;
 
 /**
- * Analyse `--clé valeur`, `--clé=valeur` et `--drapeau`.
+ * Parses `--key value`, `--key=value` and `--flag`.
  *
- * Écrit à la main plutôt qu'avec une bibliothèque d'arguments : cinq commandes
- * et une dizaine d'options ne justifient pas une dépendance de plus dans un
- * paquet qui sert aussi de serveur.
+ * Hand-written rather than taken from an argument library: five commands and a
+ * dozen options do not justify one more dependency in a package that also
+ * serves as a server.
  */
 export function parseFlags(argv: string[]): Flags {
   const flags: Flags = new Map();
@@ -36,9 +36,9 @@ export function parseFlags(argv: string[]): Flags {
 
     const next = argv[index + 1];
 
-    // Une valeur qui commence par `--` est l'option suivante, pas la valeur de
-    // celle-ci : `--admin --username x` ne doit pas donner `admin=--username`,
-    // ce qui créerait un compte nommé `x` sans les droits demandés.
+    // A value starting with `--` is the next option, not this one's value:
+    // `--admin --username x` must not give `admin=--username`, which would
+    // create an account named `x` without the rights asked for.
     if (next === undefined || next.startsWith('--')) {
       flags.set(key, true);
       continue;
@@ -52,11 +52,11 @@ export function parseFlags(argv: string[]): Flags {
 }
 
 /**
- * Valeur textuelle d'une option.
+ * An option's textual value.
  *
- * `undefined` quand elle est absente **ou** nue : `--password` sans valeur ne
- * doit pas passer pour un mot de passe vide, qui serait accepté par le schéma
- * puis haché.
+ * `undefined` when it is absent **or** bare: `--password` with no value must
+ * not pass for an empty password, which would be accepted by the schema and
+ * then hashed.
  */
 export function textOf(flags: Flags, key: string): string | undefined {
   const value = flags.get(key);

@@ -8,15 +8,16 @@ import { textOf, type Flags } from '../flags.js';
 import { bold, fatal, line } from '../output.js';
 
 /**
- * Contexte d'audit des commandes.
+ * Audit context for the commands.
  *
- * L'adresse `cli` n'est pas une IP : c'est justement l'intérêt. Une action
- * lancée depuis la machine n'a pas d'origine réseau, et inventer `127.0.0.1`
- * la rendrait indiscernable d'une requête passée par le proxy local.
+ * The address `cli` is not an IP: that is precisely the point. An action
+ * launched from the machine has no network origin, and inventing `127.0.0.1`
+ * would make it indistinguishable from a request coming through the local
+ * proxy.
  */
 const CLI_CONTEXT = { ip: 'cli', userAgent: 'hopper-cli' } as const;
 
-/** Mot de passe lisible, montré une seule fois. */
+/** Readable password, shown once only. */
 function generatePassword(): string {
   return randomBytes(18).toString('base64url');
 }
@@ -27,9 +28,9 @@ export async function createUser(context: INestApplicationContext, flags: Flags)
   const password = textOf(flags, 'password') ?? generatePassword();
   const generated = textOf(flags, 'password') === undefined;
 
-  // Validé par le même schéma que l'API : un mot de passe trop court ou un
-  // nom d'utilisateur invalide doit être refusé ici aussi, sinon la commande
-  // servirait de porte dérobée aux règles du panel.
+  // Validated by the same schema as the API: a password that is too short or
+  // an invalid username has to be refused here too, otherwise the command would
+  // serve as a back door around the panel's rules.
   const parsed = createUserSchema.safeParse({
     email: textOf(flags, 'email'),
     username: textOf(flags, 'username'),
@@ -47,14 +48,14 @@ export async function createUser(context: INestApplicationContext, flags: Flags)
 
   const user = await users.create(parsed.data, null, CLI_CONTEXT);
 
-  line(`\n${bold('Compte créé')}`);
+  line(`\n${bold('Account created')}`);
   line(`  identifiant : ${user.username}`);
   line(`  e-mail      : ${user.email}`);
-  line(`  rôle        : ${user.role === 'ADMIN' ? 'administrateur' : 'utilisateur'}`);
+  line(`  role        : ${user.role === 'ADMIN' ? 'administrator' : 'user'}`);
 
   if (generated) {
     line(`  mot de passe : ${password}`);
-    line('\n  Ce mot de passe n’est pas conservé en clair : notez-le maintenant.');
+    line('\n  This password is not kept in the clear: write it down now.');
   }
 }
 
@@ -65,7 +66,7 @@ export async function resetPassword(context: INestApplicationContext, flags: Fla
   const identifier = textOf(flags, 'username') ?? textOf(flags, 'email');
 
   if (identifier === undefined) {
-    fatal('Précisez --username ou --email.');
+    fatal('Give --username or --email.');
   }
 
   const user = await prisma.user.findFirst({
@@ -73,7 +74,7 @@ export async function resetPassword(context: INestApplicationContext, flags: Fla
   });
 
   if (!user) {
-    fatal(`Aucun compte ne correspond à « ${identifier} ».`);
+    fatal(`No account matches "${identifier}".`);
   }
 
   const password = textOf(flags, 'password') ?? generatePassword();
@@ -84,13 +85,13 @@ export async function resetPassword(context: INestApplicationContext, flags: Fla
     data: { passwordHash: await passwords.hash(password) },
   });
 
-  // Les sessions ouvertes survivraient au changement : quelqu'un qui a volé le
-  // mot de passe garderait son accès, alors que la commande est justement ce
-  // qu'on lance dans ce cas.
+  // Open sessions would survive the change: whoever stole the password would
+  // keep their access, when this command is exactly what one runs in that
+  // case.
   const { count } = await prisma.session.deleteMany({ where: { userId: user.id } });
 
-  line(`\n${bold('Mot de passe changé')} — ${user.username}`);
-  line(`  sessions fermées : ${count}`);
+  line(`\n${bold('Password changed')} — ${user.username}`);
+  line(`  sessions closed : ${count}`);
 
   if (generated) {
     line(`  nouveau mot de passe : ${password}`);

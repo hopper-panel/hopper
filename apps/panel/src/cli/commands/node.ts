@@ -9,12 +9,11 @@ import { bold, fatal, line } from '../output.js';
 const CLI_CONTEXT = { ip: 'cli', userAgent: 'hopper-cli' } as const;
 
 /**
- * Déclare un node et écrit sa configuration.
+ * Declares a node and writes its configuration.
  *
- * Existe pour l'installeur : sur une machine unique — le cas de loin le plus
- * courant en auto-hébergement — obliger l'administrateur à ouvrir l'interface
- * pour créer le node local avant que quoi que ce soit ne fonctionne serait un
- * détour inutile.
+ * Exists for the installer: on a single machine — by far the most common case
+ * in self-hosting — forcing the administrator to open the interface to create
+ * the local node before anything works at all would be a pointless detour.
  */
 export async function nodeCreate(context: INestApplicationContext, flags: Flags): Promise<void> {
   const nodes = context.get(NodesService);
@@ -49,8 +48,8 @@ export async function nodeCreate(context: INestApplicationContext, flags: Flags)
   await writeFile(output, configuration, { mode: 0o600 });
   await chmod(output, 0o600);
 
-  line(`\n${bold('Node déclaré')} — ${node.name} (${node.uuid})`);
-  line(`  configuration écrite dans ${output}`);
+  line(`\n${bold('Node declared')} — ${node.name} (${node.uuid})`);
+  line(`  configuration written to ${output}`);
 }
 
 function numberOf(flags: Flags, key: string): number | undefined {
@@ -63,23 +62,23 @@ function numberOf(flags: Flags, key: string): number | undefined {
   const parsed = Number(value);
 
   if (!Number.isFinite(parsed)) {
-    fatal(`--${key} doit être un nombre.`);
+    fatal(`--${key} has to be a number.`);
   }
 
   return parsed;
 }
 
 /**
- * Renouvelle le jeton d'un node et produit son `daemon.yml`.
+ * Renews a node's token and produces its `daemon.yml`.
  *
- * C'est la commande de secours du panel : elle rétablit un node dont la
- * configuration a été perdue, ou dont les secrets ne sont plus déchiffrables —
- * ce qui arrive dès que `APP_SECRET` change. Sans elle, il faut supprimer le
- * node et ses serveurs pour le recréer.
+ * This is the panel's rescue command: it restores a node whose configuration
+ * was lost, or whose secrets are no longer decryptable — which happens as soon
+ * as `APP_SECRET` changes. Without it, the node and its servers have to be
+ * deleted and recreated.
  *
- * Le jeton précédent cesse aussitôt d'être valable : le daemon reste injoignable
- * tant que le fichier n'est pas en place et le service redémarré. Les serveurs
- * déjà lancés, eux, continuent de tourner.
+ * The previous token stops being valid at once: the daemon stays unreachable
+ * until the file is in place and the service restarted. Servers already running
+ * keep running.
  */
 export async function nodeToken(context: INestApplicationContext, flags: Flags): Promise<void> {
   const prisma = context.get(PrismaService);
@@ -97,17 +96,16 @@ export async function nodeToken(context: INestApplicationContext, flags: Flags):
   if (matches.length === 0) {
     fatal(
       identifier === undefined
-        ? 'Aucun node déclaré. Créez-le d’abord dans l’administration.'
-        : `Aucun node ne correspond à « ${identifier} ».`,
+        ? 'No node declared. Create one from the administration first.'
+        : `No node matches "${identifier}".`,
     );
   }
 
-  // Refuser plutôt que de choisir : faire tourner le jeton du mauvais node
-  // coupe une machine en production, et l'erreur ne se voit qu'au redémarrage
-  // du daemon.
+  // Refuse rather than pick: rotating the wrong node's token cuts a machine
+  // off in production, and the mistake only shows when the daemon restarts.
   if (matches.length > 1) {
     fatal(
-      `Plusieurs nodes correspondent, précisez --node :\n  ${matches
+      `Several nodes match, narrow it down with --node:\n  ${matches
         .map((node) => `${node.name} (${node.uuid})`)
         .join('\n  ')}`,
     );
@@ -117,19 +115,19 @@ export async function nodeToken(context: INestApplicationContext, flags: Flags):
   const { configuration } = await nodes.rotateToken(node.uuid, null, CLI_CONTEXT);
 
   if (output === undefined) {
-    // Sur la sortie standard, sans décor : l'installeur redirige la commande
-    // dans un fichier, et un en-tête décoratif le rendrait invalide.
+    // On standard output, undecorated: the installer redirects the command
+    // into a file, and a decorative header would make it invalid.
     process.stdout.write(configuration);
     return;
   }
 
   await writeFile(output, configuration, { mode: 0o600 });
-  // Le mode n'est appliqué qu'à la création : sur un fichier déjà présent,
-  // `writeFile` conserve ses droits, et un `daemon.yml` lisible par tous ferait
-  // refuser le démarrage du daemon.
+  // The mode is only applied on creation: on an existing file `writeFile`
+  // keeps its permissions, and a world-readable `daemon.yml` would make the
+  // daemon refuse to start.
   await chmod(output, 0o600);
 
-  line(`\n${bold('Jeton renouvelé')} — ${node.name}`);
-  line(`  configuration écrite dans ${output}`);
-  line('  redémarrez le daemon : systemctl restart hopperd');
+  line(`\n${bold('Token renewed')} — ${node.name}`);
+  line(`  configuration written to ${output}`);
+  line('  restart the daemon: systemctl restart hopperd');
 }

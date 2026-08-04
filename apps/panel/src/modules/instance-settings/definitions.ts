@@ -1,18 +1,18 @@
 import { z } from 'zod';
 
 /**
- * Paramètres de l'instance, modifiables depuis l'administration.
+ * Instance settings, editable from the administration.
  *
- * Trois principes tiennent ce fichier :
+ * Three principles hold this file together:
  *
- * 1. **Une seule liste.** Clé, type, valeur par défaut et caractère secret sont
- *    déclarés ici, et rien d'autre n'a le droit d'en inventer.
- * 2. **Un défaut pour chacun.** Une instance qui n'a jamais ouvert cet écran
- *    doit fonctionner : la table de paramètres peut être vide.
- * 3. **Ce qui vit dans `.env` n'est pas ici.** L'URL publique, le secret
- *    d'application et l'accès à la base sont lus au démarrage et engagent le
- *    chiffrement de tout le reste : les rendre modifiables par une requête HTTP
- *    ferait dépendre l'intégrité de l'instance d'un formulaire.
+ * 1. **One single list.** Key, type, default value and secrecy are declared
+ *    here, and nothing else is allowed to invent any.
+ * 2. **A default for each.** An instance that never opened this screen has to
+ *    work: the settings table may be empty.
+ * 3. **What lives in `.env` is not here.** The public URL, the application
+ *    secret and the database access are read at startup and underpin the
+ *    encryption of everything else: making them editable through an HTTP
+ *    request would make the instance's integrity depend on a form.
  */
 
 export const TWO_FACTOR_REQUIREMENTS = ['none', 'admins', 'all'] as const;
@@ -22,24 +22,23 @@ export const MAIL_ENCRYPTIONS = ['none', 'tls', 'starttls'] as const;
 export const LOCALES = ['en', 'fr', 'es', 'de', 'ru'] as const;
 
 /**
- * Champs, **sans valeur par défaut**.
+ * Fields, **with no default value**.
  *
- * Les défauts sont ajoutés plus bas, pour la lecture seulement. C'est
- * volontaire : `z.object({...}).partial()` conserve les `default()` des champs
- * absents et les réinjecte à l'analyse — une modification partielle réécrivait
- * alors tous les autres paramètres avec leur valeur d'origine. Le symptôme :
- * enregistrer le nom de l'instance effaçait la configuration SMTP.
+ * The defaults are added further down, for reading only. That is deliberate:
+ * `z.object({...}).partial()` keeps the `default()` of absent fields and
+ * reinjects them on parse — a partial update then rewrote every other setting
+ * with its original value. The symptom: saving the instance name wiped the SMTP
+ * configuration.
  */
 const FIELDS = {
-  /** Nom affiché dans l'interface et dans les courriels envoyés. */
+  /** Name shown in the interface and in the emails sent out. */
   panelName: z.string().min(1).max(60),
 
   /**
-   * Qui doit activer la double authentification.
+   * Who has to turn two-factor authentication on.
    *
-   * L'exigence n'interdit pas la connexion — il faut être connecté pour
-   * activer un second facteur — mais elle barre l'interface tant que ce n'est
-   * pas fait.
+   * The requirement does not forbid signing in — one has to be signed in to
+   * turn a second factor on — but it bars the interface until it is done.
    */
   twoFactorRequirement: z.enum(TWO_FACTOR_REQUIREMENTS),
 
@@ -56,24 +55,24 @@ const FIELDS = {
   mailFromName: z.string().max(100),
 
   /**
-   * Délai d'attente des requêtes vers les daemons, en millisecondes.
+   * Timeout for requests to the daemons, in milliseconds.
    *
-   * Trop court, un node chargé passe pour mort ; trop long, l'administration
-   * met dix secondes à s'afficher quand une machine est réellement tombée.
+   * Too short and a busy node passes for dead; too long and the administration
+   * takes ten seconds to render when a machine really has gone down.
    */
   nodeTimeoutMs: z.number().int().min(1000).max(60_000),
 
   /**
-   * Rétention du journal d'activité, en jours. 0 conserve tout.
+   * Activity log retention, in days. 0 keeps everything.
    *
-   * Le journal est la mémoire de l'instance : le purger est un choix
-   * d'exploitation — place disque contre capacité à enquêter — qui ne doit pas
-   * se faire par défaut dans le dos de l'administrateur.
+   * The log is the instance's memory: purging it is an operational choice —
+   * disk space against the ability to investigate — that must not happen by
+   * default behind the administrator's back.
    */
   activityRetentionDays: z.number().int().min(0).max(3650),
 } as const;
 
-/** Valeurs par défaut, appliquées à la lecture d'une instance neuve. */
+/** Default values, applied when reading a fresh instance. */
 const DEFAULTS = {
   panelName: 'Hopper',
   twoFactorRequirement: 'none',
@@ -108,7 +107,7 @@ export const instanceSettingsSchema = z.object({
 
 export type InstanceSettings = z.infer<typeof instanceSettingsSchema>;
 
-/** Paramètres chiffrés au repos et jamais rendus en clair par l'API. */
+/** Settings encrypted at rest and never returned in the clear by the API. */
 export const SECRET_KEYS = ['mailPassword'] as const satisfies readonly (keyof InstanceSettings)[];
 
 export type SecretKey = (typeof SECRET_KEYS)[number];
@@ -118,10 +117,10 @@ export function isSecretKey(key: string): key is SecretKey {
 }
 
 /**
- * Schéma d'écriture : tout est facultatif, et **aucun défaut n'est injecté**.
+ * Write schema: everything is optional, and **no default is injected**.
  *
- * Construit à partir de `FIELDS` et non par `instanceSettingsSchema.partial()`,
- * qui réintroduirait les valeurs par défaut des champs absents.
+ * Built from `FIELDS` rather than by `instanceSettingsSchema.partial()`, which
+ * would reintroduce the defaults of the absent fields.
  */
 export const updateInstanceSettingsSchema = z.object({
   panelName: FIELDS.panelName.optional(),
@@ -144,10 +143,10 @@ export type UpdateInstanceSettingsDto = z.infer<typeof updateInstanceSettingsSch
 export const DEFAULT_SETTINGS: InstanceSettings = instanceSettingsSchema.parse({});
 
 /**
- * Sérialisation vers la table clé/valeur.
+ * Serialisation into the key/value table.
  *
- * Tout y est du texte : le typage vit dans le schéma ci-dessus, et une colonne
- * par paramètre imposerait une migration à chaque ajout.
+ * Everything there is text: the typing lives in the schema above, and one
+ * column per setting would force a migration on every addition.
  */
 export function serializeSetting(value: unknown): string {
   return typeof value === 'string' ? value : JSON.stringify(value);
@@ -161,7 +160,7 @@ export function deserializeSetting(key: keyof InstanceSettings, raw: string): un
     return parsed.data;
   }
 
-  // Les nombres et booléens ont été écrits en JSON : on retente après décodage.
+  // Numbers and booleans were written as JSON: retry after decoding.
   try {
     return JSON.parse(raw);
   } catch {
