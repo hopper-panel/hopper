@@ -6,17 +6,17 @@ const VALID_SECRET = 'b'.repeat(64);
 const VALID_TOKEN = `${VALID_ID}.${VALID_SECRET}`;
 
 describe('parseNodeToken', () => {
-  it('découpe un jeton valide', () => {
+  it('splits a valid token', () => {
     expect(parseNodeToken(VALID_TOKEN)).toEqual({ id: VALID_ID, secret: VALID_SECRET });
   });
 
   it.each([
-    ['chaîne vide', ''],
-    ['sans séparateur', VALID_ID + VALID_SECRET],
+    ['empty string', ''],
+    ['no separator', VALID_ID + VALID_SECRET],
     ['identifiant trop court', `${'a'.repeat(15)}.${VALID_SECRET}`],
     ['secret trop court', `${VALID_ID}.${'b'.repeat(63)}`],
-    ['caractères non alphanumériques', `${'a'.repeat(15)}-.${VALID_SECRET}`],
-    ['séparateurs multiples', `${VALID_ID}.${VALID_SECRET}.extra`],
+    ['non-alphanumeric characters', `${'a'.repeat(15)}-.${VALID_SECRET}`],
+    ['multiple separators', `${VALID_ID}.${VALID_SECRET}.extra`],
     ['espaces en bordure', ` ${VALID_TOKEN} `],
   ])('refuse un jeton %s', (_label, token) => {
     expect(parseNodeToken(token)).toBeNull();
@@ -24,18 +24,18 @@ describe('parseNodeToken', () => {
 });
 
 describe('extractBearerToken', () => {
-  it('extrait le jeton du schéma Bearer', () => {
+  it('extracts the token from the Bearer scheme', () => {
     expect(extractBearerToken(`Bearer ${VALID_TOKEN}`)).toBe(VALID_TOKEN);
   });
 
-  it('accepte une casse différente pour le schéma', () => {
+  it('accepts a different case for the scheme', () => {
     expect(extractBearerToken(`bearer ${VALID_TOKEN}`)).toBe(VALID_TOKEN);
   });
 
   it.each([
-    ['en-tête absent', undefined],
-    ['schéma inconnu', `Basic ${VALID_TOKEN}`],
-    ['schéma seul', 'Bearer'],
+    ['header absent', undefined],
+    ['unknown scheme', `Basic ${VALID_TOKEN}`],
+    ['scheme alone', 'Bearer'],
     ['valeur vide', 'Bearer '],
   ])('retourne null pour %s', (_label, header) => {
     expect(extractBearerToken(header)).toBeNull();
@@ -43,13 +43,13 @@ describe('extractBearerToken', () => {
 });
 
 describe('redactNodeToken', () => {
-  it("n'expose jamais le secret", () => {
+  it('never exposes the secret', () => {
     const redacted = redactNodeToken(VALID_TOKEN);
     expect(redacted).toBe(`${VALID_ID}.<redacted>`);
     expect(redacted).not.toContain(VALID_SECRET);
   });
 
-  it('ne laisse pas fuiter un jeton malformé', () => {
+  it('does not leak a malformed token', () => {
     expect(redactNodeToken('pas-un-jeton-mais-un-secret')).toBe('<invalid-token>');
   });
 });

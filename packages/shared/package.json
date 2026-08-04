@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "license": "AGPL-3.0-or-later",
-  "description": "Contrat partagé entre le panel et le daemon Hopper (schémas Zod, permissions, types)",
+  "description": "Shared contract between the Hopper panel and daemon (Zod schemas, permissions, types)",
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",

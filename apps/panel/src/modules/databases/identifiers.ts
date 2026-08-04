@@ -77,7 +77,7 @@ export function assertSafeName(name: string): string {
  */
 export function quoteIdentifier(identifier: string): string {
   if (identifier.includes('\0')) {
-    throw new IdentifierError("Un identifiant ne peut pas contenir d'octet nul.");
+    throw new IdentifierError('An identifier cannot contain a null byte.');
   }
 
   return `\`${identifier.replace(/`/g, '``')}\``;

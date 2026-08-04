@@ -95,7 +95,7 @@ export class StartupService {
   ): Promise<void> {
     if (!allowed) {
       throw new BadRequestException(
-        "Vous n'avez pas la permission de changer l'image Docker de ce serveur.",
+        "You do not have permission to change this server's Docker image.",
       );
     }
 
