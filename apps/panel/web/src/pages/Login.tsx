@@ -122,7 +122,7 @@ export function LoginPage() {
                   setError(null);
                 }}
               >
-                Revenir en arrière
+                {t('login.back')}
               </Button>
             ) : null}
           </form>

@@ -90,7 +90,7 @@ export function ApiKeysCard() {
       refresh();
     },
     onError: (error: unknown) =>
-      setFailure(error instanceof ApiError ? error.message : 'Création impossible.'),
+      setFailure(error instanceof ApiError ? error.message : t('common.operationFailed')),
   });
 
   const revoke = useMutation({
@@ -100,7 +100,7 @@ export function ApiKeysCard() {
       refresh();
     },
     onError: (error: unknown) =>
-      setFailure(error instanceof ApiError ? error.message : 'Révocation impossible.'),
+      setFailure(error instanceof ApiError ? error.message : t('common.operationFailed')),
   });
 
   const list = keys.data ?? [];

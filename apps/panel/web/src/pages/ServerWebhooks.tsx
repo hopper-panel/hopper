@@ -282,7 +282,7 @@ export function ServerWebhooksPage() {
         footer={
           <>
             <Button variant="ghost" onClick={() => setDraft(null)}>
-              Annuler
+              {t('common.cancel')}
             </Button>
             <Button
               variant="primary"

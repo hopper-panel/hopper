@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { FitAddon } from '@xterm/addon-fit';
 import { Terminal } from '@xterm/xterm';
 import '@xterm/xterm/css/xterm.css';
+import { useTranslation } from '../i18n';
 import type { ConsoleController } from '../lib/use-console';
 
 /**
@@ -21,6 +22,7 @@ const THEME = {
 };
 
 export function Console({ controller }: { controller: ConsoleController }) {
+  const { t } = useTranslation();
   const containerRef = useRef<HTMLDivElement>(null);
   const terminalRef = useRef<Terminal | null>(null);
   const [command, setCommand] = useState('');
@@ -173,13 +175,11 @@ export function Console({ controller }: { controller: ConsoleController }) {
           onChange={(event) => setCommand(event.target.value)}
           onKeyDown={handleKeyDown}
           placeholder={
-            canSendCommand
-              ? 'Tapez une commande, puis Entrée…'
-              : 'Vous n’avez pas la permission d’envoyer des commandes.'
+            canSendCommand ? t('console.commandPlaceholder') : t('console.commandDenied')
           }
           disabled={!canType}
           className="w-full bg-transparent font-mono text-sm text-content placeholder:text-content-subtle focus:outline-none disabled:cursor-not-allowed"
-          aria-label="Commande à envoyer au serveur"
+          aria-label={t('console.commandLabel')}
         />
       </form>
     </div>

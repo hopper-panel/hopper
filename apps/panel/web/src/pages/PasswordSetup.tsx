@@ -28,7 +28,7 @@ export function PasswordSetupPage() {
       setFailure(null);
     },
     onError: (error: unknown) =>
-      setFailure(error instanceof ApiError ? error.message : 'Enregistrement impossible.'),
+      setFailure(error instanceof ApiError ? error.message : t('common.operationFailed')),
   });
 
   const mismatch = confirmation !== '' && password !== confirmation;

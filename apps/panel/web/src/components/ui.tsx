@@ -1,4 +1,5 @@
 import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode } from 'react';
+import { useTranslation } from '../i18n';
 import { cx } from '../lib/cx';
 
 /**
@@ -162,11 +163,13 @@ export function EmptyState({
   );
 }
 
-export function Spinner({ label = 'Chargement…' }: { label?: string }) {
+export function Spinner({ label }: { label?: string }) {
+  const { t } = useTranslation();
+
   return (
     <div className="flex items-center gap-3 py-8 text-sm text-content-muted" role="status">
       <span className="size-4 animate-spin rounded-full border-2 border-border-subtle border-t-accent" />
-      {label}
+      {label ?? t('common.loading')}
     </div>
   );
 }

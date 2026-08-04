@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState, type FormEvent } from 'react';
 import { useParams } from 'react-router-dom';
 import { PageHeader } from '../../components/PageHeader';
+import { useTranslation } from '../../i18n';
 import { Alert, Badge, Button, Card, EmptyState, Field, Input, Spinner } from '../../components/ui';
 import {
   ApiError,
@@ -14,6 +15,7 @@ import {
 import { formatBytes } from '../../lib/format';
 
 export function AdminNodeDetailPage() {
+  const { t } = useTranslation();
   const { uuid = '' } = useParams();
   const queryClient = useQueryClient();
 
@@ -31,8 +33,8 @@ export function AdminNodeDetailPage() {
   const health = useQuery({
     queryKey: ['admin', 'node', uuid, 'health'],
     queryFn: () => api.get<NodeHealth>(`/api/admin/nodes/${uuid}/health`),
-    // Un node injoignable est un état courant, pas une erreur transitoire :
-    // réessayer trois fois ne ferait qu'allonger l'attente de 15 secondes.
+    // An unreachable node is a normal state, not a transient error: retrying
+    // three times would only stretch the wait to 15 seconds.
     retry: false,
     refetchInterval: 30_000,
   });
@@ -63,18 +65,15 @@ export function AdminNodeDetailPage() {
       />
 
       <div className="mb-6 grid gap-4 sm:grid-cols-4">
-        <StatCard label="Serveurs" value={String(node.serverCount)} />
-        <StatCard label="Ports alloués" value={String(node.allocationCount)} />
-        <StatCard label="Mémoire" value={formatBytes(node.memoryBytes)} />
-        <StatCard label="Disque" value={formatBytes(node.diskBytes)} />
+        <StatCard label={t('adminNodes.servers')} value={String(node.serverCount)} />
+        <StatCard label={t('adminNode.allocations')} value={String(node.allocationCount)} />
+        <StatCard label={t('console.memory')} value={formatBytes(node.memoryBytes)} />
+        <StatCard label={t('console.disk')} value={formatBytes(node.diskBytes)} />
       </div>
 
       <Card className="mb-6">
-        <h2 className="font-medium text-content">Ajouter des ports</h2>
-        <p className="mt-1 text-sm text-content-muted">
-          Un port isolé (<code>25565</code>) ou une plage (<code>25565-25585</code>). Les ports déjà
-          présents sont ignorés.
-        </p>
+        <h2 className="font-medium text-content">{t('adminNode.addPorts')}</h2>
+        <p className="mt-1 text-sm text-content-muted">{t('adminNode.portsHelp')}</p>
         <AllocationForm
           onSubmit={(body) => createAllocations.mutate(body)}
           pending={createAllocations.isPending}
@@ -84,12 +83,9 @@ export function AdminNodeDetailPage() {
       </Card>
 
       <Card>
-        <h2 className="mb-3 font-medium text-content">Ports</h2>
+        <h2 className="mb-3 font-medium text-content">{t('adminNodes.ports')}</h2>
         {(allocations?.data.length ?? 0) === 0 ? (
-          <EmptyState
-            title="Aucun port alloué"
-            description="Un serveur a besoin d'au moins un port pour accepter des joueurs."
-          />
+          <EmptyState title={t('adminNode.empty')} description={t('adminNode.addPortsHint')} />
         ) : (
           <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
             {allocations?.data.map((allocation) => (
@@ -106,16 +102,16 @@ export function AdminNodeDetailPage() {
                       {allocation.assignedTo.name}
                     </p>
                   ) : (
-                    <p className="text-xs text-content-muted">libre</p>
+                    <p className="text-xs text-content-muted">{t('adminNode.free')}</p>
                   )}
                 </div>
                 {allocation.assignedTo ? (
-                  <Badge tone="online">utilisé</Badge>
+                  <Badge tone="online">{t('adminNode.used')}</Badge>
                 ) : (
                   <Button
                     variant="ghost"
                     onClick={() => deleteAllocation.mutate(allocation.id)}
-                    aria-label={`Supprimer le port ${allocation.port}`}
+                    aria-label={t('adminNode.removePort', { port: allocation.port })}
                   >
                     ✕
                   </Button>
@@ -130,19 +126,21 @@ export function AdminNodeDetailPage() {
 }
 
 function HealthBadge({ health, isLoading }: { health?: NodeHealth; isLoading: boolean }) {
+  const { t } = useTranslation();
+
   if (isLoading && !health) {
-    return <Badge tone="offline">vérification…</Badge>;
+    return <Badge tone="offline">{t('adminNode.checking')}</Badge>;
   }
 
   if (!health) {
-    return <Badge tone="offline">état inconnu</Badge>;
+    return <Badge tone="offline">{t('adminNode.unknown')}</Badge>;
   }
 
   if (!health.reachable) {
     return <Badge tone="danger">{health.reason}</Badge>;
   }
 
-  return <Badge tone="online">en ligne · {health.latencyMs} ms</Badge>;
+  return <Badge tone="online">{t('adminNode.online', { latency: health.latencyMs })}</Badge>;
 }
 
 function StatCard({ label, value }: { label: string; value: string }) {
@@ -165,6 +163,7 @@ function AllocationForm({
   error: unknown;
   result?: { created: number; skipped: number };
 }) {
+  const { t } = useTranslation();
   const [ip, setIp] = useState('0.0.0.0');
   const [ports, setPorts] = useState('');
 
@@ -184,27 +183,27 @@ function AllocationForm({
       {error instanceof ApiError ? <Alert>{error.message}</Alert> : null}
       {result ? (
         <Alert tone="info">
-          {result.created} port(s) créé(s)
-          {result.skipped > 0 ? `, ${result.skipped} déjà présent(s)` : ''}.
+          {t('adminNode.created', { created: result.created })}
+          {result.skipped > 0 ? ` ${t('adminNode.skipped', { skipped: result.skipped })}` : ''}
         </Alert>
       ) : null}
 
       <div className="grid gap-4 sm:grid-cols-[200px_1fr_auto] sm:items-end">
-        <Field label="Adresse IP">
+        <Field label={t('adminNode.ip')}>
           <Input value={ip} onChange={(event) => setIp(event.target.value)} required />
         </Field>
 
-        <Field label="Ports">
+        <Field label={t('adminNode.portsField')}>
           <Input
             value={ports}
             onChange={(event) => setPorts(event.target.value)}
-            placeholder="25565-25585, 25600"
+            placeholder={t('adminNode.portsPlaceholder')}
             required
           />
         </Field>
 
         <Button type="submit" variant="primary" disabled={pending}>
-          {pending ? 'Ajout…' : 'Ajouter'}
+          {pending ? t('adminNode.adding') : t('adminNode.add')}
         </Button>
       </div>
     </form>

@@ -157,7 +157,7 @@ export function ServerDatabasesPage() {
         footer={
           <>
             <Button variant="ghost" onClick={() => setCreating(false)}>
-              Annuler
+              {t('common.cancel')}
             </Button>
             <Button
               variant="primary"

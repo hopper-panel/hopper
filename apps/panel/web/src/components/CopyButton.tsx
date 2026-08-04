@@ -1,24 +1,26 @@
 import { useEffect, useState } from 'react';
+import { useTranslation } from '../i18n';
 import { copyText } from '../lib/clipboard';
 import { cx } from '../lib/cx';
 
 /**
- * Bouton de copie, avec retour visuel.
+ * Copy button, with visual feedback.
  *
- * Le retour n'est pas décoratif : rien ne distingue un presse-papiers rempli
- * d'un clic sans effet. Et comme la copie peut réellement échouer — le panel
- * servi en HTTP n'a pas accès à l'API du presse-papiers — l'échec est dit,
- * plutôt que confondu avec un succès silencieux.
+ * The feedback is not decorative: nothing distinguishes a filled clipboard from
+ * a click with no effect. And since copying can genuinely fail — a panel served
+ * over plain HTTP has no access to the clipboard API — the failure is said
+ * rather than passed off as a silent success.
  */
 export function CopyButton({
   value,
-  label = 'copier',
+  label,
   className,
 }: {
   value: string;
   label?: string;
   className?: string;
 }) {
+  const { t } = useTranslation();
   const [state, setState] = useState<'idle' | 'copied' | 'failed'>('idle');
 
   useEffect(() => {
@@ -42,7 +44,11 @@ export function CopyButton({
         void copyText(value).then((copied) => setState(copied ? 'copied' : 'failed'));
       }}
     >
-      {state === 'copied' ? 'copié' : state === 'failed' ? 'échec' : label}
+      {state === 'copied'
+        ? t('common.copied')
+        : state === 'failed'
+          ? t('common.failed')
+          : (label ?? t('common.copy'))}
     </button>
   );
 }

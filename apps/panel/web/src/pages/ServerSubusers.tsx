@@ -112,9 +112,7 @@ export function ServerSubusersPage() {
                   </div>
 
                   <p className="mt-1 text-xs text-content-muted">
-                    {subuser.permissions.length} permission
-                    {subuser.permissions.length > 1 ? 's' : ''} accordée
-                    {subuser.permissions.length > 1 ? 's' : ''}
+                    {t('subusers.granted', { count: subuser.permissions.length })}
                   </p>
                 </div>
 
@@ -158,7 +156,7 @@ export function ServerSubusersPage() {
 
       <Modal
         open={draft !== null}
-        title={draft?.uuid ? 'Permissions' : 'Ajouter un accès'}
+        title={t(draft?.uuid ? 'subusers.permissions' : 'subusers.addTitle')}
         onClose={() => setDraft(null)}
         size="lg"
         footer={

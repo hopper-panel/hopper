@@ -4,6 +4,7 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { FileBreadcrumb } from '../components/FileBreadcrumb';
 import { PageHeader } from '../components/PageHeader';
 import { Alert, Badge, Button, Card, Spinner } from '../components/ui';
+import { useTranslation } from '../i18n';
 import { ApiError, api } from '../lib/api';
 import { useServerContext } from '../lib/server-context';
 
@@ -20,6 +21,7 @@ import { useServerContext } from '../lib/server-context';
  * contient des barres obliques, qui découperaient sinon la route.
  */
 export function ServerFileEditPage() {
+  const { t } = useTranslation();
   const { uuid = '' } = useParams();
   const [params] = useSearchParams();
   const navigate = useNavigate();
@@ -47,7 +49,7 @@ export function ServerFileEditPage() {
         } | null;
 
         throw new Error(
-          detail?.error?.message ?? `Ce fichier n’a pas pu être lu (HTTP ${response.status}).`,
+          detail?.error?.message ?? t('fileEdit.readFailed', { status: response.status }),
         );
       }
 
@@ -75,7 +77,7 @@ export function ServerFileEditPage() {
       void load.refetch();
     },
     onError: (caught) =>
-      setError(caught instanceof ApiError ? caught.message : 'Enregistrement impossible.'),
+      setError(caught instanceof ApiError ? caught.message : t('common.operationFailed')),
   });
 
   // Recalculé à chaque frappe, mais c'est une simple jointure de nombres : le
@@ -105,7 +107,7 @@ export function ServerFileEditPage() {
   }, [dirty]);
 
   function close(): void {
-    if (dirty && !window.confirm('Des modifications non enregistrées seront perdues. Fermer ?')) {
+    if (dirty && !window.confirm(t('fileEdit.discardConfirm'))) {
       return;
     }
 
@@ -113,8 +115,8 @@ export function ServerFileEditPage() {
   }
 
   function handleKeyDown(event: KeyboardEvent<HTMLTextAreaElement>): void {
-    // Ctrl+S — ou Cmd+S — enregistre, comme dans n'importe quel éditeur. Sans
-    // cela le raccourci proposerait d'enregistrer la page HTML.
+    // Ctrl+S — or Cmd+S — saves, as in any editor. Without it the shortcut
+    // would offer to save the HTML page.
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') {
       event.preventDefault();
 
@@ -125,7 +127,7 @@ export function ServerFileEditPage() {
   }
 
   if (path === '') {
-    return <Alert>Aucun fichier indiqué.</Alert>;
+    return <Alert>{t('fileEdit.noFile')}</Alert>;
   }
 
   return (
@@ -142,8 +144,8 @@ export function ServerFileEditPage() {
         }
         action={
           <div className="flex flex-wrap items-center gap-2">
-            {dirty ? <Badge tone="warn">modifié</Badge> : null}
-            {!dirty && savedAt ? <Badge tone="online">enregistré</Badge> : null}
+            {dirty ? <Badge tone="warn">{t('fileEdit.modified')}</Badge> : null}
+            {!dirty && savedAt ? <Badge tone="online">{t('fileEdit.saved')}</Badge> : null}
 
             {canWrite ? (
               <Button
@@ -151,12 +153,12 @@ export function ServerFileEditPage() {
                 onClick={() => save.mutate(content)}
                 disabled={save.isPending || !dirty}
               >
-                {save.isPending ? 'Enregistrement…' : 'Enregistrer'}
+                {save.isPending ? t('common.saving') : t('common.save')}
               </Button>
             ) : null}
 
             <Button variant="ghost" onClick={close}>
-              Fermer
+              {t('common.close')}
             </Button>
           </div>
         }
@@ -171,7 +173,7 @@ export function ServerFileEditPage() {
       {load.error ? (
         <div className="mb-4">
           <Alert>
-            {load.error instanceof Error ? load.error.message : 'Lecture impossible.'}{' '}
+            {load.error instanceof Error ? load.error.message : t('common.loadFailed')}{' '}
             <button className="underline" onClick={() => void navigate(filesUrl)}>
               Revenir aux fichiers
             </button>
@@ -180,7 +182,7 @@ export function ServerFileEditPage() {
       ) : null}
 
       {load.isLoading ? (
-        <Spinner label="Chargement du fichier…" />
+        <Spinner label={t('fileEdit.loading')} />
       ) : load.error ? null : (
         <Card className="p-0">
           {/* La hauteur est portée par le conteneur, et non par le texte. Sur
@@ -232,9 +234,7 @@ export function ServerFileEditPage() {
       )}
 
       {!canWrite ? (
-        <p className="mt-3 text-xs text-content-muted">
-          Lecture seule : vous n’avez pas la permission de modifier les fichiers.
-        </p>
+        <p className="mt-3 text-xs text-content-muted">{t('fileEdit.readOnly')}</p>
       ) : (
         <p className="mt-3 text-xs text-content-muted">
           <kbd className="rounded border border-border-subtle px-1">Ctrl</kbd> +{' '}

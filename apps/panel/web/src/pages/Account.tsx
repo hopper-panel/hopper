@@ -60,7 +60,7 @@ function PasswordCard() {
     },
     onError: (error: unknown) => {
       setDone(false);
-      setFailure(error instanceof ApiError ? error.message : 'Changement impossible.');
+      setFailure(error instanceof ApiError ? error.message : t('common.operationFailed'));
     },
   });
 
@@ -145,7 +145,7 @@ function TwoFactorCard() {
       setFailure(null);
     },
     onError: (error: unknown) =>
-      setFailure(error instanceof ApiError ? error.message : 'Activation impossible.'),
+      setFailure(error instanceof ApiError ? error.message : t('common.operationFailed')),
   });
 
   const confirm = useMutation({
@@ -157,7 +157,7 @@ function TwoFactorCard() {
       setRecovery(data.recoveryCodes);
     },
     onError: (error: unknown) =>
-      setFailure(error instanceof ApiError ? error.message : 'Code refusé.'),
+      setFailure(error instanceof ApiError ? error.message : t('account.codeRejected')),
   });
 
   return (

@@ -104,7 +104,7 @@ export function AdminSettingsPage() {
     },
     onError: (error: unknown) => {
       setNotice(null);
-      setFailure(error instanceof ApiError ? error.message : 'Enregistrement impossible.');
+      setFailure(error instanceof ApiError ? error.message : t('common.operationFailed'));
     },
   });
 
@@ -116,7 +116,7 @@ export function AdminSettingsPage() {
     },
     onError: (error: unknown) => {
       setNotice(null);
-      setFailure(error instanceof ApiError ? error.message : 'Envoi impossible.');
+      setFailure(error instanceof ApiError ? error.message : t('common.operationFailed'));
     },
   });
 
@@ -140,7 +140,10 @@ export function AdminSettingsPage() {
         }
       />
 
-      <nav className="mb-4 flex gap-1 border-b border-border-subtle" aria-label="Sections">
+      <nav
+        className="mb-4 flex gap-1 border-b border-border-subtle"
+        aria-label={t('common.sections')}
+      >
         {TABS.map((entry) => (
           <button
             key={entry.id}

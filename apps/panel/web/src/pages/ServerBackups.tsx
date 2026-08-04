@@ -157,7 +157,7 @@ export function ServerBackupsPage() {
         footer={
           <>
             <Button variant="ghost" onClick={() => setCreating(false)}>
-              Annuler
+              {t('common.cancel')}
             </Button>
             <Button
               variant="primary"
@@ -309,7 +309,7 @@ export function ServerBackupsPage() {
                         {t('backups.deleteAction')}
                       </Button>
                       <Button variant="ghost" onClick={() => setConfirming(null)}>
-                        Annuler
+                        {t('common.cancel')}
                       </Button>
                     </div>
                   </Alert>

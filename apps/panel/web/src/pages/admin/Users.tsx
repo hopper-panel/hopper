@@ -57,7 +57,7 @@ export function AdminUsersPage() {
         description={t('adminUsers.count', { count: data?.meta.total ?? 0 })}
         action={
           <Button variant="primary" onClick={() => setCreating((value) => !value)}>
-            {creating ? 'Annuler' : t('adminUsers.create')}
+            {creating ? t('common.cancel') : t('adminUsers.create')}
           </Button>
         }
       />
@@ -86,7 +86,7 @@ export function AdminUsersPage() {
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-border-subtle text-left text-xs text-content-muted">
-              <th className="px-5 py-3 font-medium">Utilisateur</th>
+              <th className="px-5 py-3 font-medium">{t('adminUsers.user')}</th>
               <th className="px-5 py-3 font-medium">{t('adminUsers.role')}</th>
               <th className="px-5 py-3 font-medium">2FA</th>
               <th className="px-5 py-3 font-medium">{t('adminUsers.lastLogin')}</th>

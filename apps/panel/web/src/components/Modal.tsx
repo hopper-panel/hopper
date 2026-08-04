@@ -1,4 +1,5 @@
 import { useEffect, useRef, type ReactNode } from 'react';
+import { useTranslation } from '../i18n';
 import { cx } from '../lib/cx';
 
 /**
@@ -31,6 +32,7 @@ export function Modal({
   /** `lg` pour un contenu dense — une liste de permissions commentées. */
   size?: 'md' | 'lg';
 }) {
+  const { t } = useTranslation();
   const panelRef = useRef<HTMLDivElement>(null);
 
   /**
@@ -109,7 +111,7 @@ export function Modal({
           <h2 className="text-lg font-semibold text-content">{title}</h2>
           <button
             type="button"
-            aria-label="Fermer"
+            aria-label={t('common.close')}
             onClick={onClose}
             className="rounded px-2 text-content-muted transition-colors hover:bg-surface-hover hover:text-content"
           >

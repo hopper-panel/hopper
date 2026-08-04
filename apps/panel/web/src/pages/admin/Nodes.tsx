@@ -3,12 +3,14 @@ import { useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { PageHeader } from '../../components/PageHeader';
 import { Alert, Badge, Button, Card, EmptyState, Field, Input, Spinner } from '../../components/ui';
+import { useTranslation } from '../../i18n';
 import { ApiError, api, type NodeSummary, type Paginated } from '../../lib/api';
 import { formatBytes } from '../../lib/format';
 
 const GIB = 1024 ** 3;
 
 export function AdminNodesPage() {
+  const { t } = useTranslation();
   const queryClient = useQueryClient();
   const [creating, setCreating] = useState(false);
   const [configuration, setConfiguration] = useState<string | null>(null);
@@ -24,7 +26,7 @@ export function AdminNodesPage() {
     onSuccess: (result) => {
       void queryClient.invalidateQueries({ queryKey: ['admin', 'nodes'] });
       setCreating(false);
-      // Le secret n'existe qu'ici : il n'est stocké que chiffré et l'API ne le
+      // The secret exists only here: it is stored encrypted and the API never
       // renverra jamais une seconde fois.
       setConfiguration(result.configuration);
     },
@@ -39,11 +41,11 @@ export function AdminNodesPage() {
   return (
     <>
       <PageHeader
-        title="Nodes"
-        description="Les machines qui exécutent les serveurs."
+        title={t('adminNodes.title')}
+        description={t('adminNodes.subtitle')}
         action={
           <Button variant="primary" onClick={() => setCreating((value) => !value)}>
-            {creating ? 'Annuler' : 'Ajouter un node'}
+            {creating ? t('common.cancel') : t('adminNodes.add')}
           </Button>
         }
       />
@@ -61,10 +63,7 @@ export function AdminNodesPage() {
       ) : null}
 
       {nodes.length === 0 ? (
-        <EmptyState
-          title="Aucun node"
-          description="Un node est une machine sur laquelle tourne hopperd. Ajoutez-en un pour pouvoir créer des serveurs."
-        />
+        <EmptyState title={t('adminNodes.empty')} description={t('adminNodes.emptyHint')} />
       ) : (
         <div className="space-y-3">
           {nodes.map((node) => (
@@ -77,6 +76,7 @@ export function AdminNodesPage() {
 }
 
 function NodeRow({ node }: { node: NodeSummary }) {
+  const { t } = useTranslation();
   return (
     <Link to={`/admin/nodes/${node.uuid}`} className="block">
       <Card className="transition-colors hover:border-accent/50">
@@ -84,7 +84,7 @@ function NodeRow({ node }: { node: NodeSummary }) {
           <div className="min-w-0">
             <div className="flex items-center gap-2">
               <p className="font-medium text-content">{node.name}</p>
-              {node.maintenance ? <Badge tone="warn">maintenance</Badge> : null}
+              {node.maintenance ? <Badge tone="warn">{t('adminNodes.maintenance')}</Badge> : null}
             </div>
             <p className="mt-0.5 font-mono text-xs text-content-muted">
               {node.scheme}://{node.fqdn}:{node.port}
@@ -93,19 +93,19 @@ function NodeRow({ node }: { node: NodeSummary }) {
 
           <dl className="flex gap-6 text-xs">
             <div>
-              <dt className="text-content-muted">Serveurs</dt>
+              <dt className="text-content-muted">{t('adminNodes.servers')}</dt>
               <dd className="mt-0.5 text-content">{node.serverCount}</dd>
             </div>
             <div>
-              <dt className="text-content-muted">Ports</dt>
+              <dt className="text-content-muted">{t('adminNodes.ports')}</dt>
               <dd className="mt-0.5 text-content">{node.allocationCount}</dd>
             </div>
             <div>
-              <dt className="text-content-muted">Mémoire</dt>
+              <dt className="text-content-muted">{t('console.memory')}</dt>
               <dd className="mt-0.5 text-content">{formatBytes(node.memoryBytes)}</dd>
             </div>
             <div>
-              <dt className="text-content-muted">Disque</dt>
+              <dt className="text-content-muted">{t('console.disk')}</dt>
               <dd className="mt-0.5 text-content">{formatBytes(node.diskBytes)}</dd>
             </div>
           </dl>
@@ -124,6 +124,7 @@ function CreateNodeForm({
   pending: boolean;
   error: unknown;
 }) {
+  const { t } = useTranslation();
   const [form, setForm] = useState({
     name: '',
     fqdn: '',
@@ -151,7 +152,7 @@ function CreateNodeForm({
         {error instanceof ApiError ? <Alert>{error.message}</Alert> : null}
 
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Nom">
+          <Field label={t('adminNodes.name')}>
             <Input
               value={form.name}
               onChange={(event) => setForm({ ...form, name: event.target.value })}
@@ -160,10 +161,7 @@ function CreateNodeForm({
             />
           </Field>
 
-          <Field
-            label="FQDN"
-            hint="Doit résoudre depuis le navigateur des utilisateurs : la console s'y connecte directement."
-          >
+          <Field label={t('adminNodes.fqdn')} hint={t('adminNodes.fqdnHint')}>
             <Input
               value={form.fqdn}
               onChange={(event) => setForm({ ...form, fqdn: event.target.value })}
@@ -172,7 +170,7 @@ function CreateNodeForm({
             />
           </Field>
 
-          <Field label="Port du daemon">
+          <Field label={t('adminNodes.daemonPort')}>
             <Input
               type="number"
               value={form.port}
@@ -183,7 +181,7 @@ function CreateNodeForm({
             />
           </Field>
 
-          <Field label="Schéma" hint="HTTPS obligatoire dès que le panel est en HTTPS.">
+          <Field label={t('adminNodes.scheme')} hint={t('adminNodes.schemeHint')}>
             <select
               value={form.scheme}
               onChange={(event) => setForm({ ...form, scheme: event.target.value })}
@@ -194,7 +192,7 @@ function CreateNodeForm({
             </select>
           </Field>
 
-          <Field label="Mémoire (Gio)" hint="0 pour ne pas comptabiliser la capacité.">
+          <Field label={t('adminNodes.memory')} hint={t('adminNodes.capacityHint')}>
             <Input
               type="number"
               value={form.memoryGib}
@@ -204,7 +202,7 @@ function CreateNodeForm({
             />
           </Field>
 
-          <Field label="Disque (Gio)">
+          <Field label={t('adminNodes.disk')}>
             <Input
               type="number"
               value={form.diskGib}
@@ -216,7 +214,7 @@ function CreateNodeForm({
         </div>
 
         <Button type="submit" variant="primary" disabled={pending}>
-          {pending ? 'Création…' : 'Créer le node'}
+          {pending ? t('adminNodes.creating') : t('adminNodes.create')}
         </Button>
       </form>
     </Card>
@@ -224,23 +222,19 @@ function CreateNodeForm({
 }
 
 function DaemonConfiguration({ value, onDismiss }: { value: string; onDismiss: () => void }) {
+  const { t } = useTranslation();
   const [copied, setCopied] = useState(false);
 
   return (
     <Card className="mb-6 border-accent/40">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h2 className="font-medium text-content">Configuration du daemon</h2>
-          <p className="mt-1 text-sm text-content-muted">
-            À placer dans <code className="text-content">/etc/hopper/daemon.yml</code> sur la
-            machine, puis <code className="text-content">chmod 600</code> et redémarrage de hopperd.
-          </p>
-          <p className="mt-2 text-sm text-accent">
-            Le secret n’est affiché qu’une seule fois. Le perdre impose une rotation du jeton.
-          </p>
+          <h2 className="font-medium text-content">{t('adminNodes.configTitle')}</h2>
+          <p className="mt-1 text-sm text-content-muted">{t('adminNodes.configSteps')}</p>
+          <p className="mt-2 text-sm text-accent">{t('adminNodes.configNote')}</p>
         </div>
         <Button variant="ghost" onClick={onDismiss}>
-          Fermer
+          {t('common.close')}
         </Button>
       </div>
 
@@ -254,7 +248,7 @@ function DaemonConfiguration({ value, onDismiss }: { value: string; onDismiss: (
           void navigator.clipboard.writeText(value).then(() => setCopied(true));
         }}
       >
-        {copied ? 'Copié' : 'Copier'}
+        {copied ? t('adminNodes.copied') : t('adminNodes.copy')}
       </Button>
     </Card>
   );

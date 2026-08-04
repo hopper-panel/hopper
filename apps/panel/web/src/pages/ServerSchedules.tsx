@@ -205,7 +205,7 @@ export function ServerSchedulesPage() {
                   ) : null}
                   {can('schedule.update') ? (
                     <Button variant="ghost" onClick={() => setDraft(schedule)}>
-                      Modifier
+                      {t('common.edit')}
                     </Button>
                   ) : null}
                   {can('schedule.delete') ? (

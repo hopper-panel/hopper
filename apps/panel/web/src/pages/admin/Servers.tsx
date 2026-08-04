@@ -54,11 +54,11 @@ export function AdminServersPage() {
   return (
     <>
       <PageHeader
-        title="Serveurs"
-        description={`${data?.meta.total ?? 0} serveur(s) sur l'instance`}
+        title={t('adminServers.title')}
+        description={t('adminServers.count', { count: data?.meta.total ?? 0 })}
         action={
           <Button variant="primary" onClick={() => setCreating((value) => !value)}>
-            {creating ? 'Annuler' : 'Créer un serveur'}
+            {creating ? t('common.cancel') : t('adminServers.create')}
           </Button>
         }
       />
@@ -72,20 +72,17 @@ export function AdminServersPage() {
       ) : null}
 
       {servers.length === 0 ? (
-        <EmptyState
-          title="Aucun serveur"
-          description="Créez d'abord un node et allouez-lui des ports, puis créez un serveur."
-        />
+        <EmptyState title={t('adminServers.empty')} description={t('adminServers.emptyHint')} />
       ) : (
         <Card className="p-0">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border-subtle text-left text-xs text-content-muted">
-                <th className="px-5 py-3 font-medium">Serveur</th>
-                <th className="px-5 py-3 font-medium">État</th>
-                <th className="px-5 py-3 font-medium">Node</th>
-                <th className="px-5 py-3 font-medium">Adresse</th>
-                <th className="px-5 py-3 font-medium">Mémoire</th>
+                <th className="px-5 py-3 font-medium">{t('adminServers.server')}</th>
+                <th className="px-5 py-3 font-medium">{t('adminServers.state')}</th>
+                <th className="px-5 py-3 font-medium">{t('adminServers.node')}</th>
+                <th className="px-5 py-3 font-medium">{t('adminServers.address')}</th>
+                <th className="px-5 py-3 font-medium">{t('adminServers.memory')}</th>
               </tr>
             </thead>
             <tbody>
@@ -129,6 +126,7 @@ function CreateServerForm({
   pending: boolean;
   error: unknown;
 }) {
+  const { t } = useTranslation();
   const [form, setForm] = useState({
     name: '',
     ownerUuid: '',
@@ -155,8 +153,8 @@ function CreateServerForm({
     queryFn: () => api.get<TemplateSummary[]>('/api/admin/templates'),
   });
 
-  // Les ports libres dépendent du node : la requête n'a de sens qu'une fois
-  // celui-ci choisi.
+  // Free ports depend on the node: the query only makes sense once one is
+  // chosen.
   const { data: allocations } = useQuery({
     queryKey: ['admin', 'node', form.nodeUuid, 'allocations'],
     queryFn: () =>
@@ -189,17 +187,17 @@ function CreateServerForm({
         {error instanceof ApiError ? <Alert>{error.message}</Alert> : null}
 
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Nom du serveur">
+          <Field label={t('adminServers.name')}>
             <Input
               value={form.name}
               onChange={(event) => setForm({ ...form, name: event.target.value })}
-              placeholder="Survie"
+              placeholder={t('adminServers.namePlaceholder')}
               required
             />
           </Field>
 
           <Select
-            label="Propriétaire"
+            label={t('adminServers.owner')}
             value={form.ownerUuid}
             onChange={(value) => setForm({ ...form, ownerUuid: value })}
             options={(users?.data ?? []).map((user) => ({
@@ -209,17 +207,19 @@ function CreateServerForm({
           />
 
           <Select
-            label="Node"
+            label={t('adminServers.node')}
             value={form.nodeUuid}
             onChange={(value) => setForm({ ...form, nodeUuid: value, allocationId: '' })}
             options={(nodes?.data ?? []).map((node) => ({
               value: node.uuid,
-              label: `${node.name}${node.maintenance ? ' (maintenance)' : ''}`,
+              label: node.maintenance
+                ? `${node.name} (${t('adminServers.maintenance')})`
+                : node.name,
             }))}
           />
 
           <Select
-            label="Port"
+            label={t('adminServers.port')}
             value={form.allocationId}
             onChange={(value) => setForm({ ...form, allocationId: value })}
             options={freeAllocations.map((allocation) => ({
@@ -228,15 +228,15 @@ function CreateServerForm({
             }))}
             hint={
               form.nodeUuid === ''
-                ? "Choisissez d'abord un node."
+                ? t('adminServers.chooseNode')
                 : freeAllocations.length === 0
-                  ? 'Aucun port libre sur ce node.'
+                  ? t('adminServers.noFreePort')
                   : undefined
             }
           />
 
           <Select
-            label="Template"
+            label={t('adminServers.template')}
             value={form.templateUuid}
             onChange={(value) => {
               setForm({ ...form, templateUuid: value });
@@ -256,7 +256,7 @@ function CreateServerForm({
           />
 
           <div className="grid grid-cols-2 gap-4">
-            <Field label="Mémoire (Gio)">
+            <Field label={t('adminServers.memoryGib')}>
               <Input
                 type="number"
                 value={form.memoryGib}
@@ -266,7 +266,7 @@ function CreateServerForm({
                 required
               />
             </Field>
-            <Field label="Disque (Gio)">
+            <Field label={t('adminServers.diskGib')}>
               <Input
                 type="number"
                 value={form.diskGib}
@@ -278,12 +278,13 @@ function CreateServerForm({
           </div>
         </div>
 
-        {/* Seules les variables modifiables sont affichées : les autres entrent
-            dans la commande de démarrage et l'API ignore toute valeur envoyée
-            pour elles. */}
+        {/* Only editable variables are shown: the others feed the startup
+            command, and the API ignores any value sent for them. */}
         {template && template.variables.some((variable) => variable.userEditable) ? (
           <div className="border-t border-border-subtle pt-4">
-            <p className="mb-3 text-sm font-medium text-content">Options du template</p>
+            <p className="mb-3 text-sm font-medium text-content">
+              {t('adminServers.templateOptions')}
+            </p>
             <div className="grid gap-4 sm:grid-cols-2">
               {template.variables
                 .filter((variable) => variable.userEditable)
@@ -302,7 +303,7 @@ function CreateServerForm({
         ) : null}
 
         <Button type="submit" variant="primary" disabled={pending}>
-          {pending ? 'Création…' : 'Créer le serveur'}
+          {pending ? t('common.saving') : t('adminServers.submit')}
         </Button>
       </form>
     </Card>
@@ -322,6 +323,8 @@ function Select({
   options: { value: string; label: string }[];
   hint?: string;
 }) {
+  const { t } = useTranslation();
+
   return (
     <Field label={label} hint={hint}>
       <select
@@ -330,7 +333,7 @@ function Select({
         required
         className="w-full rounded-lg border border-border-subtle bg-surface px-3 py-2 text-sm text-content focus:border-accent focus:outline-none"
       >
-        <option value="">— choisir —</option>
+        <option value="">{t('adminServers.choose')}</option>
         {options.map((option) => (
           <option key={option.value} value={option.value}>
             {option.label}

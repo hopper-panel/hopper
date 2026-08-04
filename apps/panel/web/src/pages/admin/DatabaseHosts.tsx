@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { Modal } from '../../components/Modal';
 import { PageHeader } from '../../components/PageHeader';
 import { Alert, Badge, Button, Card, EmptyState, Field, Input, Spinner } from '../../components/ui';
+import { useTranslation } from '../../i18n';
 import { ApiError, api, type Paginated } from '../../lib/api';
 
 interface Host {
@@ -33,6 +34,7 @@ const EMPTY = {
 };
 
 export function AdminDatabaseHostsPage() {
+  const { t } = useTranslation();
   const queryClient = useQueryClient();
   const [draft, setDraft] = useState<typeof EMPTY | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
@@ -54,7 +56,7 @@ export function AdminDatabaseHostsPage() {
 
   const fail = (error: unknown): void => {
     setNotice(null);
-    setFailure(error instanceof ApiError ? error.message : 'Opération impossible.');
+    setFailure(error instanceof ApiError ? error.message : t('common.operationFailed'));
   };
 
   const create = useMutation({
@@ -71,7 +73,7 @@ export function AdminDatabaseHostsPage() {
     onSuccess: () => {
       setDraft(null);
       setFailure(null);
-      setNotice('Serveur déclaré : la connexion et les droits ont été vérifiés.');
+      setNotice(t('adminHosts.declared'));
       refresh();
     },
     onError: fail,
@@ -82,7 +84,7 @@ export function AdminDatabaseHostsPage() {
       api.post<{ version: string }>(`/api/admin/database-hosts/${uuid}/test`),
     onSuccess: (data) => {
       setFailure(null);
-      setNotice(`Connexion établie — version ${data.version}.`);
+      setNotice(t('adminHosts.connected', { version: data.version }));
     },
     onError: fail,
   });
@@ -98,7 +100,7 @@ export function AdminDatabaseHostsPage() {
   });
 
   if (hosts.isLoading) {
-    return <Spinner label="Chargement des serveurs de bases…" />;
+    return <Spinner label={t('common.loading')} />;
   }
 
   const list = hosts.data?.data ?? [];
@@ -106,11 +108,11 @@ export function AdminDatabaseHostsPage() {
   return (
     <>
       <PageHeader
-        title="Serveurs de bases de données"
-        description="Serveurs MySQL ou MariaDB sur lesquels les serveurs de jeu peuvent créer leurs bases."
+        title={t('adminHosts.title')}
+        description={t('adminHosts.subtitle')}
         action={
           <Button variant="primary" onClick={() => setDraft({ ...EMPTY })}>
-            Déclarer un serveur
+            {t('adminHosts.declare')}
           </Button>
         }
       />
@@ -128,10 +130,7 @@ export function AdminDatabaseHostsPage() {
       ) : null}
 
       {list.length === 0 ? (
-        <EmptyState
-          title="Aucun serveur de bases déclaré"
-          description="Tant qu’aucun n’est déclaré, l’onglet « Bases de données » d’un serveur ne peut rien créer."
-        />
+        <EmptyState title={t('adminHosts.empty')} description={t('adminHosts.emptyHint')} />
       ) : (
         <div className="flex flex-col gap-2">
           {list.map((host) => (
@@ -143,32 +142,34 @@ export function AdminDatabaseHostsPage() {
                     {host.node ? (
                       <Badge>{host.node.name}</Badge>
                     ) : (
-                      <Badge tone="warn">tous les nodes</Badge>
+                      <Badge tone="warn">{t('adminHosts.allNodes')}</Badge>
                     )}
-                    <Badge>{host.databases} base(s)</Badge>
+                    <Badge>{t('adminHosts.databases', { count: host.databases })}</Badge>
                   </div>
 
                   <p className="mt-1 font-mono text-xs text-content-muted">
                     {host.username}@{host.host}:{host.port}
-                    {host.publicHost ? ` · annoncé : ${host.publicHost}` : null}
+                    {host.publicHost
+                      ? ` · ${t('adminHosts.announced', { host: host.publicHost })}`
+                      : null}
                   </p>
                 </div>
 
                 <div className="flex flex-wrap gap-2">
                   <Button onClick={() => test.mutate(host.uuid)} disabled={test.isPending}>
-                    Tester
+                    {t('adminHosts.test')}
                   </Button>
 
                   <Button
                     variant="danger"
                     disabled={remove.isPending}
                     onClick={() => {
-                      if (window.confirm(`Retirer le serveur « ${host.name} » ?`)) {
+                      if (window.confirm(t('adminHosts.confirmRemove', { name: host.name }))) {
                         remove.mutate(host.uuid);
                       }
                     }}
                   >
-                    Retirer
+                    {t('adminHosts.remove')}
                   </Button>
                 </div>
               </div>
@@ -179,12 +180,12 @@ export function AdminDatabaseHostsPage() {
 
       <Modal
         open={draft !== null}
-        title="Déclarer un serveur de bases de données"
+        title={t('adminHosts.modalTitle')}
         onClose={() => setDraft(null)}
         footer={
           <>
             <Button variant="ghost" onClick={() => setDraft(null)}>
-              Annuler
+              {t('common.cancel')}
             </Button>
             <Button
               variant="primary"
@@ -197,27 +198,24 @@ export function AdminDatabaseHostsPage() {
                 !draft.password
               }
             >
-              {create.isPending ? 'Vérification…' : 'Déclarer'}
+              {create.isPending ? t('adminHosts.checking') : t('adminHosts.declare')}
             </Button>
           </>
         }
       >
         {draft ? (
           <div className="flex flex-col gap-5">
-            <Field label="Nom">
+            <Field label={t('adminHosts.name')}>
               <Input
                 value={draft.name}
                 onChange={(event) => setDraft({ ...draft, name: event.target.value })}
-                placeholder="MariaDB local"
+                placeholder={t('adminHosts.namePlaceholder')}
               />
             </Field>
 
             <div className="grid gap-4 sm:grid-cols-3">
               <div className="sm:col-span-2">
-                <Field
-                  label="Adresse vue par le panel"
-                  hint="Celle qu’emprunte le panel pour administrer le serveur SQL."
-                >
+                <Field label={t('adminHosts.panelAddress')} hint={t('adminHosts.panelAddressHint')}>
                   <Input
                     value={draft.host}
                     onChange={(event) => setDraft({ ...draft, host: event.target.value })}
@@ -227,7 +225,7 @@ export function AdminDatabaseHostsPage() {
                 </Field>
               </div>
 
-              <Field label="Port">
+              <Field label={t('adminHosts.port')}>
                 <Input
                   value={draft.port}
                   onChange={(event) => setDraft({ ...draft, port: event.target.value })}
@@ -237,7 +235,7 @@ export function AdminDatabaseHostsPage() {
             </div>
 
             <div className="grid gap-4 sm:grid-cols-2">
-              <Field label="Compte d’administration">
+              <Field label={t('adminHosts.account')}>
                 <Input
                   value={draft.username}
                   onChange={(event) => setDraft({ ...draft, username: event.target.value })}
@@ -245,10 +243,7 @@ export function AdminDatabaseHostsPage() {
                 />
               </Field>
 
-              <Field
-                label="Mot de passe"
-                hint="Stocké chiffré : le panel doit le présenter à chaque connexion."
-              >
+              <Field label={t('adminHosts.password')} hint={t('adminHosts.passwordHint')}>
                 <Input
                   type="password"
                   value={draft.password}
@@ -257,28 +252,22 @@ export function AdminDatabaseHostsPage() {
               </Field>
             </div>
 
-            <Field
-              label="Adresse annoncée aux joueurs"
-              hint="Laissée vide, c’est l’adresse ci-dessus qui est communiquée. À renseigner quand le panel passe par un réseau interne inaccessible de l’extérieur."
-            >
+            <Field label={t('adminHosts.publicAddress')} hint={t('adminHosts.publicAddressHint')}>
               <Input
                 value={draft.publicHost}
                 onChange={(event) => setDraft({ ...draft, publicHost: event.target.value })}
-                placeholder="mysql.exemple.fr"
+                placeholder={t('adminHosts.publicPlaceholder')}
                 className="font-mono"
               />
             </Field>
 
-            <Field
-              label="Réservé à un node"
-              hint="Une base gagne à vivre près du serveur qui l’interroge. Sans choix, ce serveur est proposé à tous les nodes."
-            >
+            <Field label={t('adminHosts.nodeScope')} hint={t('adminHosts.nodeScopeHint')}>
               <select
                 className="w-full rounded-lg border border-border-subtle bg-surface px-3 py-2 text-sm text-content"
                 value={draft.nodeUuid}
                 onChange={(event) => setDraft({ ...draft, nodeUuid: event.target.value })}
               >
-                <option value="">Tous les nodes</option>
+                <option value="">{t('adminHosts.allNodesOption')}</option>
                 {(nodes.data?.data ?? []).map((node) => (
                   <option key={node.uuid} value={node.uuid}>
                     {node.name}
@@ -287,12 +276,10 @@ export function AdminDatabaseHostsPage() {
               </select>
             </Field>
 
-            {/* La déclaration éprouve la connexion **et** les droits : un compte
-                qui se connecte sans pouvoir créer de base donnerait un serveur
-                qui paraît sain et échoue à la première utilisation. */}
-            <Alert tone="info">
-              La connexion sera testée avant enregistrement, droits de création compris.
-            </Alert>
+            {/* Declaring probes the connection *and* the privileges: an account
+                that connects without being able to create a database would look
+                healthy and fail on first use. */}
+            <Alert tone="info">{t('adminHosts.willTest')}</Alert>
           </div>
         ) : null}
       </Modal>

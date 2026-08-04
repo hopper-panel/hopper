@@ -338,8 +338,13 @@ export function ServerFilesPage() {
       {uploading ? (
         <Card className="mb-4">
           <p className="text-sm text-content">
-            Envoi de <span className="font-mono">{uploading.name}</span>
-            {uploading.total > 1 ? ` — ${uploading.done + 1} sur ${uploading.total}` : null}
+            {t('files.sendingFile', { name: uploading.name })}
+            {uploading.total > 1
+              ? ` — ${t('files.sendingProgress', {
+                  done: uploading.done + 1,
+                  total: uploading.total,
+                })}`
+              : null}
           </p>
         </Card>
       ) : null}

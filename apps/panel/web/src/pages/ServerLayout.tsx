@@ -111,7 +111,7 @@ export function ServerLayout() {
       <div className="border-b border-border-subtle bg-surface-raised">
         <div className="mx-auto max-w-7xl px-4">
           {/* `-mb-px` draws the active underline over the band border. */}
-          <nav className="-mb-px flex gap-1 overflow-x-auto" aria-label="Sections du serveur">
+          <nav className="-mb-px flex gap-1 overflow-x-auto" aria-label={t('server.sections')}>
             {TABS.filter((tab) => !tab.permission || can(tab.permission)).map((tab) => (
               <NavLink
                 key={tab.path}
