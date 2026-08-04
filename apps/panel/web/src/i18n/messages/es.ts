@@ -553,4 +553,144 @@ export const es: Partial<Messages> = {
   'subusers.remove': 'Quitar',
   'subusers.removeConfirm': '¿Quitar el acceso de {name}?',
   'subusers.checkGroup': 'Marcar todo en «{group}»',
+
+  'permGroup.control.label': 'Control del servidor',
+  'permGroup.control.desc':
+    'Encender, apagar y reiniciar el servidor, y enviarle comandos desde la consola.',
+  'permGroup.user.label': 'Subusuarios',
+  'permGroup.user.desc':
+    'Gestionar el acceso de otras cuentas a este servidor. Nadie puede conceder un permiso que no tenga, ni cambiar su propio acceso.',
+  'permGroup.file.label': 'Archivos',
+  'permGroup.file.desc':
+    'Explorar, editar y subir los archivos del servidor, desde el panel y por SFTP.',
+  'permGroup.backup.label': 'Copias de seguridad',
+  'permGroup.backup.desc': 'Crear, descargar y restaurar archivos completos del servidor.',
+  'permGroup.database.label': 'Bases de datos',
+  'permGroup.database.desc':
+    'Crear y consultar las bases MySQL del servidor. Consultarlas es ver su contraseña: ese permiso da acceso a todo su contenido.',
+  'permGroup.allocation.label': 'Puertos',
+  'permGroup.allocation.desc':
+    'Consultar y cambiar las direcciones y puertos en los que escucha el servidor.',
+  'permGroup.startup.label': 'Arranque',
+  'permGroup.startup.desc':
+    'Cambiar el comando de lanzamiento, las variables de la plantilla y la versión de Java.',
+  'permGroup.schedule.label': 'Tareas programadas',
+  'permGroup.schedule.desc':
+    'Programar comandos, reinicios y copias de seguridad a horas concretas.',
+  'permGroup.webhook.label': 'Notificaciones',
+  'permGroup.webhook.desc':
+    'Declarar direcciones avisadas de los eventos del servidor — Discord, o cualquier servicio que acepte una petición entrante.',
+  'permGroup.settings.label': 'Ajustes',
+  'permGroup.settings.desc':
+    'Renombrar el servidor, reinstalarlo y consultar su registro de actividad.',
+
+  'perm.WEBSOCKET_CONNECT.label': 'Conectarse',
+  'perm.WEBSOCKET_CONNECT.desc':
+    'Ver el servidor y su consola en solo lectura. Se concede de oficio: sin ella un subusuario no vería el servidor al que acaban de darle acceso.',
+  'perm.CONTROL_CONSOLE.label': 'Enviar comandos',
+  'perm.CONTROL_CONSOLE.desc':
+    'Escribir comandos en la consola. Equivale a la consola de administración del juego: un comando puede dar operador a cualquiera.',
+  'perm.CONTROL_START.label': 'Iniciar',
+  'perm.CONTROL_START.desc': 'Encender el servidor cuando está apagado.',
+  'perm.CONTROL_STOP.label': 'Detener',
+  'perm.CONTROL_STOP.desc':
+    'Apagar el servidor, y matarlo si la parada limpia falla. Un servidor matado puede perder los últimos cambios del mundo.',
+  'perm.CONTROL_RESTART.label': 'Reiniciar',
+  'perm.CONTROL_RESTART.desc': 'Relanzar el servidor. Permite encenderlo, pero no dejarlo apagado.',
+  'perm.USER_READ.label': 'Ver los accesos',
+  'perm.USER_READ.desc': 'Consultar la lista de subusuarios y los permisos de cada uno.',
+  'perm.USER_CREATE.label': 'Dar acceso',
+  'perm.USER_CREATE.desc': 'Abrir el servidor a una cuenta ya existente del panel.',
+  'perm.USER_UPDATE.label': 'Cambiar accesos',
+  'perm.USER_UPDATE.desc': 'Cambiar los permisos de otro subusuario.',
+  'perm.USER_DELETE.label': 'Quitar un acceso',
+  'perm.USER_DELETE.desc': 'Revocar el acceso de otro subusuario al servidor.',
+  'perm.FILE_READ.label': 'Explorar',
+  'perm.FILE_READ.desc': 'Listar carpetas y ver nombres, tamaños y fechas, sin abrir los archivos.',
+  'perm.FILE_READ_CONTENT.label': 'Leer el contenido',
+  'perm.FILE_READ_CONTENT.desc':
+    'Abrir y descargar archivos. Las configuraciones de plugins suelen contener contraseñas de bases de datos.',
+  'perm.FILE_CREATE.label': 'Crear y subir',
+  'perm.FILE_CREATE.desc':
+    'Crear carpetas y subir archivos. Dejar un plugin equivale a hacer ejecutar código al servidor.',
+  'perm.FILE_UPDATE.label': 'Modificar',
+  'perm.FILE_UPDATE.desc':
+    'Escribir en los archivos, renombrarlos, moverlos y cambiar sus permisos.',
+  'perm.FILE_DELETE.label': 'Eliminar',
+  'perm.FILE_DELETE.desc': 'Borrar archivos y carpetas, el mundo incluido.',
+  'perm.FILE_ARCHIVE.label': 'Comprimir y extraer',
+  'perm.FILE_ARCHIVE.desc':
+    'Crear archivos comprimidos y extraer su contenido en la carpeta del servidor.',
+  'perm.FILE_SFTP.label': 'Acceso SFTP',
+  'perm.FILE_SFTP.desc':
+    'Conectarse por SFTP con las credenciales del panel. Los permisos de archivos de arriba también se aplican allí.',
+  'perm.BACKUP_READ.label': 'Ver las copias',
+  'perm.BACKUP_READ.desc': 'Consultar la lista de copias y su estado.',
+  'perm.BACKUP_CREATE.label': 'Crear',
+  'perm.BACKUP_CREATE.desc':
+    'Lanzar una copia. Alcanzado el límite, se sustituye la más antigua sin bloquear.',
+  'perm.BACKUP_DELETE.label': 'Eliminar y bloquear',
+  'perm.BACKUP_DELETE.desc': 'Borrar una copia, y poner o quitar el bloqueo que la protege.',
+  'perm.BACKUP_DOWNLOAD.label': 'Descargar',
+  'perm.BACKUP_DOWNLOAD.desc':
+    'Llevarse una copia completa del servidor, mundo y configuraciones incluidos.',
+  'perm.BACKUP_RESTORE.label': 'Restaurar',
+  'perm.BACKUP_RESTORE.desc':
+    'Devolver el servidor al estado de una copia. Borra todo lo hecho desde entonces.',
+  'perm.DATABASE_READ.label': 'Ver las bases',
+  'perm.DATABASE_READ.desc':
+    'Consultar las bases del servidor, contraseña incluida: este permiso da acceso a todo su contenido.',
+  'perm.DATABASE_CREATE.label': 'Crear una base',
+  'perm.DATABASE_CREATE.desc':
+    'Crear una base MySQL y su cuenta dedicada, dentro del límite del servidor.',
+  'perm.DATABASE_UPDATE.label': 'Cambiar la contraseña',
+  'perm.DATABASE_UPDATE.desc':
+    'Regenerar la contraseña de una base. La anterior deja de funcionar al instante: los plugins configurados con ella pierden la conexión.',
+  'perm.DATABASE_DELETE.label': 'Eliminar una base',
+  'perm.DATABASE_DELETE.desc': 'Borrar una base y su contenido. Esta acción es irreversible.',
+  'perm.ALLOCATION_READ.label': 'Ver los puertos',
+  'perm.ALLOCATION_READ.desc': 'Consultar las direcciones y puertos asignados al servidor.',
+  'perm.ALLOCATION_CREATE.label': 'Añadir un puerto',
+  'perm.ALLOCATION_CREATE.desc':
+    'Asignar un puerto más al servidor, para un mapa dinámico por ejemplo.',
+  'perm.ALLOCATION_UPDATE.label': 'Cambiar los puertos',
+  'perm.ALLOCATION_UPDATE.desc':
+    'Cambiar el puerto principal y las etiquetas de los puertos asignados.',
+  'perm.ALLOCATION_DELETE.label': 'Quitar un puerto',
+  'perm.ALLOCATION_DELETE.desc': 'Devolver un puerto adicional al nodo.',
+  'perm.STARTUP_READ.label': 'Ver el arranque',
+  'perm.STARTUP_READ.desc': 'Consultar el comando de lanzamiento y las variables de la plantilla.',
+  'perm.STARTUP_UPDATE.label': 'Cambiar el arranque',
+  'perm.STARTUP_UPDATE.desc':
+    'Cambiar las variables de la plantilla, incluido el archivo que se ejecuta al arrancar.',
+  'perm.STARTUP_DOCKER_IMAGE.label': 'Cambiar la imagen Docker',
+  'perm.STARTUP_DOCKER_IMAGE.desc':
+    'Elegir la versión de Java que ejecuta el servidor, entre las que ofrece la plantilla.',
+  'perm.SCHEDULE_READ.label': 'Ver las tareas',
+  'perm.SCHEDULE_READ.desc': 'Consultar las tareas programadas y sus próximas ejecuciones.',
+  'perm.SCHEDULE_CREATE.label': 'Crear una tarea',
+  'perm.SCHEDULE_CREATE.desc': 'Programar comandos, reinicios y copias automáticas.',
+  'perm.SCHEDULE_UPDATE.label': 'Editar y ejecutar',
+  'perm.SCHEDULE_UPDATE.desc':
+    'Cambiar el horario y los pasos de una tarea, y lanzarla de inmediato.',
+  'perm.SCHEDULE_DELETE.label': 'Eliminar una tarea',
+  'perm.SCHEDULE_DELETE.desc': 'Retirar definitivamente una tarea programada.',
+  'perm.SETTINGS_RENAME.label': 'Renombrar',
+  'perm.SETTINGS_RENAME.desc': 'Cambiar el nombre y la descripción del servidor en el panel.',
+  'perm.SETTINGS_REINSTALL.label': 'Reinstalar',
+  'perm.SETTINGS_REINSTALL.desc':
+    'Volver a ejecutar el script de instalación de la plantilla. Según la plantilla, pueden sobrescribirse archivos del servidor.',
+  'perm.ACTIVITY_READ.label': 'Ver la actividad',
+  'perm.ACTIVITY_READ.desc':
+    'Consultar el registro de lo que se ha hecho en este servidor, y por quién.',
+  'perm.WEBHOOK_READ.label': 'Ver las notificaciones',
+  'perm.WEBHOOK_READ.desc': 'Consultar las direcciones avisadas de los eventos del servidor.',
+  'perm.WEBHOOK_CREATE.label': 'Añadir una notificación',
+  'perm.WEBHOOK_CREATE.desc':
+    'Declarar una dirección que el panel llamará. El panel emite entonces una petición saliente hacia una dirección elegida por quien tiene este permiso.',
+  'perm.WEBHOOK_UPDATE.label': 'Editar una notificación',
+  'perm.WEBHOOK_UPDATE.desc':
+    'Cambiar la dirección, los eventos suscritos o el estado de una notificación.',
+  'perm.WEBHOOK_DELETE.label': 'Eliminar una notificación',
+  'perm.WEBHOOK_DELETE.desc': 'Quitar una dirección avisada.',
 };

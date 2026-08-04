@@ -551,4 +551,135 @@ export const ru: Partial<Messages> = {
   'subusers.remove': 'Убрать',
   'subusers.removeConfirm': 'Убрать доступ для {name}?',
   'subusers.checkGroup': 'Отметить всё в «{group}»',
+
+  'permGroup.control.label': 'Управление сервером',
+  'permGroup.control.desc':
+    'Включать, выключать и перезапускать сервер, отправлять ему команды из консоли.',
+  'permGroup.user.label': 'Субпользователи',
+  'permGroup.user.desc':
+    'Управлять доступом других учётных записей к этому серверу. Нельзя выдать право, которого нет у самого, и нельзя изменить собственный доступ.',
+  'permGroup.file.label': 'Файлы',
+  'permGroup.file.desc': 'Просматривать, изменять и загружать файлы сервера — из панели и по SFTP.',
+  'permGroup.backup.label': 'Резервные копии',
+  'permGroup.backup.desc': 'Создавать, скачивать и восстанавливать полные архивы сервера.',
+  'permGroup.database.label': 'Базы данных',
+  'permGroup.database.desc':
+    'Создавать и просматривать базы MySQL сервера. Просмотр означает доступ к паролю: это право открывает всё их содержимое.',
+  'permGroup.allocation.label': 'Порты',
+  'permGroup.allocation.desc': 'Просматривать и менять адреса и порты, на которых слушает сервер.',
+  'permGroup.startup.label': 'Запуск',
+  'permGroup.startup.desc':
+    'Менять команду запуска, переменные шаблона и используемую версию Java.',
+  'permGroup.schedule.label': 'Расписание',
+  'permGroup.schedule.desc':
+    'Планировать команды, перезапуски и резервные копии на заданное время.',
+  'permGroup.webhook.label': 'Уведомления',
+  'permGroup.webhook.desc':
+    'Указывать адреса, которым сообщают о событиях сервера — Discord или любой сервис, принимающий входящий запрос.',
+  'permGroup.settings.label': 'Настройки',
+  'permGroup.settings.desc':
+    'Переименовывать сервер, переустанавливать его и читать журнал активности.',
+
+  'perm.WEBSOCKET_CONNECT.label': 'Подключаться',
+  'perm.WEBSOCKET_CONNECT.desc':
+    'Видеть сервер и его консоль только для чтения. Выдаётся сразу: без него субпользователь не увидел бы сервер, к которому ему только что дали доступ.',
+  'perm.CONTROL_CONSOLE.label': 'Отправлять команды',
+  'perm.CONTROL_CONSOLE.desc':
+    'Вводить команды в консоль. Равнозначно консоли администратора игры: одной командой можно выдать оператора кому угодно.',
+  'perm.CONTROL_START.label': 'Запускать',
+  'perm.CONTROL_START.desc': 'Включать сервер, когда он остановлен.',
+  'perm.CONTROL_STOP.label': 'Останавливать',
+  'perm.CONTROL_STOP.desc':
+    'Выключать сервер и убивать его, если корректная остановка не удалась. Убитый сервер может потерять последние изменения мира.',
+  'perm.CONTROL_RESTART.label': 'Перезапускать',
+  'perm.CONTROL_RESTART.desc':
+    'Перезапускать сервер. Позволяет включить его, но не оставить выключенным.',
+  'perm.USER_READ.label': 'Видеть доступы',
+  'perm.USER_READ.desc': 'Просматривать список субпользователей и права каждого.',
+  'perm.USER_CREATE.label': 'Выдавать доступ',
+  'perm.USER_CREATE.desc': 'Открывать сервер существующей учётной записи панели.',
+  'perm.USER_UPDATE.label': 'Менять доступы',
+  'perm.USER_UPDATE.desc': 'Менять права другого субпользователя.',
+  'perm.USER_DELETE.label': 'Отзывать доступ',
+  'perm.USER_DELETE.desc': 'Забирать у другого субпользователя доступ к серверу.',
+  'perm.FILE_READ.label': 'Просматривать',
+  'perm.FILE_READ.desc': 'Смотреть список папок с именами, размерами и датами, не открывая файлы.',
+  'perm.FILE_READ_CONTENT.label': 'Читать содержимое',
+  'perm.FILE_READ_CONTENT.desc':
+    'Открывать и скачивать файлы. В настройках плагинов часто лежат пароли от баз данных.',
+  'perm.FILE_CREATE.label': 'Создавать и загружать',
+  'perm.FILE_CREATE.desc':
+    'Создавать папки и загружать файлы. Положить плагин — значит заставить сервер выполнить код.',
+  'perm.FILE_UPDATE.label': 'Изменять',
+  'perm.FILE_UPDATE.desc': 'Записывать в файлы, переименовывать, перемещать и менять их права.',
+  'perm.FILE_DELETE.label': 'Удалять',
+  'perm.FILE_DELETE.desc': 'Удалять файлы и папки, включая мир.',
+  'perm.FILE_ARCHIVE.label': 'Сжимать и распаковывать',
+  'perm.FILE_ARCHIVE.desc': 'Создавать архивы и распаковывать их содержимое в папку сервера.',
+  'perm.FILE_SFTP.label': 'Доступ по SFTP',
+  'perm.FILE_SFTP.desc':
+    'Подключаться по SFTP с учётными данными панели. Права на файлы, перечисленные выше, там тоже действуют.',
+  'perm.BACKUP_READ.label': 'Видеть копии',
+  'perm.BACKUP_READ.desc': 'Просматривать список резервных копий и их состояние.',
+  'perm.BACKUP_CREATE.label': 'Создавать',
+  'perm.BACKUP_CREATE.desc':
+    'Запускать резервное копирование. По достижении лимита заменяется самая старая незаблокированная копия.',
+  'perm.BACKUP_DELETE.label': 'Удалять и блокировать',
+  'perm.BACKUP_DELETE.desc': 'Удалять копию, ставить и снимать защищающую её блокировку.',
+  'perm.BACKUP_DOWNLOAD.label': 'Скачивать',
+  'perm.BACKUP_DOWNLOAD.desc': 'Забирать полную копию сервера, вместе с миром и настройками.',
+  'perm.BACKUP_RESTORE.label': 'Восстанавливать',
+  'perm.BACKUP_RESTORE.desc':
+    'Возвращать сервер к состоянию копии. Стирает всё, что сделано с тех пор.',
+  'perm.DATABASE_READ.label': 'Видеть базы',
+  'perm.DATABASE_READ.desc':
+    'Просматривать базы сервера вместе с паролем: это право открывает всё их содержимое.',
+  'perm.DATABASE_CREATE.label': 'Создавать базу',
+  'perm.DATABASE_CREATE.desc':
+    'Создавать базу MySQL и отдельную учётную запись для неё, в пределах лимита сервера.',
+  'perm.DATABASE_UPDATE.label': 'Менять пароль',
+  'perm.DATABASE_UPDATE.desc':
+    'Создавать новый пароль базы. Старый перестаёт работать сразу: плагины, настроенные с ним, потеряют соединение.',
+  'perm.DATABASE_DELETE.label': 'Удалять базу',
+  'perm.DATABASE_DELETE.desc': 'Удалять базу и её содержимое. Это необратимо.',
+  'perm.ALLOCATION_READ.label': 'Видеть порты',
+  'perm.ALLOCATION_READ.desc': 'Просматривать адреса и порты, выделенные серверу.',
+  'perm.ALLOCATION_CREATE.label': 'Добавлять порт',
+  'perm.ALLOCATION_CREATE.desc': 'Выделять серверу ещё один порт, например для динамической карты.',
+  'perm.ALLOCATION_UPDATE.label': 'Менять порты',
+  'perm.ALLOCATION_UPDATE.desc': 'Менять основной порт и подписи выделенных портов.',
+  'perm.ALLOCATION_DELETE.label': 'Убирать порт',
+  'perm.ALLOCATION_DELETE.desc': 'Возвращать дополнительный порт ноде.',
+  'perm.STARTUP_READ.label': 'Видеть запуск',
+  'perm.STARTUP_READ.desc': 'Просматривать команду запуска и переменные шаблона.',
+  'perm.STARTUP_UPDATE.label': 'Менять запуск',
+  'perm.STARTUP_UPDATE.desc':
+    'Менять переменные шаблона, в том числе файл, выполняемый при старте сервера.',
+  'perm.STARTUP_DOCKER_IMAGE.label': 'Менять образ Docker',
+  'perm.STARTUP_DOCKER_IMAGE.desc':
+    'Выбирать версию Java, на которой работает сервер, из предложенных шаблоном.',
+  'perm.SCHEDULE_READ.label': 'Видеть задачи',
+  'perm.SCHEDULE_READ.desc': 'Просматривать задачи расписания и время их следующего запуска.',
+  'perm.SCHEDULE_CREATE.label': 'Создавать задачу',
+  'perm.SCHEDULE_CREATE.desc': 'Планировать автоматические команды, перезапуски и резервные копии.',
+  'perm.SCHEDULE_UPDATE.label': 'Менять и запускать',
+  'perm.SCHEDULE_UPDATE.desc': 'Менять время и шаги задачи, а также запускать её немедленно.',
+  'perm.SCHEDULE_DELETE.label': 'Удалять задачу',
+  'perm.SCHEDULE_DELETE.desc': 'Окончательно убирать задачу из расписания.',
+  'perm.SETTINGS_RENAME.label': 'Переименовывать',
+  'perm.SETTINGS_RENAME.desc': 'Менять название и описание сервера в панели.',
+  'perm.SETTINGS_REINSTALL.label': 'Переустанавливать',
+  'perm.SETTINGS_REINSTALL.desc':
+    'Заново выполнять скрипт установки шаблона. В зависимости от шаблона файлы сервера могут быть перезаписаны.',
+  'perm.ACTIVITY_READ.label': 'Видеть активность',
+  'perm.ACTIVITY_READ.desc': 'Читать журнал того, что делали на этом сервере и кто именно.',
+  'perm.WEBHOOK_READ.label': 'Видеть уведомления',
+  'perm.WEBHOOK_READ.desc': 'Просматривать адреса, которым сообщают о событиях сервера.',
+  'perm.WEBHOOK_CREATE.label': 'Добавлять уведомление',
+  'perm.WEBHOOK_CREATE.desc':
+    'Указывать адрес, который панель будет вызывать. Панель отправит исходящий запрос на адрес, выбранный обладателем этого права.',
+  'perm.WEBHOOK_UPDATE.label': 'Менять уведомление',
+  'perm.WEBHOOK_UPDATE.desc': 'Менять адрес, набор событий или состояние уведомления.',
+  'perm.WEBHOOK_DELETE.label': 'Удалять уведомление',
+  'perm.WEBHOOK_DELETE.desc': 'Убирать адрес из списка.',
 };

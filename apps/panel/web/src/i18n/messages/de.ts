@@ -556,4 +556,146 @@ export const de: Partial<Messages> = {
   'subusers.remove': 'Entfernen',
   'subusers.removeConfirm': 'Zugriff von {name} entfernen?',
   'subusers.checkGroup': 'Alles in „{group}“ ankreuzen',
+
+  'permGroup.control.label': 'Serversteuerung',
+  'permGroup.control.desc':
+    'Den Server ein- und ausschalten, neu starten und ihm Befehle über die Konsole schicken.',
+  'permGroup.user.label': 'Unterbenutzer',
+  'permGroup.user.desc':
+    'Den Zugriff anderer Konten auf diesen Server verwalten. Niemand kann ein Recht vergeben, das er selbst nicht hat, noch seinen eigenen Zugriff ändern.',
+  'permGroup.file.label': 'Dateien',
+  'permGroup.file.desc':
+    'Die Serverdateien durchsehen, bearbeiten und hochladen, im Panel wie über SFTP.',
+  'permGroup.backup.label': 'Sicherungen',
+  'permGroup.backup.desc':
+    'Vollständige Archive des Servers erstellen, herunterladen und wiederherstellen.',
+  'permGroup.database.label': 'Datenbanken',
+  'permGroup.database.desc':
+    'Die MySQL-Datenbanken des Servers anlegen und einsehen. Einsehen heißt das Passwort sehen: dieses Recht gibt Zugriff auf ihren gesamten Inhalt.',
+  'permGroup.allocation.label': 'Ports',
+  'permGroup.allocation.desc':
+    'Die Adressen und Ports einsehen und ändern, auf denen der Server lauscht.',
+  'permGroup.startup.label': 'Start',
+  'permGroup.startup.desc':
+    'Startbefehl, Vorlagenvariablen und die verwendete Java-Version ändern.',
+  'permGroup.schedule.label': 'Zeitpläne',
+  'permGroup.schedule.desc': 'Befehle, Neustarts und Sicherungen zu festen Zeiten einplanen.',
+  'permGroup.webhook.label': 'Benachrichtigungen',
+  'permGroup.webhook.desc':
+    'Adressen eintragen, die über Serverereignisse informiert werden — Discord, oder jeder Dienst, der eine eingehende Anfrage annimmt.',
+  'permGroup.settings.label': 'Einstellungen',
+  'permGroup.settings.desc':
+    'Den Server umbenennen, neu installieren und sein Aktivitätsprotokoll lesen.',
+
+  'perm.WEBSOCKET_CONNECT.label': 'Verbinden',
+  'perm.WEBSOCKET_CONNECT.desc':
+    'Den Server und seine Konsole nur lesend sehen. Wird von vornherein vergeben: ohne sie sähe ein Unterbenutzer den Server nicht, für den er gerade freigeschaltet wurde.',
+  'perm.CONTROL_CONSOLE.label': 'Befehle senden',
+  'perm.CONTROL_CONSOLE.desc':
+    'Befehle in die Konsole tippen. Entspricht der Adminkonsole des Spiels: ein Befehl kann jedem Operatorrechte geben.',
+  'perm.CONTROL_START.label': 'Starten',
+  'perm.CONTROL_START.desc': 'Den Server einschalten, wenn er gestoppt ist.',
+  'perm.CONTROL_STOP.label': 'Stoppen',
+  'perm.CONTROL_STOP.desc':
+    'Den Server herunterfahren und abschießen, wenn das saubere Stoppen scheitert. Ein abgeschossener Server kann die letzten Weltänderungen verlieren.',
+  'perm.CONTROL_RESTART.label': 'Neu starten',
+  'perm.CONTROL_RESTART.desc':
+    'Den Server neu starten. Erlaubt ihn zu starten, aber nicht ihn aus zu lassen.',
+  'perm.USER_READ.label': 'Zugriffe sehen',
+  'perm.USER_READ.desc': 'Die Liste der Unterbenutzer und deren Rechte einsehen.',
+  'perm.USER_CREATE.label': 'Zugriff geben',
+  'perm.USER_CREATE.desc': 'Den Server einem bestehenden Panel-Konto öffnen.',
+  'perm.USER_UPDATE.label': 'Zugriffe ändern',
+  'perm.USER_UPDATE.desc': 'Die Rechte eines anderen Unterbenutzers ändern.',
+  'perm.USER_DELETE.label': 'Zugriff entziehen',
+  'perm.USER_DELETE.desc': 'Einem anderen Unterbenutzer den Zugriff auf den Server nehmen.',
+  'perm.FILE_READ.label': 'Durchsehen',
+  'perm.FILE_READ.desc':
+    'Ordner auflisten und Namen, Größen und Daten sehen, ohne die Dateien zu öffnen.',
+  'perm.FILE_READ_CONTENT.label': 'Inhalt lesen',
+  'perm.FILE_READ_CONTENT.desc':
+    'Dateien öffnen und herunterladen. Plugin-Konfigurationen enthalten oft Datenbankpasswörter.',
+  'perm.FILE_CREATE.label': 'Anlegen und hochladen',
+  'perm.FILE_CREATE.desc':
+    'Ordner anlegen und Dateien hochladen. Ein Plugin abzulegen heißt, den Server Code ausführen zu lassen.',
+  'perm.FILE_UPDATE.label': 'Bearbeiten',
+  'perm.FILE_UPDATE.desc':
+    'In Dateien schreiben, sie umbenennen, verschieben und ihre Rechte ändern.',
+  'perm.FILE_DELETE.label': 'Löschen',
+  'perm.FILE_DELETE.desc': 'Dateien und Ordner löschen, die Welt eingeschlossen.',
+  'perm.FILE_ARCHIVE.label': 'Komprimieren und entpacken',
+  'perm.FILE_ARCHIVE.desc': 'Archive erstellen und ihren Inhalt in den Serverordner entpacken.',
+  'perm.FILE_SFTP.label': 'SFTP-Zugang',
+  'perm.FILE_SFTP.desc':
+    'Sich per SFTP mit den Panel-Zugangsdaten verbinden. Die obigen Dateirechte gelten dort ebenso.',
+  'perm.BACKUP_READ.label': 'Sicherungen sehen',
+  'perm.BACKUP_READ.desc': 'Die Liste der Sicherungen und ihren Zustand einsehen.',
+  'perm.BACKUP_CREATE.label': 'Erstellen',
+  'perm.BACKUP_CREATE.desc':
+    'Eine Sicherung starten. Ist das Limit erreicht, wird die älteste nicht gesperrte ersetzt.',
+  'perm.BACKUP_DELETE.label': 'Löschen und sperren',
+  'perm.BACKUP_DELETE.desc':
+    'Eine Sicherung löschen und die schützende Sperre setzen oder aufheben.',
+  'perm.BACKUP_DOWNLOAD.label': 'Herunterladen',
+  'perm.BACKUP_DOWNLOAD.desc':
+    'Eine vollständige Kopie des Servers mitnehmen, Welt und Konfigurationen inbegriffen.',
+  'perm.BACKUP_RESTORE.label': 'Wiederherstellen',
+  'perm.BACKUP_RESTORE.desc':
+    'Den Server in den Zustand einer Sicherung zurückversetzen. Löscht alles, was seither getan wurde.',
+  'perm.DATABASE_READ.label': 'Datenbanken sehen',
+  'perm.DATABASE_READ.desc':
+    'Die Datenbanken des Servers einsehen, Passwort inbegriffen: dieses Recht gibt Zugriff auf ihren gesamten Inhalt.',
+  'perm.DATABASE_CREATE.label': 'Datenbank anlegen',
+  'perm.DATABASE_CREATE.desc':
+    'Eine MySQL-Datenbank samt eigenem Konto anlegen, im Rahmen des Serverlimits.',
+  'perm.DATABASE_UPDATE.label': 'Passwort ändern',
+  'perm.DATABASE_UPDATE.desc':
+    'Das Passwort einer Datenbank neu erzeugen. Das alte gilt sofort nicht mehr: damit eingerichtete Plugins verlieren die Verbindung.',
+  'perm.DATABASE_DELETE.label': 'Datenbank löschen',
+  'perm.DATABASE_DELETE.desc':
+    'Eine Datenbank und ihren Inhalt löschen. Das lässt sich nicht rückgängig machen.',
+  'perm.ALLOCATION_READ.label': 'Ports sehen',
+  'perm.ALLOCATION_READ.desc': 'Die dem Server zugewiesenen Adressen und Ports einsehen.',
+  'perm.ALLOCATION_CREATE.label': 'Port hinzufügen',
+  'perm.ALLOCATION_CREATE.desc':
+    'Dem Server einen weiteren Port zuweisen, etwa für eine dynamische Karte.',
+  'perm.ALLOCATION_UPDATE.label': 'Ports ändern',
+  'perm.ALLOCATION_UPDATE.desc':
+    'Den Hauptport und die Bezeichnungen der zugewiesenen Ports ändern.',
+  'perm.ALLOCATION_DELETE.label': 'Port entfernen',
+  'perm.ALLOCATION_DELETE.desc': 'Einen zusätzlichen Port an den Node zurückgeben.',
+  'perm.STARTUP_READ.label': 'Start sehen',
+  'perm.STARTUP_READ.desc': 'Startbefehl und Vorlagenvariablen einsehen.',
+  'perm.STARTUP_UPDATE.label': 'Start ändern',
+  'perm.STARTUP_UPDATE.desc':
+    'Die Vorlagenvariablen ändern, darunter die beim Start ausgeführte Datei.',
+  'perm.STARTUP_DOCKER_IMAGE.label': 'Docker-Image wechseln',
+  'perm.STARTUP_DOCKER_IMAGE.desc':
+    'Die Java-Version wählen, die den Server ausführt, unter den von der Vorlage angebotenen.',
+  'perm.SCHEDULE_READ.label': 'Zeitpläne sehen',
+  'perm.SCHEDULE_READ.desc': 'Die Zeitpläne und ihre nächsten Ausführungen einsehen.',
+  'perm.SCHEDULE_CREATE.label': 'Zeitplan erstellen',
+  'perm.SCHEDULE_CREATE.desc': 'Automatische Befehle, Neustarts und Sicherungen einplanen.',
+  'perm.SCHEDULE_UPDATE.label': 'Bearbeiten und ausführen',
+  'perm.SCHEDULE_UPDATE.desc': 'Zeit und Schritte eines Zeitplans ändern und ihn sofort auslösen.',
+  'perm.SCHEDULE_DELETE.label': 'Zeitplan löschen',
+  'perm.SCHEDULE_DELETE.desc': 'Einen Zeitplan endgültig entfernen.',
+  'perm.SETTINGS_RENAME.label': 'Umbenennen',
+  'perm.SETTINGS_RENAME.desc': 'Name und Beschreibung des Servers im Panel ändern.',
+  'perm.SETTINGS_REINSTALL.label': 'Neu installieren',
+  'perm.SETTINGS_REINSTALL.desc':
+    'Das Installationsskript der Vorlage erneut ausführen. Je nach Vorlage können Serverdateien überschrieben werden.',
+  'perm.ACTIVITY_READ.label': 'Aktivität sehen',
+  'perm.ACTIVITY_READ.desc':
+    'Das Protokoll dessen lesen, was auf diesem Server getan wurde, und von wem.',
+  'perm.WEBHOOK_READ.label': 'Benachrichtigungen sehen',
+  'perm.WEBHOOK_READ.desc': 'Die Adressen einsehen, die über Serverereignisse informiert werden.',
+  'perm.WEBHOOK_CREATE.label': 'Benachrichtigung hinzufügen',
+  'perm.WEBHOOK_CREATE.desc':
+    'Eine Adresse eintragen, die das Panel aufruft. Das Panel sendet dann eine ausgehende Anfrage an eine Adresse, die der Inhaber dieses Rechts wählt.',
+  'perm.WEBHOOK_UPDATE.label': 'Benachrichtigung bearbeiten',
+  'perm.WEBHOOK_UPDATE.desc':
+    'Adresse, abonnierte Ereignisse oder Zustand einer Benachrichtigung ändern.',
+  'perm.WEBHOOK_DELETE.label': 'Benachrichtigung löschen',
+  'perm.WEBHOOK_DELETE.desc': 'Eine informierte Adresse entfernen.',
 };
