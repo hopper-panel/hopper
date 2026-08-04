@@ -1,42 +1,41 @@
 /**
- * Validation des variables de template.
+ * Validating template variables.
  *
- * Les règles sont écrites à la façon de Laravel — `required|string|max:20` —
- * parce que c'est ce que contiennent les milliers d'« eggs » Pterodactyl que
- * l'importeur sait déjà lire. Réinventer une syntaxe rendrait ces templates
- * inutilisables, ou pire, silencieusement non validés.
+ * The rules are written Laravel-style — `required|string|max:20` — because that
+ * is what the thousands of Pterodactyl eggs the importer already reads contain.
+ * Reinventing a syntax would make those templates unusable, or worse, silently
+ * unvalidated.
  *
- * **Ce fichier est une barrière de sécurité.** Une variable modifiable par
- * l'utilisateur entre dans la commande de démarrage du conteneur. Le
- * découpage-avant-substitution du daemon empêche déjà qu'une valeur introduise
- * un argument ou une commande, mais rien n'empêche `SERVER_JARFILE` de désigner
- * un fichier que l'utilisateur a déposé lui-même. Les règles sont ce qui
- * restreint le domaine de chaque variable ; les appliquer de travers revient à
- * ne pas les appliquer.
+ * **This file is a security barrier.** A user-editable variable feeds the
+ * container's startup command. The daemon's split-before-substitute already
+ * stops a value from introducing an argument or a command, but nothing stops
+ * `SERVER_JARFILE` from naming a file the user uploaded themselves. The rules
+ * are what narrows each variable's domain; applying them wrongly amounts to not
+ * applying them.
  *
- * Règles reconnues :
+ * Rules recognised:
  *
- *   required        valeur non vide exigée
- *   nullable        valeur vide acceptée ; les autres règles sont alors ignorées
- *   string          n'importe quel texte
- *   integer         entier
- *   numeric         nombre, entier ou décimal
+ *   required        a non-empty value is demanded
+ *   nullable        an empty value is accepted; the other rules are then skipped
+ *   string          any text
+ *   integer         an integer
+ *   numeric         a number, integer or decimal
  *   boolean         0, 1, true, false
- *   alpha_num       lettres et chiffres
- *   alpha_dash      lettres, chiffres, tiret et souligné
- *   min:n / max:n   longueur pour un texte, valeur pour un nombre
- *   between:a,b     les deux à la fois
- *   in:a,b,c        liste fermée de valeurs
- *   regex:/…/       expression régulière, appliquée telle quelle
+ *   alpha_num       letters and digits
+ *   alpha_dash      letters, digits, hyphen and underscore
+ *   min:n / max:n   length for text, value for a number
+ *   between:a,b     both at once
+ *   in:a,b,c        a closed list of values
+ *   regex:/…/       a regular expression, applied as is
  */
 
 /**
- * Longueur maximale d'une valeur, quelle que soit la règle.
+ * Longest a value may be, whatever the rule.
  *
- * Un template est écrit par un administrateur, mais rien ne garantit que son
- * `regex:` soit sain : une expression mal formée peut prendre un temps
- * exponentiel sur une entrée longue. Borner la longueur **avant** d'évaluer
- * quoi que ce soit ferme cette porte sans avoir à juger chaque expression.
+ * A template is written by an administrator, but nothing guarantees its
+ * `regex:` is sane: a badly formed expression can take exponential time on a
+ * long input. Bounding the length **before** evaluating anything closes that
+ * door without having to judge each expression.
  */
 export const MAX_VARIABLE_LENGTH = 2048;
 
@@ -65,23 +64,23 @@ export function parseRules(raw: string): ParsedRule[] {
       const name = part.slice(0, separator).toLowerCase();
       const rest = part.slice(separator + 1);
 
-      // `regex:` garde son argument entier : il contient des virgules, des
-      // barres verticales et des deux-points qu'il ne faut pas découper.
+      // `regex:` keeps its argument whole: it contains commas, pipes and
+      // colons that must not be split.
       return { name, args: name === 'regex' ? [rest] : rest.split(',') };
     });
 }
 
 /**
- * Confronte une valeur à des règles.
+ * Checks a value against a set of rules.
  *
- * @returns la liste des règles enfreintes, vide si la valeur est acceptable.
+ * @returns the list of rules broken, empty if the value is acceptable.
  */
 export function validateValue(value: string, raw: string): RuleViolation[] {
   if (value.length > MAX_VARIABLE_LENGTH) {
     return [
       {
         rule: 'max',
-        message: `Valeur trop longue : ${MAX_VARIABLE_LENGTH} caractères au maximum.`,
+        message: `Value too long: ${MAX_VARIABLE_LENGTH} characters at most.`,
       },
     ];
   }
@@ -95,8 +94,8 @@ export function validateValue(value: string, raw: string): RuleViolation[] {
       return [{ rule: 'required', message: 'Cette valeur est obligatoire.' }];
     }
 
-    // Une valeur vide autorisée n'a pas à satisfaire `integer` ou `in:` : la
-    // contrôler quand même rendrait `nullable` sans effet.
+    // An allowed empty value does not have to satisfy `integer` or `in:`:
+    // checking it anyway would make `nullable` pointless.
     return [];
   }
 
@@ -145,7 +144,7 @@ function check(rule: ParsedRule, value: string): RuleViolation | null {
         ? null
         : {
             rule: 'alpha_dash',
-            message: 'Lettres, chiffres, tiret et souligné uniquement.',
+            message: 'Letters, digits, hyphen and underscore only.',
           };
 
     case 'min':
@@ -164,7 +163,7 @@ function check(rule: ParsedRule, value: string): RuleViolation | null {
     case 'in':
       return rule.args.includes(value)
         ? null
-        : { rule: 'in', message: `Valeurs acceptées : ${rule.args.join(', ')}.` };
+        : { rule: 'in', message: `Accepted values: ${rule.args.join(', ')}.` };
 
     case 'regex':
       return matchesRegex(rule.args[0] ?? '', value)
@@ -172,18 +171,18 @@ function check(rule: ParsedRule, value: string): RuleViolation | null {
         : { rule: 'regex', message: "Cette valeur n'a pas le format attendu." };
 
     default:
-      // Une règle inconnue n'est **pas** une erreur de l'utilisateur : c'est le
-      // template qui en utilise une que l'on ne sait pas appliquer. La refuser
-      // rendrait le serveur inconfigurable ; on l'ignore, et le champ reste
-      // couvert par les autres règles.
+      // An unknown rule is **not** the user's mistake: it is the template
+      // using one we cannot apply. Refusing it would make the server
+      // unconfigurable; it is ignored, and the field stays covered by the other
+      // rules.
       return null;
   }
 }
 
 /**
- * `min`/`max` portent sur la valeur d'un nombre et sur la longueur d'un texte,
- * comme dans Laravel. Confondre les deux ferait accepter `999` là où l'on
- * attendait trois caractères, ou l'inverse.
+ * `min`/`max` apply to a number's value and to a text's length, as in Laravel.
+ * Confusing the two would accept `999` where three characters were expected, or
+ * the other way round.
  */
 function compare(
   rule: ParsedRule,
@@ -208,11 +207,11 @@ function compare(
   const subject = isNumber ? 'La valeur' : 'La longueur';
   const limit = kind === 'min' ? 'au moins' : 'au plus';
 
-  return { rule: kind, message: `${subject} doit être ${limit} de ${bound}.` };
+  return { rule: kind, message: `${subject} has to be ${limit} ${bound}.` };
 }
 
 function matchesRegex(pattern: string, value: string): boolean {
-  // Forme `/motif/drapeaux`, telle qu'elle apparaît dans les eggs.
+  // The `/pattern/flags` form, as it appears in eggs.
   const delimited = /^\/(.*)\/([a-z]*)$/s.exec(pattern);
 
   try {

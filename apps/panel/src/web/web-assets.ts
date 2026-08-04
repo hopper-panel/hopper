@@ -3,50 +3,49 @@ import { join, resolve } from 'node:path';
 import type { NestFastifyApplication } from '@nestjs/platform-fastify';
 
 /**
- * Service de l'interface web par le panel lui-même.
+ * Serving the web interface from the panel itself.
  *
- * En développement, Vite sert le front sur son propre port et procure le
- * rechargement à chaud ; le panel n'expose alors que l'API. En production il n'y
- * a plus de Vite, et sans ce module le panel répondait 404 sur `/` : l'API
- * fonctionnait, mais il n'y avait tout simplement pas d'interface.
+ * In development, Vite serves the front on its own port and provides hot
+ * reloading; the panel then exposes the API only. In production there is no
+ * Vite any more, and without this module the panel answered 404 on `/`: the API
+ * worked, but there simply was no interface.
  *
- * Servir le front depuis le même processus évite en prime une seconde origine,
- * donc tout le CORS et les cookies inter-sites qui vont avec.
+ * Serving the front from the same process also avoids a second origin, and with
+ * it all the CORS and cross-site cookies that come along.
  */
 
 /** Jeton d'injection du chemin absolu de l'interface construite. */
 export const WEB_ROOT_TOKEN = 'WEB_ROOT_PATH';
 
 /**
- * Résout `WEB_ROOT` en chemin absolu.
+ * Resolves `WEB_ROOT` into an absolute path.
  *
- * Un chemin relatif est interprété depuis le répertoire de travail du
- * processus — `apps/panel` pour l'unité systemd — et non depuis la position du
- * code compilé, qui n'est pas une donnée de configuration.
+ * A relative path is read from the process's working directory — `apps/panel`
+ * for the systemd unit — and not from where the compiled code sits, which is
+ * not a piece of configuration.
  */
 export function resolveWebRoot(configured: string, cwd: string): string {
   return resolve(cwd, configured);
 }
 
 /**
- * Vrai si le chemin demandé relève de l'API plutôt que de l'interface.
+ * True if the requested path belongs to the API rather than the interface.
  *
- * Le repli SPA ne doit jamais s'appliquer à l'API : une route inconnue sous
- * `/api` doit rester une 404, sans quoi un client recevrait du HTML là où il
- * attend du JSON et signalerait une panne incompréhensible.
+ * The SPA fallback must never apply to the API: an unknown route under `/api`
+ * has to stay a 404, otherwise a client would receive HTML where it expects
+ * JSON and would report an incomprehensible failure.
  */
 export function isApiPath(pathname: string): boolean {
   return pathname === '/api' || pathname.startsWith('/api/');
 }
 
 /**
- * Politique de cache d'un fichier statique.
+ * Cache policy for a static file.
  *
- * Vite appose une empreinte au nom des fichiers de `assets/` : leur contenu ne
- * change jamais sous un même nom, ils sont donc immuables. `index.html`, lui,
- * référence ces noms et doit être revalidé à chaque fois, faute de quoi un
- * navigateur continuerait de charger l'ancienne application après une mise à
- * jour.
+ * Vite stamps a digest into the names of the files in `assets/`: their content
+ * never changes under a given name, so they are immutable. `index.html` in
+ * contrast references those names and has to be revalidated every time, failing
+ * which a browser would keep loading the old application after an update.
  */
 export function cacheControlFor(pathname: string): string {
   return pathname.startsWith('/assets/')
@@ -60,15 +59,15 @@ export interface WebAssetsResult {
 }
 
 /**
- * Branche le service des fichiers statiques, s'ils ont été construits.
+ * Wires up static file serving, if the front has been built.
  *
- * L'absence de build n'est pas fatale : le panel reste utilisable en API pure,
- * ce qui est exactement la situation en développement. Elle est en revanche
- * signalée, car en production c'est une erreur de déploiement.
+ * A missing build is not fatal: the panel stays usable as a pure API, which is
+ * exactly the situation in development. It is reported all the same, because in
+ * production it is a deployment mistake.
  *
- * Le repli vers `index.html` n'est pas posé ici mais par `WebController` :
- * Nest installe son propre gestionnaire 404 sur l'instance Fastify, et en
- * poser un second fait échouer le démarrage.
+ * The fallback to `index.html` is not set here but by `WebController`: Nest
+ * installs its own 404 handler on the Fastify instance, and adding a second
+ * makes startup fail.
  */
 export async function registerWebAssets(
   app: NestFastifyApplication,
@@ -84,13 +83,12 @@ export async function registerWebAssets(
 
   await app.getHttpAdapter().getInstance().register(fastifyStatic, {
     root,
-    // Sans cette option, le greffon pose sa propre route générique `/*`, qui
-    // entrerait en conflit avec celle de `WebController`. À `false`, il
-    // n'enregistre que les fichiers réellement présents — ce qui suffit pour
-    // un build figé.
+    // Without this option the plugin registers its own catch-all `/*` route,
+    // which would conflict with `WebController`'s. At `false` it only registers
+    // the files actually present — which is enough for a frozen build.
     wildcard: false,
-    // Le greffon poserait sinon son propre `public, max-age=0` par-dessus, et
-    // les fichiers empreintés seraient revalidés à chaque chargement de page.
+    // The plugin would otherwise lay its own `public, max-age=0` on top, and
+    // the digest-stamped files would be revalidated on every page load.
     cacheControl: false,
     setHeaders,
   });

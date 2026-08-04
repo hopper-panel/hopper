@@ -38,12 +38,12 @@ import { RemoteNodeGuard, type RemoteRequest } from './remote-node.guard.js';
 import { SftpAuthService } from './sftp-auth.service.js';
 
 /**
- * Routes appelées par les daemons.
+ * Routes called by the daemons.
  *
- * `@Public()` retire le garde de session global, et `RemoteNodeGuard` le
- * remplace par une authentification par jeton de node. Sans le premier, un
- * daemon serait refusé faute de cookie ; sans le second, la route serait
- * ouverte à tous.
+ * `@Public()` removes the global session guard, and `RemoteNodeGuard` replaces
+ * it with node-token authentication. Without the first, a daemon would be
+ * refused for lack of a cookie; without the second, the route would be open to
+ * everyone.
  */
 @Controller('api/remote')
 @Public()
@@ -61,12 +61,12 @@ export class RemoteController {
   ) {}
 
   /**
-   * Liste des serveurs que ce node doit héberger.
+   * List of the servers this node has to host.
    *
-   * Appelée par le daemon à son démarrage : il redécouvre ainsi les serveurs
-   * qu'il gère, y compris ceux qui tournaient déjà avant son redémarrage. Un
-   * node ne voit **que** ses propres serveurs — l'identité vient du jeton, pas
-   * d'un paramètre de requête.
+   * Called by the daemon when it starts: this is how it rediscovers the servers
+   * it manages, including those already running before its restart. A node sees
+   * **only** its own servers — the identity comes from the token, not from a
+   * request parameter.
    */
   @Get('servers')
   async servers(
@@ -90,13 +90,13 @@ export class RemoteController {
   }
 
   /**
-   * Authentifie une connexion SFTP pour le compte du daemon.
+   * Authenticates an SFTP connection on the daemon's behalf.
    *
-   * Le nom d'utilisateur porte le serveur visé (`julien.b10a05a8`), faute de
-   * tout autre canal dans le protocole SFTP. Le panel vérifie le mot de passe,
-   * puis que l'utilisateur a bien accès à ce serveur — la seule vérification
-   * du mot de passe ne suffirait pas, sans quoi n'importe quel compte pourrait
-   * atteindre n'importe quel serveur en devinant huit caractères.
+   * The username carries the target server (`julien.b10a05a8`), for want of any
+   * other channel in the SFTP protocol. The panel checks the password, then
+   * that the user really has access to that server — checking the password
+   * alone would not do, or any account could reach any server by guessing eight
+   * characters.
    */
   @Post('sftp/auth')
   @HttpCode(HttpStatus.OK)
@@ -108,13 +108,13 @@ export class RemoteController {
   }
 
   /**
-   * Verdict d'une sauvegarde, rapporté par le daemon.
+   * A backup's verdict, reported by the daemon.
    *
-   * L'appartenance est vérifiée comme pour l'installation : un node ne peut
-   * clore que les sauvegardes des serveurs qu'il héberge. Sans cette clause,
-   * un node compromis pourrait déclarer réussie la sauvegarde d'un serveur
-   * hébergé ailleurs — et la rétention effacerait alors une archive valide au
-   * profit d'une qui n'existe pas.
+   * Ownership is checked as it is for installation: a node can only close the
+   * backups of the servers it hosts. Without that clause, a compromised node
+   * could declare successful the backup of a server hosted elsewhere — and
+   * retention would then erase a valid archive in favour of one that does not
+   * exist.
    */
   @Post('backups/:uuid/status')
   @HttpCode(HttpStatus.NO_CONTENT)
@@ -129,18 +129,18 @@ export class RemoteController {
     });
 
     if (!backup) {
-      throw new NotFoundException("Cette sauvegarde n'appartient pas à ce node.");
+      throw new NotFoundException('This backup does not belong to this node.');
     }
 
     await this.backups.recordReport(uuid, body);
 
     this.logger.log(
-      `Sauvegarde « ${backup.name} » ${body.successful ? 'terminée' : 'en échec'} sur ${request.node!.name}`,
+      `Backup "${backup.name}" ${body.successful ? 'finished' : 'failed'} on ${request.node!.name}`,
     );
 
     await this.audit.record({
       event: AUDIT_EVENTS.BACKUP_CREATED,
-      // Le daemon n'est pas un utilisateur : l'action est celle du système.
+      // The daemon is not a user: the action is the system's.
       actorId: null,
       serverId: backup.serverId,
       metadata: {
@@ -164,11 +164,11 @@ export class RemoteController {
   }
 
   /**
-   * Verdict d'une installation, rapporté par le daemon.
+   * An installation's verdict, reported by the daemon.
    *
-   * C'est ce qui fait passer un serveur de « Installation » à « Prêt ». Sans
-   * ce rappel, un serveur parfaitement installé resterait bloqué à l'état
-   * initial et l'utilisateur n'aurait aucun moyen de savoir où il en est.
+   * This is what moves a server from "Installing" to "Ready". Without this
+   * callback, a perfectly installed server would stay stuck in its initial
+   * state and the user would have no way of knowing where it stands.
    */
   @Post('servers/:uuid/install')
   @HttpCode(HttpStatus.NO_CONTENT)
@@ -177,15 +177,15 @@ export class RemoteController {
     @Body(new ZodValidationPipe(installReportSchema)) body: InstallReport,
     @Req() request: RemoteRequest,
   ): Promise<void> {
-    // Le serveur doit appartenir au node qui rapporte : sans cette clause, un
-    // node compromis pourrait déclarer installés les serveurs d'un autre.
+    // The server has to belong to the reporting node: without that clause, a
+    // compromised node could declare another's servers installed.
     const server = await this.prisma.server.findFirst({
       where: { uuid, nodeId: request.node!.id },
       select: { id: true, name: true },
     });
 
     if (!server) {
-      throw new NotFoundException("Ce serveur n'appartient pas à ce node.");
+      throw new NotFoundException('This server does not belong to this node.');
     }
 
     await this.prisma.server.update({
@@ -194,12 +194,12 @@ export class RemoteController {
     });
 
     this.logger.log(
-      `Installation ${body.successful ? 'réussie' : 'échouée'} pour « ${server.name} » sur ${request.node!.name}`,
+      `Installation ${body.successful ? 'succeeded' : 'failed'} for "${server.name}" on ${request.node!.name}`,
     );
 
     await this.audit.record({
       event: body.reinstall ? AUDIT_EVENTS.SERVER_REINSTALLED : AUDIT_EVENTS.SERVER_CREATED,
-      // Action du système, pas d'un utilisateur : l'acteur est le daemon.
+      // A system action, not a user's: the actor is the daemon.
       actorId: null,
       serverId: server.id,
       metadata: { successful: body.successful, node: request.node!.name },
@@ -208,17 +208,17 @@ export class RemoteController {
     this.webhooks.dispatch(
       server.id,
       body.successful ? WEBHOOK_EVENTS.INSTALL_COMPLETED : WEBHOOK_EVENTS.INSTALL_FAILED,
-      { Réinstallation: body.reinstall ? 'oui' : 'non' },
+      { Reinstall: body.reinstall ? 'yes' : 'no' },
     );
   }
 
   /**
-   * Changement d'état d'un serveur, rapporté par le daemon.
+   * A server's state change, reported by the daemon.
    *
-   * Le panel ne stocke pas cet état — il vient du daemon, qui seul le connaît —
-   * mais il en a besoin au passage pour prévenir les destinataires abonnés. Un
-   * arrêt que personne n'a demandé est signalé comme un plantage : c'est la
-   * seule notification qui justifie de réveiller quelqu'un.
+   * The panel does not store this state — it comes from the daemon, which alone
+   * knows it — but it needs it in passing to notify the subscribed recipients.
+   * A stop nobody asked for is reported as a crash: it is the one notification
+   * worth waking somebody up for.
    */
   @Post('servers/:uuid/status')
   @HttpCode(HttpStatus.NO_CONTENT)
@@ -233,7 +233,7 @@ export class RemoteController {
     });
 
     if (!server) {
-      throw new NotFoundException("Ce serveur n'appartient pas à ce node.");
+      throw new NotFoundException('This server does not belong to this node.');
     }
 
     if (body.state === 'running') {
@@ -241,9 +241,8 @@ export class RemoteController {
       return;
     }
 
-    // Les états intermédiaires — démarrage, arrêt en cours, installation — ne
-    // produisent rien : ils doubleraient chaque événement utile d'un message
-    // sans intérêt.
+    // Intermediate states — starting, stopping, installing — produce nothing:
+    // they would double every useful event with a message of no interest.
     if (body.state !== 'offline') {
       return;
     }
@@ -253,18 +252,18 @@ export class RemoteController {
       return;
     }
 
-    // La cause quand le daemon la connaît : « tué faute de mémoire » explique à
-    // lui seul un arrêt que personne ne comprend.
+    // The cause when the daemon knows it: "killed for lack of memory" explains
+    // on its own a stop nobody understands.
     this.webhooks.dispatch(server.id, WEBHOOK_EVENTS.SERVER_CRASHED, {
       Cause: body.oomKilled
-        ? 'tué par le noyau, mémoire insuffisante'
-        : 'le processus s’est arrêté seul',
+        ? 'killed by the kernel, out of memory'
+        : 'the process stopped on its own',
       ...(body.exitCode === undefined ? {} : { 'Code de sortie': body.exitCode }),
     });
   }
 }
 
-/** Taille lisible, pour le message envoyé au destinataire. */
+/** Readable size, for the message sent to the recipient. */
 function formatBytes(bytes: number): string {
   const units = ['o', 'Kio', 'Mio', 'Gio', 'Tio'];
   let value = bytes;

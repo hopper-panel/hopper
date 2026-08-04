@@ -7,24 +7,24 @@ import { NodesService } from '../nodes/nodes.service.js';
 import { CronError, nextOccurrence } from './cron.js';
 
 /**
- * Exécution des tâches planifiées.
+ * Running the scheduled tasks.
  *
- * **Pourquoi un simple minuteur et non BullMQ.** Le plan prévoyait des jobs
- * répétables Redis. À l'usage, cela ferait de Redis une dépendance obligatoire
- * d'un panel qu'on installe sur un VPS pour héberger trois serveurs, et
- * dupliquerait un état — l'horaire — que la base tient déjà. Le schéma porte
- * `nextRunAt` et un drapeau `running` prévus pour cela dès l'origine : une
- * boucle qui interroge la base suffit, et la base reste la seule vérité.
+ * **Why a plain timer and not BullMQ.** The plan called for Redis repeatable
+ * jobs. In practice that would make Redis a mandatory dependency of a panel
+ * installed on a VPS to host three servers, and would duplicate a state — the
+ * schedule — the database already holds. The schema carries `nextRunAt` and a
+ * `running` flag designed for this from the start: a loop that queries the
+ * database is enough, and the database stays the single truth.
  *
- * **Ce qui empêche un double déclenchement.** La prise en charge d'une tâche
- * est un `UPDATE … WHERE running = false` : la base tranche, et un seul
- * processus reçoit `count = 1`. Deux panels branchés sur la même base ne
- * peuvent donc pas lancer deux fois le même redémarrage.
+ * **What prevents a double trigger.** Claiming a task is an
+ * `UPDATE … WHERE running = false`: the database decides, and a single process
+ * receives `count = 1`. Two panels wired to the same database therefore cannot
+ * launch the same restart twice.
  *
- * **Ce qui empêche un blocage définitif.** Un panel tué en pleine exécution
- * laisserait `running = true` pour toujours, et la tâche ne repartirait jamais.
- * Au démarrage, toute tâche encore marquée en cours est donc libérée : aucune
- * exécution ne survit à l'arrêt du processus qui la portait.
+ * **What prevents a permanent block.** A panel killed mid-run would leave
+ * `running = true` forever, and the task would never fire again. At startup,
+ * every task still marked as running is therefore released: no run survives the
+ * death of the process that carried it.
  */
 @Injectable()
 export class SchedulerService implements OnModuleInit, OnModuleDestroy {
@@ -33,11 +33,10 @@ export class SchedulerService implements OnModuleInit, OnModuleDestroy {
   private ticking = false;
 
   /**
-   * Période d'interrogation.
+   * Polling period.
    *
-   * Trente secondes pour une granularité cron à la minute : un intervalle égal
-   * à la minute risquerait, avec la dérive, de sauter une échéance entre deux
-   * passages.
+   * Thirty seconds for a cron granularity of one minute: an interval equal to
+   * the minute would risk, with drift, skipping a due time between two passes.
    */
   private static readonly TICK_MS = 30_000;
 
@@ -57,12 +56,12 @@ export class SchedulerService implements OnModuleInit, OnModuleDestroy {
 
     if (released.count > 0) {
       this.logger.warn(
-        `${released.count} tâche(s) planifiée(s) étaient marquées en cours : libérées.`,
+        `${released.count} scheduled task(s) were marked as running: released.`,
       );
     }
 
     this.timer = setInterval(() => void this.tick(), SchedulerService.TICK_MS);
-    // `unref` : un minuteur actif empêcherait le processus de s'arrêter.
+    // `unref`: an active timer would keep the process from exiting.
     this.timer.unref();
 
     void this.tick();
@@ -76,11 +75,10 @@ export class SchedulerService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * Un passage : prend en charge et exécute ce qui est dû.
+   * One pass: claims and runs whatever is due.
    *
-   * Les exécutions ne se chevauchent pas — une séquence avec des décalages peut
-   * durer plusieurs minutes, et un second passage relancerait des tâches déjà
-   * en cours de traitement par le premier.
+   * Runs do not overlap — a sequence with offsets can last several minutes, and
+   * a second pass would relaunch tasks the first is still working through.
    */
   async tick(): Promise<void> {
     if (this.ticking) {
@@ -97,12 +95,12 @@ export class SchedulerService implements OnModuleInit, OnModuleDestroy {
 
       for (const schedule of due) {
         await this.runIfClaimed(schedule.id).catch((error: unknown) => {
-          this.logger.error(`Tâche « ${schedule.name} » : ${String(error)}`);
+          this.logger.error(`Task "${schedule.name}": ${String(error)}`);
         });
       }
     } catch (error: unknown) {
-      // Une base momentanément injoignable ne doit pas arrêter la boucle : le
-      // passage suivant réessaiera.
+      // A momentarily unreachable database must not stop the loop: the next
+      // pass will try again.
       this.logger.error(`Passage du planificateur interrompu : ${String(error)}`);
     } finally {
       this.ticking = false;
@@ -135,8 +133,8 @@ export class SchedulerService implements OnModuleInit, OnModuleDestroy {
     try {
       await this.execute(schedule);
     } finally {
-      // L'échéance suivante est posée quoi qu'il arrive : une tâche qui échoue
-      // doit repartir au prochain créneau, pas rester bloquée sur celui-ci.
+      // The next due time is set whatever happens: a task that fails has to
+      // fire again at the next slot, not stay stuck on this one.
       await this.prisma.schedule.update({
         where: { id: scheduleId },
         data: {
@@ -169,9 +167,9 @@ export class SchedulerService implements OnModuleInit, OnModuleDestroy {
       );
     } catch (error: unknown) {
       if (error instanceof CronError) {
-        // Sans échéance suivante, la tâche cesse de se déclencher plutôt que
-        // d'être reprise en boucle à chaque passage.
-        this.logger.error(`Tâche « ${schedule.name} » désactivée : ${error.message}`);
+        // With no next due time, the task stops firing rather than being
+        // picked up again on every pass.
+        this.logger.error(`Task "${schedule.name}" disabled: ${error.message}`);
         return null;
       }
 
@@ -198,11 +196,11 @@ export class SchedulerService implements OnModuleInit, OnModuleDestroy {
     if (schedule.onlyWhenOnline) {
       const state = await this.client.fetchServerState(node, schedule.server.uuid);
 
-      // `null` signifie « on ne sait pas », et non « arrêté » : sauter une
-      // sauvegarde parce que le node a mis trop longtemps à répondre serait
-      // pire que de la tenter.
+      // `null` means "we do not know", not "stopped": skipping a backup
+      // because the node took too long to answer would be worse than
+      // attempting it.
       if (state !== null && state !== 'running') {
-        this.logger.log(`Tâche « ${schedule.name} » ignorée : le serveur est ${state}.`);
+        this.logger.log(`Task "${schedule.name}" skipped: the server is ${state}.`);
         return;
       }
     }
@@ -217,7 +215,7 @@ export class SchedulerService implements OnModuleInit, OnModuleDestroy {
       try {
         await this.runTask(task, schedule.server.uuid, node);
       } catch (error: unknown) {
-        failures.push(`étape ${task.sequence + 1} (${task.action}) : ${String(error)}`);
+        failures.push(`step ${task.sequence + 1} (${task.action}): ${String(error)}`);
 
         if (!task.continueOnFailure) {
           break;
@@ -238,7 +236,7 @@ export class SchedulerService implements OnModuleInit, OnModuleDestroy {
     });
 
     if (failures.length > 0) {
-      this.logger.warn(`Tâche « ${schedule.name} » : ${failures.join(' ; ')}`);
+      this.logger.warn(`Task "${schedule.name}": ${failures.join('; ')}`);
     }
   }
 
@@ -257,8 +255,8 @@ export class SchedulerService implements OnModuleInit, OnModuleDestroy {
         return;
 
       case 'COMMAND':
-        // Plusieurs commandes par étape : annoncer un redémarrage puis
-        // sauvegarder le monde tient en une seule étape.
+        // Several commands per step: announcing a restart then saving the
+        // world fits in a single step.
         await this.client.sendCommands(
           node,
           serverUuid,
@@ -268,7 +266,7 @@ export class SchedulerService implements OnModuleInit, OnModuleDestroy {
 
       case 'BACKUP':
         await this.backups.create(serverUuid, {
-          name: `Sauvegarde planifiée`,
+          name: `Scheduled backup`,
           ignoredFiles: task.payload.split(/\r?\n/).filter((line) => line.trim() !== ''),
         });
         return;
