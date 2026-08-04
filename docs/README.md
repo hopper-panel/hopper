@@ -1,13 +1,13 @@
-# Documentation de Hopper
+# Hopper documentation
 
-| Document                          | Sujet                                                      |
-| --------------------------------- | ---------------------------------------------------------- |
-| [Installation](./installation.md) | Installer Hopper sur une machine neuve, en un script       |
-| [Mise à jour](./mise-a-jour.md)   | Passer d'une version à la suivante sans perdre ses données |
-| [Ligne de commande](./cli.md)     | `hopper doctor`, création de comptes, jetons de node       |
-| [API et notifications](./api.md)  | Clés d'API, webhooks sortants, signature des envois        |
-| [Templates](./templates.md)       | Écrire un template de serveur, importer un egg Pterodactyl |
-| [Sécurité](./securite.md)         | Modèle de menace, durcissement, ce qu'il faut sauvegarder  |
+| Document                          | Subject                                                |
+| --------------------------------- | ------------------------------------------------------ |
+| [Installation](./installation.md) | Installing Hopper on a fresh machine, in one script     |
+| [Updating](./updating.md)         | Moving from one version to the next without losing data |
+| [Command line](./cli.md)          | `hopper doctor`, creating accounts, node tokens         |
+| [API and notifications](./api.md) | API keys, outgoing webhooks, signing the requests       |
+| [Templates](./templates.md)       | Writing a server template, importing a Pterodactyl egg  |
+| [Security](./security.md)         | Threat model, hardening, what to back up                |
 
-Pour développer sur Hopper, voir [CONTRIBUTING.md](../CONTRIBUTING.md) et la section
-_Développement_ du [README](../README.md).
+To develop on Hopper, see [CONTRIBUTING.md](../CONTRIBUTING.md) and the _Development_ section of the
+[README](../README.md).

@@ -1,37 +1,38 @@
-# Ligne de commande
+# Command line
 
-`hopper` est installé dans `/usr/local/bin` par l'installeur. En développement, la même chose
-s'obtient depuis `apps/panel` avec `pnpm cli <commande>`.
+`hopper` is installed into `/usr/local/bin` by the installer. In development, the same thing is
+available from `apps/panel` with `pnpm cli <command>`.
 
-La commande lit le `.env` du panel : elle agit donc sur la même base et avec les mêmes règles que
-l'interface — un mot de passe trop court est refusé ici aussi.
+The command reads the panel's `.env`: it therefore acts on the same database and under the same
+rules as the interface — a password that is too short is refused here too.
 
 ## `hopper doctor`
 
-Diagnostic complet de l'installation. Sa sortie distingue trois niveaux : `✓` conforme, `!`
-avertissement — cela fonctionne mais mordra plus tard —, `✗` panne. Le code de retour vaut 1 dès
-qu'un `✗` apparaît, ce qui permet de l'enchaîner dans un script.
+A complete diagnostic of the installation. Its output distinguishes three levels: `✓` fine, `!` a
+warning — it works but will bite later —, `✗` a failure. The exit code is 1 as soon as a `✗`
+appears, which allows chaining it in a script.
 
-Ce qu'il vérifie :
+What it checks:
 
-- **Système** : version de Node, présence du contrôleur mémoire de cgroup v2 — sans lui, les limites
-  de RAM posées sur les conteneurs ne sont pas appliquées.
-- **Configuration** : `APP_SECRET` laissé à sa valeur d'exemple, URL publique en `localhost` alors
-  que le panel est en production, absence de TLS.
-- **Base de données** : connexion, **migrations en attente**, présence d'au moins un administrateur.
-- **Redis** : joignable, ou absent — auquel cas la limitation de débit repart de zéro à chaque
-  redémarrage.
-- **Nodes** : chaque node est interrogé pour de vrai. Un node déclaré n'est pas un node joignable.
-- **Hôte Docker** : socket accessible et version du moteur, si la machine héberge un daemon.
+- **System**: Node version, presence of cgroup v2's memory controller — without it, the RAM limits
+  set on the containers are not enforced.
+- **Configuration**: `APP_SECRET` left at its example value, a public URL on `localhost` while the
+  panel is in production, absence of TLS.
+- **Database**: connection, **pending migrations**, presence of at least one administrator.
+- **Redis**: reachable, or absent — in which case rate limiting restarts from zero on every restart.
+- **Nodes**: each node is genuinely queried. A declared node is not a reachable node.
+- **Docker host**: socket reachable and engine version, if the machine hosts a daemon. A socket the
+  panel is not allowed to open reads as healthy: the panel runs as `hopper`, and `hopperd` is what
+  talks to Docker, as root.
 
 ## `hopper user:create`
 
 ```bash
-hopper user:create --email moi@example.com --username julien --admin
+hopper user:create --email me@example.com --username julien --admin
 ```
 
-Crée un compte. Sans `--password`, un mot de passe est généré et affiché **une seule fois**.
-`--admin` donne le rôle administrateur.
+Creates an account. Without `--password`, a password is generated and shown **once only**. `--admin`
+grants the administrator role.
 
 ## `hopper user:password`
 
@@ -39,8 +40,8 @@ Crée un compte. Sans `--password`, un mot de passe est généré et affiché **
 hopper user:password --username julien
 ```
 
-Change le mot de passe et **ferme toutes les sessions** du compte : c'est la commande à lancer quand
-on soupçonne un vol d'identifiants. Le SFTP utilisant les mêmes identifiants, il suit aussitôt.
+Changes the password and **closes every session** of the account: this is the command to run when
+credentials are suspected stolen. Since SFTP uses the same credentials, it follows immediately.
 
 ## `hopper node:create`
 
@@ -48,11 +49,11 @@ on soupçonne un vol d'identifiants. Le SFTP utilisant les mêmes identifiants, 
 hopper node:create --name paris-1 --fqdn node1.example.com --output /etc/hopper/daemon.yml
 ```
 
-Déclare un node et écrit sa configuration. Sans `--output`, le `daemon.yml` est écrit sur la sortie
-standard, ce qui permet de le rediriger ou de le copier vers une autre machine.
+Declares a node and writes its configuration. Without `--output`, the `daemon.yml` goes to standard
+output, which allows redirecting it or copying it to another machine.
 
-Options : `--scheme http|https` (défaut `https`), `--port` (8443), `--sftp-port` (2022),
-`--memory` et `--disk` en octets — `0` signifiant « pas de limite déclarée ».
+Options: `--scheme http|https` (default `https`), `--port` (8443), `--sftp-port` (2022), `--memory`
+and `--disk` in bytes — `0` meaning "no declared limit".
 
 ## `hopper node:token`
 
@@ -61,14 +62,14 @@ hopper node:token --node paris-1 --output /etc/hopper/daemon.yml
 systemctl restart hopperd
 ```
 
-Renouvelle le jeton d'un node et régénère son `daemon.yml`. C'est la commande de secours : elle
-rétablit un node dont la configuration a été perdue, ou dont les secrets ne sont plus déchiffrables
-parce que `APP_SECRET` a changé.
+Renews a node's token and regenerates its `daemon.yml`. This is the rescue command: it restores a
+node whose configuration was lost, or whose secrets are no longer decryptable because `APP_SECRET`
+changed.
 
-**Le jeton précédent cesse immédiatement d'être valable.** Le node reste injoignable depuis le panel
-tant que le fichier n'est pas en place et le service redémarré ; les serveurs déjà lancés, eux,
-continuent de tourner — c'est le lien de contrôle qui est coupé, pas les conteneurs.
+**The previous token stops being valid immediately.** The node stays unreachable from the panel
+until the file is in place and the service restarted; the servers already running keep running — it
+is the control link that is cut, not the containers.
 
-Sans `--node`, la commande refuse d'agir s'il existe plusieurs nodes plutôt que d'en choisir un :
-faire tourner le jeton de la mauvaise machine coupe une production, et l'erreur ne se voit qu'au
-redémarrage suivant.
+Without `--node`, the command refuses to act when several nodes exist rather than picking one:
+rotating the wrong machine's token cuts a production off, and the mistake only shows at the next
+restart.

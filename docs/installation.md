@@ -1,18 +1,18 @@
 # Installation
 
-## Ce qu'il vous faut
+## What you need
 
-- Une machine **Debian 12+, Ubuntu 22.04+, Rocky ou AlmaLinux 9+**, fraîchement installée de
-  préférence, avec les droits root.
-- **2 Go de RAM au minimum** pour le panel et un serveur Minecraft. Comptez la mémoire de vos
-  serveurs en plus : un Paper moderne demande 2 à 4 Go à lui seul.
-- Un **nom de domaine** qui pointe déjà sur la machine si vous voulez du HTTPS. Sans domaine,
-  l'installation reste possible en HTTP sur une adresse IP.
-- Les ports **80**, **443**, **8443** (daemon) et **2022** (SFTP) joignables depuis l'extérieur, plus
-  ceux de vos serveurs Minecraft.
+- A **Debian 12+, Ubuntu 22.04+, Rocky or AlmaLinux 9+** machine, freshly installed for preference,
+  with root access.
+- **2 GB of RAM at minimum** for the panel and one Minecraft server. Count your servers' memory on
+  top: a modern Paper asks for 2 to 4 GB on its own.
+- A **domain name** already pointing at the machine if you want HTTPS. Without a domain, installing
+  over HTTP on an IP address remains possible.
+- Ports **80**, **443**, **8443** (daemon) and **2022** (SFTP) reachable from outside, plus those of
+  your Minecraft servers.
 
-Une machine virtuelle chez n'importe quel hébergeur convient, à une condition : les conteneurs
-Docker doivent pouvoir tourner. Les VPS **OpenVZ** et **LXC** ne le permettent généralement pas.
+A virtual machine at any host will do, on one condition: Docker containers have to be able to run.
+**OpenVZ** and **LXC** VPSs generally do not allow it.
 
 ## Installation
 
@@ -22,88 +22,87 @@ cd hopper
 sudo bash install/install.sh
 ```
 
-Le script pose quatre questions — domaine, serveur web, certificat, compte administrateur — puis
-installe Node, Docker, PostgreSQL, Redis, construit le panel, écrit les services systemd, déclare le
-node local et configure le vhost. Comptez cinq à dix minutes, l'essentiel étant la construction.
+The script asks four questions — domain, web server, certificate, administrator account — then
+installs Node, Docker, PostgreSQL and Redis, builds the panel, writes the systemd services, declares
+the local node and configures the vhost. Allow five to ten minutes, most of it the build.
 
-À la fin, il affiche l'adresse du panel et le mot de passe de l'administrateur, **qui n'est plus
-récupérable ensuite**.
+At the end it prints the panel's address and the administrator's password, **which cannot be
+recovered afterwards**.
 
-### Sans interaction
+### Without interaction
 
-Toutes les réponses peuvent être fournies par l'environnement, ce qui permet d'installer depuis un
-outil de déploiement :
+Every answer can come from the environment, which allows installing from a deployment tool:
 
 ```bash
 sudo HOPPER_NONINTERACTIVE=1 \
      HOPPER_DOMAIN=panel.example.com \
      HOPPER_WEBSERVER=nginx \
      HOPPER_TLS=yes \
-     HOPPER_ADMIN_EMAIL=moi@example.com \
-     HOPPER_ADMIN_USERNAME=moi \
+     HOPPER_ADMIN_EMAIL=me@example.com \
+     HOPPER_ADMIN_USERNAME=me \
      bash install/install.sh
 ```
 
-| Variable                | Rôle                              | Défaut              |
-| ----------------------- | --------------------------------- | ------------------- |
-| `HOPPER_DOMAIN`         | Domaine ou IP du panel            | nom d'hôte          |
-| `HOPPER_WEBSERVER`      | `nginx`, `apache` ou `aucun`      | `nginx`             |
-| `HOPPER_TLS`            | `yes` pour demander un certificat | `oui` si un domaine |
-| `HOPPER_ADMIN_PASSWORD` | Mot de passe du compte créé       | généré              |
-| `HOPPER_ROOT`           | Répertoire d'installation         | `/opt/hopper`       |
-| `HOPPER_PORT`           | Port d'écoute du panel            | `8080`              |
-| `HOPPER_DAEMON_PORT`    | Port d'écoute du daemon           | `8443`              |
+| Variable                | Role                                | Default            |
+| ----------------------- | ----------------------------------- | ------------------ |
+| `HOPPER_DOMAIN`         | Domain or IP of the panel           | host name          |
+| `HOPPER_WEBSERVER`      | `nginx`, `apache` or `none`         | `nginx`            |
+| `HOPPER_TLS`            | `yes` to request a certificate      | `yes` with a domain |
+| `HOPPER_ADMIN_PASSWORD` | Password of the account created     | generated          |
+| `HOPPER_ROOT`           | Installation directory              | `/opt/hopper`      |
+| `HOPPER_PORT`           | Port the panel listens on           | `8080`             |
+| `HOPPER_DAEMON_PORT`    | Port the daemon listens on          | `8443`             |
 
-### Sans serveur web
+### Without a web server
 
-`HOPPER_WEBSERVER=aucun` fait écouter le panel directement sur `0.0.0.0:8080`, sans proxy ni TLS.
-Pratique pour un réseau local ; à éviter sur Internet, où les sessions circuleraient en clair.
+`HOPPER_WEBSERVER=none` makes the panel listen directly on `0.0.0.0:8080`, with no proxy and no TLS.
+Handy on a local network; to be avoided on the internet, where sessions would travel in the clear.
 
-## Après l'installation
+## After the installation
 
 ```bash
 hopper doctor
 ```
 
-La commande vérifie la configuration, la base, Redis, les nodes et Docker. C'est le premier réflexe
-devant n'importe quel comportement anormal — voir [la documentation de la CLI](./cli.md).
+The command checks the configuration, the database, Redis, the nodes and Docker. It is the first
+reflex in front of any odd behaviour — see [the CLI documentation](./cli.md).
 
-Ensuite, dans l'interface :
+Then, in the interface:
 
-1. **Administration → Nodes → votre node → Allocations** : déclarez les ports que vos serveurs
-   pourront utiliser, par exemple la plage `25565-25580`.
-2. **Administration → Templates** : le catalogue livré (Paper, Purpur, Vanilla, Fabric, NeoForge,
-   Velocity, BungeeCord…) est déjà installé. Resynchronisez après chaque mise à jour de Hopper.
-3. **Créer un serveur**.
+1. **Administration → Nodes → your node → Allocations**: declare the ports your servers will be able
+   to use, for instance the range `25565-25580`.
+2. **Administration → Templates**: the shipped catalogue (Paper, Purpur, Vanilla, Fabric, NeoForge,
+   Velocity, BungeeCord…) is already installed. Resynchronise after every Hopper update.
+3. **Create a server**.
 
-## Pare-feu
+## Firewall
 
-Docker écrit ses propres règles `iptables`, **avant** celles d'ufw : une règle ufw qui semble
-fermer un port de conteneur ne ferme rien du tout. Filtrez dans la chaîne `DOCKER-USER` :
+Docker writes its own `iptables` rules, **before** ufw's: a ufw rule that seems to close a container
+port closes nothing at all. Filter in the `DOCKER-USER` chain:
 
 ```bash
-# N'autoriser le port d'un serveur que depuis un réseau donné
+# Only allow a server's port from a given network
 iptables -I DOCKER-USER -p tcp --dport 25565 ! -s 203.0.113.0/24 -j DROP
 ```
 
-Sur Rocky et Alma, `firewalld` est actif et l'installeur y ouvre les ports 80, 443, 8443 et 2022.
-Les ports de vos serveurs Minecraft restent à ouvrir.
+On Rocky and Alma, `firewalld` is active and the installer opens ports 80, 443, 8443 and 2022 in it.
+The ports of your Minecraft servers still have to be opened.
 
-## Ajouter une seconde machine
+## Adding a second machine
 
-Le panel pilote autant de machines que nécessaire. Sur la nouvelle :
+The panel drives as many machines as needed. On the new one:
 
-1. Dans l'interface : **Administration → Nodes → Créer**. Le panel affiche un `daemon.yml`.
-2. Sur la machine hôte : installez Docker et Node 22, copiez le dépôt dans `/opt/hopper`,
-   construisez le daemon (`pnpm --filter @hopper/daemon build`), écrivez le `daemon.yml` dans
-   `/etc/hopper/daemon.yml` en mode `600`, installez `install/hopperd.service`, puis
+1. In the interface: **Administration → Nodes → Create**. The panel shows a `daemon.yml`.
+2. On the host machine: install Docker and Node 22, copy the repository into `/opt/hopper`, build the
+   daemon (`pnpm --filter @hopper/daemon build`), write the `daemon.yml` into
+   `/etc/hopper/daemon.yml` in mode `600`, install `install/hopperd.service`, then
    `systemctl enable --now hopperd`.
-3. Vérifiez depuis le panel : **Administration** doit afficher le node comme joignable.
+3. Check from the panel: **Administration** has to show the node as reachable.
 
-Le daemon refuse de démarrer si `/etc/hopper/daemon.yml` est lisible par d'autres que root : il
-contient le secret du node et la clé de signature des consoles.
+The daemon refuses to start if `/etc/hopper/daemon.yml` is readable by anyone other than root: it
+holds the node secret and the console signing key.
 
-## Désinstallation
+## Uninstalling
 
 ```bash
 systemctl disable --now hopper-panel hopperd
@@ -112,5 +111,5 @@ rm -rf /opt/hopper /etc/hopper /usr/local/bin/hopper
 su - postgres -c "dropdb hopper && dropuser hopper"
 ```
 
-`/var/lib/hopper` contient **les volumes de vos serveurs et vos sauvegardes** : il n'est pas
-supprimé par ces commandes, et il vaut mieux le déplacer que l'effacer.
+`/var/lib/hopper` holds **your servers' volumes and your backups**: these commands do not remove it,
+and moving it is wiser than erasing it.
