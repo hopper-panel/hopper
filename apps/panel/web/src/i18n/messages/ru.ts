@@ -682,4 +682,30 @@ export const ru: Partial<Messages> = {
   'perm.WEBHOOK_UPDATE.desc': 'Менять адрес, набор событий или состояние уведомления.',
   'perm.WEBHOOK_DELETE.label': 'Удалять уведомление',
   'perm.WEBHOOK_DELETE.desc': 'Убирать адрес из списка.',
+
+  'adminOverview.title': 'Обзор',
+  'adminOverview.servers': 'Серверы',
+  'adminOverview.nodes': 'Ноды',
+  'adminOverview.users': 'Пользователи',
+  'adminOverview.templates': 'Шаблоны',
+  'adminOverview.backups': 'Резервные копии',
+  'adminOverview.databases': 'Базы данных',
+  'adminOverview.nodeHealth': 'Состояние нод',
+  'adminOverview.reachable': 'доступна',
+  'adminOverview.unreachable': 'недоступна',
+  'adminTemplates.title': 'Шаблоны',
+  'adminTemplates.subtitle':
+    'Что сервер устанавливает и запускает: образ Docker, скрипт установки, переменные.',
+  'adminTemplates.resync': 'Синхронизировать',
+  'adminTemplates.resyncing': 'Синхронизация…',
+  'adminTemplates.resyncFailed': 'Не удалось синхронизировать.',
+  'adminTemplates.resynced':
+    'Создано: {created}, обновлено: {updated}, сохранено: {kept} — их изменил администратор.',
+  'adminTemplates.empty': 'Шаблонов нет',
+  'adminTemplates.emptyHint': 'Синхронизируйте, чтобы установить каталог, поставляемый с панелью.',
+  'adminTemplates.modified': 'изменён',
+
+  'adminOverview.noNodes': 'Ноды не объявлены.',
+  'adminOverview.noNodesHint': 'Добавьте одну, чтобы размещать серверы.',
+  'adminUsers.create': 'Создать пользователя',
 };

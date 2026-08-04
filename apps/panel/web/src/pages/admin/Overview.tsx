@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { PageHeader } from '../../components/PageHeader';
 import { Badge, Card, Spinner } from '../../components/ui';
+import { useTranslation } from '../../i18n';
 import { api } from '../../lib/api';
 import { formatBytes } from '../../lib/format';
 
@@ -33,43 +34,54 @@ interface Overview {
 }
 
 export function AdminOverviewPage() {
+  const { t } = useTranslation();
   const overview = useQuery({
     queryKey: ['admin', 'overview'],
     queryFn: () => api.get<Overview>('/api/admin/overview'),
-    // Les nodes sont sondés en direct : rafraîchir régulièrement fait de cette
+    // Nodes are probed live: refreshing regularly makes this page a
     // page un tableau de bord utilisable, et non une photographie.
     refetchInterval: 15_000,
   });
 
   if (overview.isLoading || !overview.data) {
-    return <Spinner label="Chargement de la vue d’ensemble…" />;
+    return <Spinner label={t('common.loading')} />;
   }
 
   const { counts, nodes, version } = overview.data;
 
   return (
     <>
-      <PageHeader title="Vue d’ensemble" description={`Hopper Panel ${version}`} />
+      <PageHeader title={t('adminOverview.title')} description={`Hopper Panel ${version}`} />
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
-        <Count label="Serveurs" value={counts.servers} to="/admin/servers" />
-        <Count label="Nodes" value={counts.nodes} to="/admin/nodes" />
-        <Count label="Utilisateurs" value={counts.users} to="/admin/users" />
-        <Count label="Templates" value={counts.templates} to="/admin/templates" />
-        <Count label="Sauvegardes" value={counts.backups} />
-        <Count label="Bases de données" value={counts.databases} to="/admin/database-hosts" />
+        <Count label={t('adminOverview.servers')} value={counts.servers} to="/admin/servers" />
+        <Count label={t('adminOverview.nodes')} value={counts.nodes} to="/admin/nodes" />
+        <Count label={t('adminOverview.users')} value={counts.users} to="/admin/users" />
+        <Count
+          label={t('adminOverview.templates')}
+          value={counts.templates}
+          to="/admin/templates"
+        />
+        <Count label={t('adminOverview.backups')} value={counts.backups} />
+        <Count
+          label={t('adminOverview.databases')}
+          value={counts.databases}
+          to="/admin/database-hosts"
+        />
       </div>
 
-      <h2 className="mb-3 mt-8 text-lg font-semibold text-content">État des nodes</h2>
+      <h2 className="mb-3 mt-8 text-lg font-semibold text-content">
+        {t('adminOverview.nodeHealth')}
+      </h2>
 
       {nodes.length === 0 ? (
         <Card>
           <p className="text-sm text-content-muted">
-            Aucun node déclaré.{' '}
+            {t('adminOverview.noNodes')}{' '}
             <Link to="/admin/nodes" className="text-accent hover:underline">
               En ajouter un
             </Link>{' '}
-            pour héberger des serveurs.
+            {t('adminOverview.noNodesHint')}
           </p>
         </Card>
       ) : (
@@ -85,12 +97,12 @@ export function AdminOverviewPage() {
                     >
                       {node.name}
                     </Link>
-                    {/* Un node déclaré n'est pas un node joignable : c'est
-                        exactement ce qu'on vient vérifier ici. */}
+                    {/* A declared node is not a reachable node: that is
+                        exactly what one comes here to check. */}
                     {node.reachable ? (
-                      <Badge tone="online">joignable</Badge>
+                      <Badge tone="online">{t('adminOverview.reachable')}</Badge>
                     ) : (
-                      <Badge tone="danger">injoignable</Badge>
+                      <Badge tone="danger">{t('adminOverview.unreachable')}</Badge>
                     )}
                     <span className="font-mono text-xs text-content-subtle">{node.fqdn}</span>
                   </div>

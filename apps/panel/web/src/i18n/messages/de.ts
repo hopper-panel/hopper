@@ -698,4 +698,30 @@ export const de: Partial<Messages> = {
     'Adresse, abonnierte Ereignisse oder Zustand einer Benachrichtigung ändern.',
   'perm.WEBHOOK_DELETE.label': 'Benachrichtigung löschen',
   'perm.WEBHOOK_DELETE.desc': 'Eine informierte Adresse entfernen.',
+
+  'adminOverview.title': 'Übersicht',
+  'adminOverview.servers': 'Server',
+  'adminOverview.nodes': 'Nodes',
+  'adminOverview.users': 'Benutzer',
+  'adminOverview.templates': 'Vorlagen',
+  'adminOverview.backups': 'Sicherungen',
+  'adminOverview.databases': 'Datenbanken',
+  'adminOverview.nodeHealth': 'Zustand der Nodes',
+  'adminOverview.reachable': 'erreichbar',
+  'adminOverview.unreachable': 'nicht erreichbar',
+  'adminTemplates.title': 'Vorlagen',
+  'adminTemplates.subtitle':
+    'Was ein Server installiert und ausführt: Docker-Image, Installationsskript, Variablen.',
+  'adminTemplates.resync': 'Neu abgleichen',
+  'adminTemplates.resyncing': 'Wird abgeglichen…',
+  'adminTemplates.resyncFailed': 'Abgleich nicht möglich.',
+  'adminTemplates.resynced':
+    '{created} erstellt, {updated} aktualisiert, {kept} behalten, weil ein Administrator sie geändert hat.',
+  'adminTemplates.empty': 'Keine Vorlagen',
+  'adminTemplates.emptyHint': 'Gleiche neu ab, um den mitgelieferten Katalog zu installieren.',
+  'adminTemplates.modified': 'geändert',
+
+  'adminOverview.noNodes': 'Keine Nodes eingetragen.',
+  'adminOverview.noNodesHint': 'Füge einen hinzu, um Server zu hosten.',
+  'adminUsers.create': 'Benutzer anlegen',
 };

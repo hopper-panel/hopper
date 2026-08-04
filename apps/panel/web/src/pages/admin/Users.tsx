@@ -3,6 +3,7 @@ import { useState, type FormEvent } from 'react';
 import { PageHeader } from '../../components/PageHeader';
 import { Alert, Badge, Button, Card, Field, Input, Spinner } from '../../components/ui';
 import { ApiError, api, type Paginated, type UserSummary } from '../../lib/api';
+import { useTranslation } from '../../i18n';
 import { formatDate } from '../../lib/format';
 import { useAuth } from '../../lib/auth';
 
@@ -17,6 +18,7 @@ export function AdminUsersPage() {
   });
 
   const [notice, setNotice] = useState<string | null>(null);
+  const { t, locale } = useTranslation();
 
   const createMutation = useMutation({
     mutationFn: (body: Record<string, unknown>) =>
@@ -26,8 +28,8 @@ export function AdminUsersPage() {
       setCreating(false);
       setNotice(
         created.invitationSent
-          ? `Compte créé. Un lien pour choisir un mot de passe a été envoyé à ${created.email}.`
-          : 'Compte créé. Aucun courriel n’est parti : configurez un serveur SMTP dans les paramètres, ou communiquez vous-même le mot de passe.',
+          ? t('adminUsers.invitationSent', { email: created.email })
+          : t('adminUsers.invitationNotSent'),
       );
     },
   });
@@ -36,11 +38,7 @@ export function AdminUsersPage() {
     mutationFn: (uuid: string) =>
       api.post<{ sent: boolean }>(`/api/admin/users/${uuid}/invitation`),
     onSuccess: (result) =>
-      setNotice(
-        result.sent
-          ? 'Invitation renvoyée.'
-          : 'Aucun serveur SMTP configuré : rien n’a pu être envoyé.',
-      ),
+      setNotice(result.sent ? t('adminUsers.resent') : t('adminUsers.resendFailed')),
   });
 
   const deleteMutation = useMutation({
@@ -55,11 +53,11 @@ export function AdminUsersPage() {
   return (
     <>
       <PageHeader
-        title="Utilisateurs"
-        description={`${data?.meta.total ?? 0} compte(s)`}
+        title={t('adminUsers.title')}
+        description={t('adminUsers.count', { count: data?.meta.total ?? 0 })}
         action={
           <Button variant="primary" onClick={() => setCreating((value) => !value)}>
-            {creating ? 'Annuler' : 'Créer un utilisateur'}
+            {creating ? 'Annuler' : t('adminUsers.create')}
           </Button>
         }
       />
@@ -89,9 +87,9 @@ export function AdminUsersPage() {
           <thead>
             <tr className="border-b border-border-subtle text-left text-xs text-content-muted">
               <th className="px-5 py-3 font-medium">Utilisateur</th>
-              <th className="px-5 py-3 font-medium">Rôle</th>
+              <th className="px-5 py-3 font-medium">{t('adminUsers.role')}</th>
               <th className="px-5 py-3 font-medium">2FA</th>
-              <th className="px-5 py-3 font-medium">Dernière connexion</th>
+              <th className="px-5 py-3 font-medium">{t('adminUsers.lastLogin')}</th>
               <th className="px-5 py-3" />
             </tr>
           </thead>
@@ -104,36 +102,38 @@ export function AdminUsersPage() {
                 </td>
                 <td className="px-5 py-3">
                   <Badge tone={user.role === 'ADMIN' ? 'warn' : 'offline'}>
-                    {user.role === 'ADMIN' ? 'administrateur' : 'utilisateur'}
+                    {t(user.role === 'ADMIN' ? 'adminUsers.roleAdmin' : 'adminUsers.roleUser')}
                   </Badge>
                   {user.suspended ? (
                     <span className="ml-2">
-                      <Badge tone="danger">suspendu</Badge>
+                      <Badge tone="danger">{t('status.suspended')}</Badge>
                     </span>
                   ) : null}
                 </td>
                 <td className="px-5 py-3 text-content-muted">
-                  {user.twoFactorEnabled ? 'activée' : '—'}
+                  {user.twoFactorEnabled ? t('adminUsers.twoFactorOn') : '—'}
                 </td>
-                <td className="px-5 py-3 text-content-muted">{formatDate(user.lastLoginAt)}</td>
+                <td className="px-5 py-3 text-content-muted">
+                  {formatDate(user.lastLoginAt, locale)}
+                </td>
                 <td className="px-5 py-3 text-right">
-                  {/* Se supprimer soi-même est refusé par l'API ; masquer le
-                      bouton évite de proposer une action vouée à échouer. */}
+                  {/* Deleting oneself is refused by the API; hiding the button
+                      avoids offering an action bound to fail. */}
                   {user.uuid === currentUser?.uuid ? (
-                    <span className="text-xs text-content-muted">vous</span>
+                    <span className="text-xs text-content-muted">{t('adminUsers.you')}</span>
                   ) : (
                     <div className="flex justify-end gap-2">
-                      {/* Renvoyer un lien plutôt que fixer un mot de passe à la
-                          place de quelqu'un : le premier courriel se perd, le
-                          lien expire au bout d'un jour. */}
+                      {/* Sending a link again rather than setting a password on
+                          someone's behalf: the first mail gets lost, and the
+                          link expires after a day. */}
                       <Button
                         onClick={() => inviteMutation.mutate(user.uuid)}
                         disabled={inviteMutation.isPending}
                       >
-                        Renvoyer l’invitation
+                        {t('adminUsers.resend')}
                       </Button>
                       <Button variant="danger" onClick={() => deleteMutation.mutate(user.uuid)}>
-                        Supprimer
+                        {t('common.delete')}
                       </Button>
                     </div>
                   )}
@@ -156,13 +156,14 @@ function CreateUserForm({
   pending: boolean;
   error: unknown;
 }) {
+  const { t } = useTranslation();
   const [form, setForm] = useState({ email: '', username: '', password: '', role: 'USER' });
 
   function handleSubmit(event: FormEvent): void {
     event.preventDefault();
 
-    // Mot de passe vide : le champ est facultatif, et l'envoyer vide ferait
-    // échouer la validation au lieu de déclencher l'invitation par courriel.
+    // Empty password: the field is optional, and sending it empty would fail
+    // validation instead of triggering the mail invitation.
     onSubmit({
       ...form,
       password: form.password === '' ? undefined : form.password,
@@ -175,7 +176,7 @@ function CreateUserForm({
         {error instanceof ApiError ? <Alert>{error.message}</Alert> : null}
 
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Adresse e-mail">
+          <Field label={t('adminUsers.email')}>
             <Input
               type="email"
               value={form.email}
@@ -184,7 +185,7 @@ function CreateUserForm({
             />
           </Field>
 
-          <Field label="Nom d'utilisateur" hint="Sert aussi d'identifiant SFTP.">
+          <Field label={t('adminUsers.username')} hint={t('adminUsers.usernameHint')}>
             <Input
               value={form.username}
               onChange={(event) => setForm({ ...form, username: event.target.value })}
@@ -195,33 +196,30 @@ function CreateUserForm({
             />
           </Field>
 
-          <Field
-            label="Mot de passe"
-            hint="Laissez vide pour envoyer un lien par courriel : c'est préférable, un mot de passe choisi ici transite par un canal que vous ne maîtrisez pas."
-          >
+          <Field label={t('adminUsers.password')} hint={t('adminUsers.passwordHint')}>
             <Input
               type="password"
               value={form.password}
               onChange={(event) => setForm({ ...form, password: event.target.value })}
               minLength={12}
-              placeholder="lien envoyé par courriel"
+              placeholder={t('adminUsers.passwordPlaceholder')}
             />
           </Field>
 
-          <Field label="Rôle" hint="Un administrateur accède à tous les serveurs de l'instance.">
+          <Field label={t('adminUsers.role')} hint={t('adminUsers.roleHint')}>
             <select
               value={form.role}
               onChange={(event) => setForm({ ...form, role: event.target.value })}
               className="w-full rounded-lg border border-border-subtle bg-surface px-3 py-2 text-sm text-content focus:border-accent focus:outline-none"
             >
-              <option value="USER">Utilisateur</option>
-              <option value="ADMIN">Administrateur</option>
+              <option value="USER">{t('adminUsers.roleUser')}</option>
+              <option value="ADMIN">{t('adminUsers.roleAdmin')}</option>
             </select>
           </Field>
         </div>
 
         <Button type="submit" variant="primary" disabled={pending}>
-          {pending ? 'Création…' : 'Créer'}
+          {pending ? t('common.saving') : t('common.create')}
         </Button>
       </form>
     </Card>

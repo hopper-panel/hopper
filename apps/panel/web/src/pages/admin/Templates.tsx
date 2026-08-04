@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { PageHeader } from '../../components/PageHeader';
 import { Alert, Badge, Button, Card, EmptyState, Spinner } from '../../components/ui';
+import { useTranslation } from '../../i18n';
 import { ApiError, api } from '../../lib/api';
 
 interface Template {
@@ -16,15 +17,15 @@ interface Template {
 }
 
 /**
- * Catalogue des templates.
+ * Template catalogue.
  *
- * En lecture, plus deux actions : resynchroniser le catalogue livré, et
- * importer un « egg » Pterodactyl. L'édition d'un template dans l'interface
- * n'est volontairement pas proposée — un template mal formé rend ses serveurs
- * impossibles à installer, et le format se corrige mieux dans un fichier
- * versionné que dans un formulaire.
+ * Read-only, plus two actions: resynchronise the shipped catalogue, and import
+ * a Pterodactyl egg. Editing a template from the interface is deliberately not
+ * offered — a malformed template makes its servers impossible to install, and
+ * the format is better fixed in a versioned file than in a form.
  */
 export function AdminTemplatesPage() {
+  const { t } = useTranslation();
   const queryClient = useQueryClient();
   const [failure, setFailure] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -40,19 +41,22 @@ export function AdminTemplatesPage() {
     onSuccess: (result) => {
       setFailure(null);
       setNotice(
-        `${result.created} créé(s), ${result.updated} mis à jour, ${result.kept} conservé(s) ` +
-          'car modifiés par un administrateur.',
+        t('adminTemplates.resynced', {
+          created: result.created,
+          updated: result.updated,
+          kept: result.kept,
+        }),
       );
       void queryClient.invalidateQueries({ queryKey: ['admin', 'templates'] });
     },
     onError: (error: unknown) => {
       setNotice(null);
-      setFailure(error instanceof ApiError ? error.message : 'Synchronisation impossible.');
+      setFailure(error instanceof ApiError ? error.message : t('adminTemplates.resyncFailed'));
     },
   });
 
   if (templates.isLoading) {
-    return <Spinner label="Chargement du catalogue…" />;
+    return <Spinner label={t('common.loading')} />;
   }
 
   const list = templates.data ?? [];
@@ -60,11 +64,11 @@ export function AdminTemplatesPage() {
   return (
     <>
       <PageHeader
-        title="Templates"
-        description="Ce qu’un serveur installe et exécute : image Docker, script d’installation, variables."
+        title={t('adminTemplates.title')}
+        description={t('adminTemplates.subtitle')}
         action={
           <Button onClick={() => sync.mutate()} disabled={sync.isPending}>
-            {sync.isPending ? 'Synchronisation…' : 'Resynchroniser'}
+            {sync.isPending ? t('adminTemplates.resyncing') : t('adminTemplates.resync')}
           </Button>
         }
       />
@@ -82,10 +86,7 @@ export function AdminTemplatesPage() {
       ) : null}
 
       {list.length === 0 ? (
-        <EmptyState
-          title="Aucun template"
-          description="Resynchronisez pour installer le catalogue livré avec le panel."
-        />
+        <EmptyState title={t('adminTemplates.empty')} description={t('adminTemplates.emptyHint')} />
       ) : (
         <div className="flex flex-col gap-2">
           {list.map((template) => (
@@ -95,10 +96,12 @@ export function AdminTemplatesPage() {
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="font-medium text-content">{template.name}</span>
                     {template.group ? <Badge>{template.group.name}</Badge> : null}
-                    {/* Un template modifié à la main n'est plus écrasé par la
-                        resynchronisation : le signaler évite de croire qu'il
-                        suit encore le catalogue. */}
-                    {template.modifiedByAdmin ? <Badge tone="warn">modifié</Badge> : null}
+                    {/* A hand-edited template is no longer overwritten by the
+                        resync: flagging it avoids believing it still follows
+                        the catalogue. */}
+                    {template.modifiedByAdmin ? (
+                      <Badge tone="warn">{t('adminTemplates.modified')}</Badge>
+                    ) : null}
                   </div>
 
                   <p className="mt-1 text-sm text-content-muted">{template.description}</p>

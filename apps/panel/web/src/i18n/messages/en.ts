@@ -695,6 +695,32 @@ export const en = {
     'Change the address, the subscribed events or the state of a notification.',
   'perm.WEBHOOK_DELETE.label': 'Delete a notification',
   'perm.WEBHOOK_DELETE.desc': 'Remove an address from the list.',
+
+  'adminOverview.title': 'Overview',
+  'adminOverview.servers': 'Servers',
+  'adminOverview.nodes': 'Nodes',
+  'adminOverview.users': 'Users',
+  'adminOverview.templates': 'Templates',
+  'adminOverview.backups': 'Backups',
+  'adminOverview.databases': 'Databases',
+  'adminOverview.nodeHealth': 'Node health',
+  'adminOverview.reachable': 'reachable',
+  'adminOverview.unreachable': 'unreachable',
+  'adminTemplates.title': 'Templates',
+  'adminTemplates.subtitle':
+    'What a server installs and runs: Docker image, install script, variables.',
+  'adminTemplates.resync': 'Resynchronise',
+  'adminTemplates.resyncing': 'Synchronising…',
+  'adminTemplates.resyncFailed': 'Could not synchronise.',
+  'adminTemplates.resynced':
+    '{created} created, {updated} updated, {kept} kept because an administrator edited them.',
+  'adminTemplates.empty': 'No templates',
+  'adminTemplates.emptyHint': 'Resynchronise to install the catalogue shipped with the panel.',
+  'adminTemplates.modified': 'edited',
+
+  'adminOverview.noNodes': 'No nodes declared.',
+  'adminOverview.noNodesHint': 'Add one to host servers.',
+  'adminUsers.create': 'Create a user',
 } as const;
 
 export type MessageKey = keyof typeof en;

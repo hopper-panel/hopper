@@ -702,4 +702,30 @@ export const fr: Partial<Messages> = {
     'Changer l’adresse, les événements souscrits ou l’état d’une notification.',
   'perm.WEBHOOK_DELETE.label': 'Supprimer une notification',
   'perm.WEBHOOK_DELETE.desc': 'Retirer une adresse prévenue.',
+
+  'adminOverview.title': 'Vue d’ensemble',
+  'adminOverview.servers': 'Serveurs',
+  'adminOverview.nodes': 'Nodes',
+  'adminOverview.users': 'Utilisateurs',
+  'adminOverview.templates': 'Templates',
+  'adminOverview.backups': 'Sauvegardes',
+  'adminOverview.databases': 'Bases de données',
+  'adminOverview.nodeHealth': 'État des nodes',
+  'adminOverview.reachable': 'joignable',
+  'adminOverview.unreachable': 'injoignable',
+  'adminTemplates.title': 'Templates',
+  'adminTemplates.subtitle':
+    'Ce qu’un serveur installe et exécute : image Docker, script d’installation, variables.',
+  'adminTemplates.resync': 'Resynchroniser',
+  'adminTemplates.resyncing': 'Synchronisation…',
+  'adminTemplates.resyncFailed': 'Synchronisation impossible.',
+  'adminTemplates.resynced':
+    '{created} créé(s), {updated} mis à jour, {kept} conservé(s) car modifiés par un administrateur.',
+  'adminTemplates.empty': 'Aucun template',
+  'adminTemplates.emptyHint': 'Resynchronisez pour installer le catalogue livré avec le panel.',
+  'adminTemplates.modified': 'modifié',
+
+  'adminOverview.noNodes': 'Aucun node déclaré.',
+  'adminOverview.noNodesHint': 'Ajoutez-en un pour héberger des serveurs.',
+  'adminUsers.create': 'Créer un utilisateur',
 };
