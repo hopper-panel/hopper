@@ -1,23 +1,22 @@
 /**
- * Liste d'exclusion d'une sauvegarde, à la syntaxe `.gitignore`.
+ * A backup's exclusion list, in `.gitignore` syntax.
  *
- * Ce choix n'est pas gratuit : c'est la seule syntaxe d'exclusion que la
- * plupart des gens connaissent déjà, et les templates de serveurs Minecraft
- * circulent avec des listes écrites pour elle. En inventer une autre aurait
- * garanti des exclusions silencieusement inopérantes — le pire défaut possible
- * ici, puisqu'il ne se voit qu'au moment de restaurer.
+ * The choice is not gratuitous: it is the only exclusion syntax most people
+ * already know, and Minecraft server templates circulate with lists written for
+ * it. Inventing another would have guaranteed silently ineffective exclusions —
+ * the worst possible defect here, since it only shows at restore time.
  *
- * Sous-ensemble implémenté, volontairement restreint :
+ * The subset implemented, deliberately narrow:
  *
- *   - `#` en début de ligne : commentaire ; lignes vides ignorées ;
- *   - `!motif` : réintègre ce qu'une règle précédente avait exclu ;
- *   - `*` ne traverse pas `/`, `**` le traverse ;
- *   - `motif/` ne vise que les répertoires ;
- *   - un motif sans `/` s'applique à n'importe quelle profondeur, comme dans
- *     `.gitignore` — `*.log` exclut aussi `plugins/x/latest.log` ;
- *   - un motif contenant `/` est ancré à la racine du volume.
+ *   - `#` at the start of a line: a comment; empty lines ignored;
+ *   - `!pattern`: brings back what an earlier rule had excluded;
+ *   - `*` does not cross `/`, `**` does;
+ *   - `pattern/` targets directories only;
+ *   - a pattern without `/` applies at any depth, as in `.gitignore` — `*.log`
+ *     also excludes `plugins/x/latest.log`;
+ *   - a pattern containing `/` is anchored at the volume root.
  *
- * La dernière règle qui correspond l'emporte, ce qui est ce qui rend `!` utile.
+ * The last rule that matches wins, which is what makes `!` useful.
  */
 
 import { globToRegExp } from '../fs/jailed-filesystem.js';
@@ -40,10 +39,10 @@ export class IgnoreList {
   }
 
   /**
-   * Le chemin doit-il être écarté de l'archive ?
+   * Should the path be kept out of the archive?
    *
-   * @param relativePath chemin relatif à la racine du volume, séparé par `/`.
-   * @param isDirectory un motif en `/` ne vise que les répertoires.
+   * @param relativePath path relative to the volume root, separated by `/`.
+   * @param isDirectory a pattern ending in `/` targets directories only.
    */
   ignores(relativePath: string, isDirectory = false): boolean {
     const normalized = normalizeRelative(relativePath);
@@ -54,9 +53,8 @@ export class IgnoreList {
 
     let ignored = false;
 
-    // Pas de sortie anticipée : c'est la **dernière** règle correspondante qui
-    // décide, sans quoi `!important.log` placé après `*.log` n'aurait aucun
-    // effet.
+    // No early exit: it is the **last** matching rule that decides, without
+    // which `!important.log` placed after `*.log` would have no effect.
     for (const rule of this.rules) {
       if (rule.directoryOnly && !isDirectory) {
         continue;
@@ -71,13 +69,12 @@ export class IgnoreList {
   }
 
   /**
-   * Un répertoire entier peut-il être sauté sans l'ouvrir ?
+   * Can a whole directory be skipped without opening it?
    *
-   * Descendre dans `cache/` pour n'en retenir aucun fichier coûte un appel
-   * système par entrée ; sur un serveur qui en compte des dizaines de milliers,
-   * cela domine le temps de sauvegarde. On ne peut toutefois l'élaguer que si
-   * aucune règle de réintégration ne peut ressortir quelque chose de son
-   * contenu.
+   * Descending into `cache/` to keep none of its files costs one system call
+   * per entry; on a server holding tens of thousands, that dominates the backup
+   * time. It can only be pruned, however, if no re-inclusion rule could pull
+   * something back out of its contents.
    */
   canPrune(relativePath: string): boolean {
     return this.ignores(relativePath, true) && !this.rules.some((rule) => rule.negated);
@@ -87,9 +84,9 @@ export class IgnoreList {
 function normalizeRelative(path: string): string {
   const normalized = path.replace(/\\/g, '/').replace(/^\.\//, '').replace(/\/+$/, '');
 
-  // La racine du volume, quelle que soit la façon de l'écrire. Un motif large
-  // comme `**` ne doit pas pouvoir l'exclure : la sauvegarde serait vide, et
-  // ce vide passerait pour un succès.
+  // The volume root, however it is written. A broad pattern such as `**` must
+  // not be able to exclude it: the backup would be empty, and that emptiness
+  // would pass for a success.
   return normalized === '.' ? '' : normalized;
 }
 
@@ -116,10 +113,10 @@ function parsePattern(raw: string): Rule | null {
     return null;
   }
 
-  // Un motif ancré ne vaut qu'à la racine ; un motif nu vaut à toute
-  // profondeur. Dans les deux cas le motif couvre aussi le contenu de ce qu'il
-  // désigne : exclure `logs` doit exclure `logs/latest.log`, sans quoi la
-  // règle ne ferait presque rien.
+  // An anchored pattern only holds at the root; a bare pattern holds at any
+  // depth. In both cases the pattern also covers the contents of what it names:
+  // excluding `logs` has to exclude `logs/latest.log`, without which the rule
+  // would do almost nothing.
   const anchored = raw.trim().replace(/^!/, '').includes('/');
   const prefix = anchored ? '' : '(?:.*/)?';
   const body = globToRegExp(pattern).source.replace(/^\^/, '').replace(/\$$/, '');
@@ -132,12 +129,11 @@ function parsePattern(raw: string): Rule | null {
 }
 
 /**
- * Exclusions appliquées à toute sauvegarde, quelles que soient celles du
- * template.
+ * Exclusions applied to every backup, whatever the template's own say.
  *
- * Ces chemins ne sont pas seulement inutiles : archiver `session.lock` pendant
- * que le serveur tourne produit une archive dont la restauration fait croire au
- * moteur de monde qu'une autre instance y écrit déjà.
+ * These paths are not merely useless: archiving `session.lock` while the server
+ * runs produces an archive whose restore makes the world engine believe another
+ * instance is already writing there.
  */
 export const ALWAYS_IGNORED: readonly string[] = [
   'session.lock',

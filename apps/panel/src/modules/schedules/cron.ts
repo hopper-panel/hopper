@@ -1,28 +1,26 @@
 /**
- * Expressions cron : analyse et calcul de la prochaine occurrence.
+ * Cron expressions: parsing and computing the next occurrence.
  *
- * Écrit ici plutôt qu'emprunté à une bibliothèque, pour deux raisons.
+ * Written here rather than borrowed from a library, for two reasons.
  *
- * D'abord, le champ à couvrir est étroit et connu : cinq champs, la syntaxe que
- * tout le monde écrit dans une crontab. Les bibliothèques du domaine y ajoutent
- * les secondes, les années, les fuseaux, `L`, `W`, `#`, des dialectes Quartz —
- * autant de comportements qu'il faudrait documenter et dont aucun n'est
- * demandé.
+ * First, the ground to cover is narrow and known: five fields, the syntax
+ * everybody writes in a crontab. The libraries in this space add seconds,
+ * years, time zones, `L`, `W`, `#`, Quartz dialects — all behaviours that would
+ * have to be documented and none of which is asked for.
  *
- * Ensuite et surtout, c'est du code qui **décide quand un serveur redémarre**.
- * Une erreur ici ne se voit pas : elle se manifeste par un redémarrage qui
- * n'arrive pas, ou qui arrive au mauvais moment, des semaines plus tard. Le
- * garder court et entièrement testé vaut mieux que de faire confiance à une
- * dépendance dont on n'exercerait qu'un dixième.
+ * Second and above all, this is code that **decides when a server restarts**. A
+ * mistake here is invisible: it shows up as a restart that does not happen, or
+ * happens at the wrong moment, weeks later. Keeping it short and fully tested
+ * beats trusting a dependency of which a tenth would be exercised.
  *
- * Syntaxe reconnue, par champ :
+ * Syntax recognised, per field:
  *
- *   `*`        toutes les valeurs
- *   `5`        une valeur
- *   `1,3,5`    une liste
- *   `1-5`      un intervalle
- *   une etoile suivie de `/15` : un pas, depuis le debut du domaine
- *   `10-30/5`  un pas, sur un intervalle
+ *   `*`        every value
+ *   `5`        one value
+ *   `1,3,5`    a list
+ *   `1-5`      a range
+ *   a star followed by `/15`: a step, from the start of the domain
+ *   `10-30/5`  a step, over a range
  */
 
 export class CronError extends Error {
@@ -55,10 +53,10 @@ const FIELDS = {
 } as const satisfies Record<keyof CronExpression, FieldRange>;
 
 /**
- * Développe un champ en l'ensemble des valeurs qu'il désigne.
+ * Expands a field into the set of values it designates.
  *
- * @throws {CronError} sur toute syntaxe non reconnue : mieux vaut refuser à la
- *   création qu'accepter une expression qui ne se déclenchera jamais.
+ * @throws {CronError} on any unrecognised syntax: better to refuse at creation
+ *   time than accept an expression that will never fire.
  */
 export function parseField(raw: string, field: keyof CronExpression): number[] {
   const range = FIELDS[field];
@@ -76,8 +74,8 @@ export function parseField(raw: string, field: keyof CronExpression): number[] {
     }
   }
 
-  // `7` est accepté pour dimanche, comme dans la plupart des crontabs, et
-  // ramené sur `0` — sans quoi il ne correspondrait jamais à `getDay()`.
+  // `7` is accepted for Sunday, as in most crontabs, and folded onto `0` —
+  // without which it would never match `getDay()`.
   if (field === 'dayOfWeek' && values.delete(7)) {
     values.add(0);
   }
@@ -132,8 +130,8 @@ function boundsOf(spec: string, range: FieldRange, part: string): [number, numbe
 
   if (to < from) {
     throw new CronError(
-      `Intervalle « ${part} » décroissant pour le champ ${range.label} : les intervalles qui ` +
-        'repassent par zéro ne sont pas gérés, écrivez-en deux séparés par une virgule.',
+      `Descending range "${part}" for field ${range.label}: ranges that wrap ` +
+        'through zero are not supported, write two of them separated by a comma.',
     );
   }
 
@@ -147,7 +145,7 @@ function toNumber(text: string, range: FieldRange, part: string): number {
     throw new CronError(`« ${text} » n'est pas un nombre (champ ${range.label}).`);
   }
 
-  // Le domaine du jour de la semaine accepte 7, ramené à 0 plus haut.
+  // The day-of-week domain accepts 7, folded to 0 above.
   const max = range.label === 'jour de la semaine' ? 7 : range.max;
 
   if (value < range.min || value > max) {
@@ -160,7 +158,7 @@ function toNumber(text: string, range: FieldRange, part: string): number {
   return value;
 }
 
-/** Vérifie une expression entière. Lève au premier champ fautif. */
+/** Checks a whole expression. Throws on the first faulty field. */
 export function validateCron(expression: CronExpression): void {
   for (const field of Object.keys(FIELDS) as (keyof CronExpression)[]) {
     parseField(expression[field], field);
@@ -168,25 +166,24 @@ export function validateCron(expression: CronExpression): void {
 }
 
 /**
- * Nombre maximal de minutes explorées à la recherche d'une occurrence.
+ * Largest number of minutes explored when looking for an occurrence.
  *
- * Quatre ans et un jour, pour couvrir le 29 février d'une année bissextile.
- * Au-delà, l'expression ne correspond à rien — `0 0 30 2 *`, le 30 février —
- * et il vaut mieux le dire que boucler.
+ * Four years and a day, to cover 29 February of a leap year. Beyond that, the
+ * expression matches nothing — `0 0 30 2 *`, 30 February — and it is better to
+ * say so than to loop.
  */
 const SEARCH_LIMIT_MINUTES = 4 * 366 * 24 * 60;
 
 /**
- * Prochaine occurrence strictement postérieure à `from`.
+ * Next occurrence strictly later than `from`.
  *
- * Avance minute par minute plutôt que de calculer la date directement. C'est
- * plus lent — au pire quelques centaines de milliers d'itérations sur des
- * comparaisons d'entiers, soit quelques millisecondes — mais cela évite toute
- * la combinatoire des mois de longueurs différentes, des années bissextiles et
- * du croisement jour-du-mois / jour-de-semaine. Le calcul n'a lieu qu'une fois
- * par exécution de tâche planifiée.
+ * Advances minute by minute rather than computing the date directly. It is
+ * slower — at worst a few hundred thousand iterations over integer comparisons,
+ * so a few milliseconds — but it avoids the whole combinatorics of months of
+ * different lengths, leap years and the day-of-month / day-of-week crossing.
+ * The computation happens once per scheduled task run.
  *
- * @throws {CronError} si l'expression ne correspond à aucune date atteignable.
+ * @throws {CronError} if the expression matches no reachable date.
  */
 export function nextOccurrence(expression: CronExpression, from: Date): Date {
   const minutes = parseField(expression.minute, 'minute');
@@ -195,10 +192,10 @@ export function nextOccurrence(expression: CronExpression, from: Date): Date {
   const months = parseField(expression.month, 'month');
   const daysOfWeek = parseField(expression.dayOfWeek, 'dayOfWeek');
 
-  // Un jour du mois et un jour de semaine tous deux restreints se combinent en
-  // **ou**, et non en **et** : `0 0 1 * 1` se déclenche le 1er du mois *et*
-  // chaque lundi. C'est le comportement de cron, contre-intuitif mais celui que
-  // toute crontab existante suppose.
+  // A day-of-month and a day-of-week both restricted combine with **or**, not
+  // **and**: `0 0 1 * 1` fires on the 1st of the month *and* every Monday. That
+  // is cron's behaviour, counter-intuitive but the one every existing crontab
+  // assumes.
   const dayOfMonthRestricted = expression.dayOfMonth.trim() !== '*';
   const dayOfWeekRestricted = expression.dayOfWeek.trim() !== '*';
 
@@ -227,7 +224,7 @@ export function nextOccurrence(expression: CronExpression, from: Date): Date {
     candidate.setMinutes(candidate.getMinutes() + 1);
   }
 
-  throw new CronError('Cette expression ne correspond à aucune date des quatre prochaines années.');
+  throw new CronError('This expression matches no date in the next four years.');
 }
 
 /** Rend l'expression sous sa forme habituelle, pour l'affichage et les journaux. */

@@ -13,24 +13,24 @@ import {
 } from './backup-archive.js';
 
 /**
- * Orchestration des sauvegardes sur un node.
+ * Orchestrating backups on a node.
  *
- * Une sauvegarde est **asynchrone** : la requête du panel rend la main dès que
- * l'archivage démarre, et le daemon rappelle le panel une fois l'archive close.
- * Archiver plusieurs gigaoctets ne tient pas dans une requête HTTP, et un
- * client qui abandonne ne doit pas laisser une archive tronquée derrière lui.
+ * A backup is **asynchronous**: the panel's request returns as soon as
+ * archiving starts, and the daemon calls the panel back once the archive is
+ * closed. Archiving several gigabytes does not fit in an HTTP request, and a
+ * client that gives up must not leave a truncated archive behind.
  *
- * Le suivi en mémoire n'est volontairement pas persisté : au redémarrage du
- * daemon, une sauvegarde interrompue est perdue, et c'est le comportement
- * voulu. Le panel, lui, garde la trace de la sauvegarde restée `running` et
- * peut la marquer en échec — mieux vaut une sauvegarde déclarée manquée qu'une
- * archive incomplète présentée comme valide.
+ * The in-memory tracking is deliberately not persisted: when the daemon
+ * restarts, an interrupted backup is lost, and that is the intended behaviour.
+ * The panel keeps the trace of the backup left `running` and can mark it
+ * failed — a backup declared missed beats an incomplete archive presented as
+ * valid.
  */
 
 export interface BackupManagerOptions {
-  /** Répertoire des archives, hors des volumes de serveurs. */
+  /** Archive directory, outside the server volumes. */
   backupDirectory: string;
-  /** Utilisateur du conteneur : les fichiers restaurés doivent lui appartenir. */
+  /** Container user: the restored files have to belong to them. */
   ownership: { uid: number; gid: number };
   /** Format retenu pour les **nouvelles** archives. */
   compression: BackupCompression;
@@ -50,12 +50,12 @@ export class BackupManager {
   constructor(private readonly options: BackupManagerOptions) {
     const available = detectCompression();
 
-    // zstd n'existe dans `node:zlib` qu'à partir de Node 22.15. Le demander sur
-    // une version plus ancienne ferait échouer chaque sauvegarde ; on retombe
-    // sur gzip en le disant, plutôt que de ne rien produire.
+    // zstd only exists in `node:zlib` from Node 22.15 on. Asking for it on an
+    // older version would fail every backup; it falls back to gzip and says so,
+    // rather than produce nothing.
     if (options.compression === 'zstd' && available !== 'zstd') {
       options.logger.warn(
-        'zstd demandé mais absent de cette version de Node : les sauvegardes seront en gzip.',
+        'zstd requested but absent from this Node version: backups will use gzip.',
       );
     }
 
@@ -73,10 +73,10 @@ export class BackupManager {
   }
 
   /**
-   * Retrouve l'archive d'une sauvegarde sans connaître son format.
+   * Finds a backup's archive without knowing its format.
    *
-   * Le format dépend de la version de Node qui l'a produite : une archive faite
-   * avant une mise à jour reste lisible après.
+   * The format depends on the Node version that produced it: an archive made
+   * before an upgrade stays readable afterwards.
    */
   async findArchive(backupUuid: string): Promise<{ path: string; sizeBytes: number } | null> {
     for (const compression of Object.keys(BACKUP_EXTENSIONS) as BackupCompression[]) {
@@ -96,10 +96,10 @@ export class BackupManager {
   }
 
   /**
-   * Lance une sauvegarde et rend la main immédiatement.
+   * Starts a backup and returns immediately.
    *
-   * @throws {BackupError} si la sauvegarde est déjà en cours — un double appel
-   *   ferait écrire deux archivages dans le même fichier.
+   * @throws {BackupError} if the backup is already running — a double call
+   *   would have two archivers writing into the same file.
    */
   start(input: {
     backupUuid: string;
@@ -108,7 +108,7 @@ export class BackupManager {
     ignoredFiles: readonly string[];
   }): BackupResponse {
     if (this.running.has(input.backupUuid)) {
-      throw new BackupError('Cette sauvegarde est déjà en cours.');
+      throw new BackupError('This backup is already running.');
     }
 
     this.running.set(input.backupUuid, {
@@ -153,7 +153,7 @@ export class BackupManager {
           fileCount: result.fileCount,
           durationMs: Date.now() - started,
         },
-        'Sauvegarde terminée',
+        'Backup finished',
       );
 
       await this.options.panel.reportBackup(input.backupUuid, {
@@ -163,27 +163,26 @@ export class BackupManager {
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      logger.error({ err: error }, 'Sauvegarde en échec');
+      logger.error({ err: error }, 'Backup failed');
 
-      // L'archive partielle a déjà été retirée par `createBackupArchive`, mais
-      // un échec survenu ailleurs — panne du panel, disque plein — peut en
-      // laisser une : on ne veut pas d'archive orpheline présentée comme
-      // restaurable.
+      // The partial archive was already removed by `createBackupArchive`, but
+      // a failure elsewhere — panel outage, full disk — can leave one behind:
+      // no orphan archive should be presented as restorable.
       await rm(archivePath, { force: true }).catch(() => undefined);
 
       await this.options.panel
         .reportBackup(input.backupUuid, {
           successful: false,
           sizeBytes: 0,
-          // Le contrat impose une empreinte bien formée ; en échec elle ne
-          // désigne rien, d'où l'empreinte du vide plutôt qu'une chaîne bidon.
+          // The contract requires a well-formed digest; on failure it points
+          // at nothing, hence the digest of emptiness rather than a fake.
           checksum: EMPTY_SHA256,
           error: message,
         })
         .catch((reportError: unknown) => {
-          // Si même le rapport échoue, le panel verra la sauvegarde rester
-          // `running` et la déclarera manquée : rien n'est perdu silencieusement.
-          logger.error({ err: reportError }, "Impossible de signaler l'échec au panel");
+          // If even the report fails, the panel will see the backup stay
+          // `running` and declare it missed: nothing is silently lost.
+          logger.error({ err: reportError }, 'Could not report the failure to the panel');
         });
     } finally {
       this.running.delete(input.backupUuid);
@@ -191,11 +190,11 @@ export class BackupManager {
   }
 
   /**
-   * Restaure une sauvegarde dans le volume d'un serveur.
+   * Restores a backup into a server's volume.
    *
-   * L'appelant doit avoir arrêté le serveur : extraire sous un serveur en
-   * cours d'exécution mélangerait les fichiers de l'archive et ceux que le
-   * serveur réécrit, pour un résultat qui n'est ni l'un ni l'autre.
+   * The caller must have stopped the server: extracting under a running server
+   * would mix the archive's files with those the server rewrites, for a result
+   * that is neither one nor the other.
    */
   async restore(input: {
     backupUuid: string;
@@ -214,8 +213,8 @@ export class BackupManager {
       archivePath: archive.path,
       truncate: input.truncate,
       expectedChecksum: input.expectedChecksum,
-      // `chown` n'existe pas sous Windows : la machine de développement n'a
-      // de toute façon pas d'utilisateur de conteneur à honorer.
+      // `chown` does not exist on Windows: the development machine has no
+      // container user to honour anyway.
       ownership: process.platform === 'win32' ? undefined : this.options.ownership,
     });
 
@@ -234,7 +233,7 @@ export class BackupManager {
     return true;
   }
 
-  /** Vérifie qu'une archive correspond toujours à son empreinte. */
+  /** Checks that an archive still matches its digest. */
   async verify(backupUuid: string, expectedChecksum: string): Promise<boolean> {
     const archive = await this.findArchive(backupUuid);
 
@@ -246,5 +245,5 @@ export class BackupManager {
   }
 }
 
-/** SHA-256 de la chaîne vide : une empreinte valide qui ne désigne rien. */
+/** SHA-256 of the empty string: a valid digest that designates nothing. */
 export const EMPTY_SHA256 = 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855';
