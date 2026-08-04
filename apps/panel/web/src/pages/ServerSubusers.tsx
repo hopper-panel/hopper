@@ -1,4 +1,4 @@
-import { PERMISSION_DETAILS, PERMISSION_GROUPS, type Permission } from '@hopper/shared';
+import { PERMISSION_GROUPS, PERMISSION_NAMES, type Permission } from '@hopper/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { useParams } from 'react-router-dom';
@@ -6,7 +6,7 @@ import { Modal } from '../components/Modal';
 import { PageHeader } from '../components/PageHeader';
 import { Alert, Button, Card, EmptyState, Field, Input, Spinner } from '../components/ui';
 import { ApiError, api } from '../lib/api';
-import { useTranslation } from '../i18n';
+import { useTranslation, type MessageKey } from '../i18n';
 import { useServerContext } from '../lib/server-context';
 
 interface Subuser {
@@ -271,17 +271,19 @@ function PermissionPicker({
           >
             <header className="flex items-center justify-between gap-3 border-b border-border-subtle bg-surface-raised px-4 py-2.5">
               <h3 className="text-sm font-semibold uppercase tracking-wide text-content">
-                {group.label}
+                {t(`permGroup.${key}.label` as MessageKey)}
               </h3>
 
               <label className="flex items-center gap-2 text-xs text-content-muted">
                 tout
                 <input
                   type="checkbox"
-                  aria-label={t('subusers.checkGroup', { group: group.label })}
+                  aria-label={t('subusers.checkGroup', {
+                    group: t(`permGroup.${key}.label` as MessageKey),
+                  })}
                   checked={all}
-                  // L'état intermédiaire n'existe pas en HTML : sans lui, un
-                  // groupe à moitié coché s'afficherait comme vide.
+                  // The indeterminate state does not exist in HTML: without it a
+                  // half-ticked group would read as empty.
                   ref={(element) => {
                     if (element) {
                       element.indeterminate = some;
@@ -292,11 +294,16 @@ function PermissionPicker({
               </label>
             </header>
 
-            <p className="px-4 pt-3 text-xs text-content-muted">{group.description}</p>
+            <p className="px-4 pt-3 text-xs text-content-muted">
+              {t(`permGroup.${key}.desc` as MessageKey)}
+            </p>
 
             <div className="flex flex-col gap-3 px-4 py-3">
               {available.map((permission) => {
-                const detail = PERMISSION_DETAILS[permission];
+                // The texts are keyed by the enum name, not by the permission
+                // string: `control.start` would make an awkward key, and the
+                // enum name is what the catalogue was generated from.
+                const name = PERMISSION_NAMES[permission];
 
                 return (
                   <label key={permission} className="flex cursor-pointer items-start gap-3">
@@ -309,12 +316,14 @@ function PermissionPicker({
 
                     <span className="min-w-0">
                       <span className="flex flex-wrap items-center gap-2">
-                        <span className="text-sm font-medium text-content">{detail.label}</span>
+                        <span className="text-sm font-medium text-content">
+                          {t(`perm.${name}.label` as MessageKey)}
+                        </span>
                         <code className="font-mono text-xs text-content-subtle">{permission}</code>
                       </span>
 
                       <span className="mt-0.5 block text-xs text-content-muted">
-                        {detail.description}
+                        {t(`perm.${name}.desc` as MessageKey)}
                       </span>
                     </span>
                   </label>

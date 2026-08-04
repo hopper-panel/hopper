@@ -76,6 +76,17 @@ export const permissionSchema = z.enum(PERMISSIONS);
 
 export const ALL_PERMISSIONS: readonly Permission[] = Object.values(PERMISSIONS);
 
+/**
+ * Reverse map: permission string to the name of its constant.
+ *
+ * The interface keys its texts by that name — `perm.CONTROL_START.label` —
+ * because a key built from the value would read `perm.control.start.label`,
+ * where the dots of the value and those of the key namespace run together.
+ */
+export const PERMISSION_NAMES = Object.fromEntries(
+  Object.entries(PERMISSIONS).map(([name, value]) => [value, name]),
+) as Record<Permission, string>;
+
 const PERMISSION_SET = new Set<string>(ALL_PERMISSIONS);
 
 /** Granted to every subuser as soon as they are added to a server. */
@@ -95,15 +106,17 @@ export function sanitizePermissions(values: readonly string[]): Permission[] {
   return values.filter(isPermission);
 }
 
-/** Display groups for the interface. Key order is render order. */
-export const PERMISSION_GROUPS: Record<
-  string,
-  { label: string; description: string; permissions: Permission[] }
-> = {
+/**
+ * Display groups, in render order.
+ *
+ * Only the grouping lives here: labels and descriptions are interface text and
+ * belong to the message catalogues, under `permGroup.<key>.label` and
+ * `permGroup.<key>.desc`. A group listed here without its texts falls back to
+ * English, which is visible; a group missing here would hide its permissions
+ * entirely, which is not.
+ */
+export const PERMISSION_GROUPS: Record<string, { permissions: Permission[] }> = {
   control: {
-    label: 'Contrôle du serveur',
-    description:
-      'Allumer, éteindre et redémarrer le serveur, et lui envoyer des commandes par la console.',
     permissions: [
       PERMISSIONS.CONTROL_CONSOLE,
       PERMISSIONS.CONTROL_START,
@@ -112,10 +125,6 @@ export const PERMISSION_GROUPS: Record<
     ],
   },
   user: {
-    label: 'Sous-utilisateurs',
-    description:
-      'Gérer les accès des autres comptes à ce serveur. Personne ne peut accorder une permission ' +
-      "qu'il ne possède pas lui-même, ni modifier son propre accès.",
     permissions: [
       PERMISSIONS.USER_READ,
       PERMISSIONS.USER_CREATE,
@@ -124,9 +133,6 @@ export const PERMISSION_GROUPS: Record<
     ],
   },
   file: {
-    label: 'Fichiers',
-    description:
-      'Parcourir, modifier et envoyer les fichiers du serveur, depuis le panel comme par SFTP.',
     permissions: [
       PERMISSIONS.FILE_READ,
       PERMISSIONS.FILE_READ_CONTENT,
@@ -138,8 +144,6 @@ export const PERMISSION_GROUPS: Record<
     ],
   },
   backup: {
-    label: 'Sauvegardes',
-    description: 'Créer, télécharger et restaurer les archives complètes du serveur.',
     permissions: [
       PERMISSIONS.BACKUP_READ,
       PERMISSIONS.BACKUP_CREATE,
@@ -149,10 +153,6 @@ export const PERMISSION_GROUPS: Record<
     ],
   },
   database: {
-    label: 'Bases de données',
-    description:
-      'Créer et consulter les bases MySQL du serveur. Les consulter, c’est en voir le mot ' +
-      'de passe : cette permission donne accès à leur contenu.',
     permissions: [
       PERMISSIONS.DATABASE_READ,
       PERMISSIONS.DATABASE_CREATE,
@@ -161,8 +161,6 @@ export const PERMISSION_GROUPS: Record<
     ],
   },
   allocation: {
-    label: 'Ports',
-    description: 'Consulter et modifier les adresses et ports sur lesquels le serveur écoute.',
     permissions: [
       PERMISSIONS.ALLOCATION_READ,
       PERMISSIONS.ALLOCATION_CREATE,
@@ -171,9 +169,6 @@ export const PERMISSION_GROUPS: Record<
     ],
   },
   startup: {
-    label: 'Démarrage',
-    description:
-      'Modifier la commande de lancement, les variables du template et la version de Java utilisée.',
     permissions: [
       PERMISSIONS.STARTUP_READ,
       PERMISSIONS.STARTUP_UPDATE,
@@ -181,9 +176,6 @@ export const PERMISSION_GROUPS: Record<
     ],
   },
   schedule: {
-    label: 'Tâches planifiées',
-    description:
-      'Programmer des commandes, des redémarrages et des sauvegardes à des horaires donnés.',
     permissions: [
       PERMISSIONS.SCHEDULE_READ,
       PERMISSIONS.SCHEDULE_CREATE,
@@ -192,10 +184,6 @@ export const PERMISSION_GROUPS: Record<
     ],
   },
   webhook: {
-    label: 'Notifications',
-    description:
-      'Déclarer des adresses prévenues des événements du serveur — Discord, ou n’importe quel ' +
-      'service qui accepte une requête entrante.',
     permissions: [
       PERMISSIONS.WEBHOOK_READ,
       PERMISSIONS.WEBHOOK_CREATE,
@@ -204,237 +192,11 @@ export const PERMISSION_GROUPS: Record<
     ],
   },
   settings: {
-    label: 'Paramètres',
-    description: "Renommer le serveur, le réinstaller et consulter son journal d'activité.",
     permissions: [
       PERMISSIONS.SETTINGS_RENAME,
       PERMISSIONS.SETTINGS_REINSTALL,
       PERMISSIONS.ACTIVITY_READ,
     ],
-  },
-};
-
-/**
- * Label and description of each permission.
- *
- * Next to the enumeration rather than in the interface: a permission
- * ajoutée sans son explication se verrait immédiatement — la table est
- * exhaustive par construction — alors qu'une table tenue à part dériverait en
- * silence, et l'utilisateur se retrouverait à cocher une case dont personne ne
- * sait plus ce qu'elle ouvre.
- *
- * Ces textes seront extraits vers les fichiers de traduction en phase 7 ; d'ici
- * là, le panel est monolingue et les sortir ici n'apporterait rien.
- */
-export const PERMISSION_DETAILS: Record<Permission, { label: string; description: string }> = {
-  [PERMISSIONS.WEBSOCKET_CONNECT]: {
-    label: 'Se connecter',
-    description:
-      "Voir le serveur et sa console en lecture seule. Accordée d'office : sans elle, un " +
-      'sous-utilisateur ne verrait pas le serveur auquel on vient de lui donner accès.',
-  },
-
-  [PERMISSIONS.CONTROL_CONSOLE]: {
-    label: 'Envoyer des commandes',
-    description:
-      "Taper des commandes dans la console. Équivaut à la console d'administration du jeu : " +
-      "une commande peut donner l'opérateur à n'importe qui.",
-  },
-  [PERMISSIONS.CONTROL_START]: {
-    label: 'Démarrer',
-    description: "Allumer le serveur lorsqu'il est arrêté.",
-  },
-  [PERMISSIONS.CONTROL_STOP]: {
-    label: 'Arrêter',
-    description:
-      "Éteindre le serveur, et le tuer si l'arrêt propre échoue. Un serveur tué peut perdre " +
-      'les derniers changements du monde.',
-  },
-  [PERMISSIONS.CONTROL_RESTART]: {
-    label: 'Redémarrer',
-    description: 'Relancer le serveur. Permet de le démarrer, mais pas de le laisser éteint.',
-  },
-
-  [PERMISSIONS.USER_READ]: {
-    label: 'Voir les accès',
-    description: 'Consulter la liste des sous-utilisateurs et les permissions de chacun.',
-  },
-  [PERMISSIONS.USER_CREATE]: {
-    label: 'Ajouter un accès',
-    description: 'Ouvrir le serveur à un compte existant du panel.',
-  },
-  [PERMISSIONS.USER_UPDATE]: {
-    label: 'Modifier les accès',
-    description: "Changer les permissions d'un autre sous-utilisateur.",
-  },
-  [PERMISSIONS.USER_DELETE]: {
-    label: 'Retirer un accès',
-    description: "Révoquer l'accès d'un autre sous-utilisateur au serveur.",
-  },
-
-  [PERMISSIONS.FILE_READ]: {
-    label: 'Parcourir',
-    description:
-      'Lister les dossiers et voir les noms, tailles et dates, sans ouvrir les fichiers.',
-  },
-  [PERMISSIONS.FILE_READ_CONTENT]: {
-    label: 'Lire le contenu',
-    description:
-      'Ouvrir et télécharger les fichiers. Les configurations de plugins contiennent souvent ' +
-      'des mots de passe de base de données.',
-  },
-  [PERMISSIONS.FILE_CREATE]: {
-    label: 'Créer et envoyer',
-    description:
-      'Créer des dossiers et envoyer des fichiers. Déposer un greffon revient à faire exécuter ' +
-      'du code par le serveur.',
-  },
-  [PERMISSIONS.FILE_UPDATE]: {
-    label: 'Modifier',
-    description: 'Écrire dans les fichiers, les renommer, les déplacer et changer leurs droits.',
-  },
-  [PERMISSIONS.FILE_DELETE]: {
-    label: 'Supprimer',
-    description: 'Effacer des fichiers et des dossiers, monde compris.',
-  },
-  [PERMISSIONS.FILE_ARCHIVE]: {
-    label: 'Compresser et extraire',
-    description: 'Créer des archives et en extraire le contenu dans le dossier du serveur.',
-  },
-  [PERMISSIONS.FILE_SFTP]: {
-    label: 'Accès SFTP',
-    description:
-      'Se connecter en SFTP avec ses identifiants du panel. Les permissions de fichiers ' +
-      "ci-dessus s'y appliquent également.",
-  },
-
-  [PERMISSIONS.BACKUP_READ]: {
-    label: 'Voir les sauvegardes',
-    description: 'Consulter la liste des sauvegardes et leur état.',
-  },
-  [PERMISSIONS.BACKUP_CREATE]: {
-    label: 'Créer',
-    description:
-      'Lancer une sauvegarde. Une fois la limite atteinte, la plus ancienne non verrouillée ' +
-      'est remplacée.',
-  },
-  [PERMISSIONS.BACKUP_DELETE]: {
-    label: 'Supprimer et verrouiller',
-    description: 'Effacer une sauvegarde, et poser ou retirer le verrou qui la protège.',
-  },
-  [PERMISSIONS.BACKUP_DOWNLOAD]: {
-    label: 'Télécharger',
-    description: 'Emporter une copie complète du serveur, monde et configurations compris.',
-  },
-  [PERMISSIONS.BACKUP_RESTORE]: {
-    label: 'Restaurer',
-    description:
-      "Remettre le serveur dans l'état d'une sauvegarde. Efface tout ce qui a été fait depuis.",
-  },
-
-  [PERMISSIONS.DATABASE_READ]: {
-    label: 'Voir les bases',
-    description:
-      'Consulter les bases du serveur, mot de passe compris : cette permission donne ' +
-      'accès à tout leur contenu.',
-  },
-  [PERMISSIONS.DATABASE_CREATE]: {
-    label: 'Créer une base',
-    description: 'Créer une base MySQL et son compte dédié, dans la limite autorisée au serveur.',
-  },
-  [PERMISSIONS.DATABASE_UPDATE]: {
-    label: 'Changer le mot de passe',
-    description:
-      "Régénérer le mot de passe d'une base. L'ancien cesse aussitôt de fonctionner : les " +
-      'plugins configurés avec lui perdront la connexion.',
-  },
-  [PERMISSIONS.DATABASE_DELETE]: {
-    label: 'Supprimer une base',
-    description: 'Effacer une base et son contenu. Cette action est irréversible.',
-  },
-
-  [PERMISSIONS.ALLOCATION_READ]: {
-    label: 'Voir les ports',
-    description: 'Consulter les adresses et ports attribués au serveur.',
-  },
-  [PERMISSIONS.ALLOCATION_CREATE]: {
-    label: 'Ajouter un port',
-    description:
-      'Attribuer un port supplémentaire au serveur, pour une carte dynamique par exemple.',
-  },
-  [PERMISSIONS.ALLOCATION_UPDATE]: {
-    label: 'Modifier les ports',
-    description: 'Changer le port principal et les libellés des ports attribués.',
-  },
-  [PERMISSIONS.ALLOCATION_DELETE]: {
-    label: 'Retirer un port',
-    description: 'Rendre un port supplémentaire au node.',
-  },
-
-  [PERMISSIONS.STARTUP_READ]: {
-    label: 'Voir le démarrage',
-    description: 'Consulter la commande de lancement et les variables du template.',
-  },
-  [PERMISSIONS.STARTUP_UPDATE]: {
-    label: 'Modifier le démarrage',
-    description:
-      'Changer les variables du template, dont le fichier exécuté au lancement du serveur.',
-  },
-  [PERMISSIONS.STARTUP_DOCKER_IMAGE]: {
-    label: "Changer l'image Docker",
-    description:
-      'Choisir la version de Java qui exécute le serveur, parmi celles proposées par le template.',
-  },
-
-  [PERMISSIONS.SCHEDULE_READ]: {
-    label: 'Voir les tâches',
-    description: 'Consulter les tâches planifiées et leurs prochaines exécutions.',
-  },
-  [PERMISSIONS.SCHEDULE_CREATE]: {
-    label: 'Créer une tâche',
-    description: 'Programmer des commandes, redémarrages et sauvegardes automatiques.',
-  },
-  [PERMISSIONS.SCHEDULE_UPDATE]: {
-    label: 'Modifier et exécuter',
-    description: "Changer l'horaire et les étapes d'une tâche, et la déclencher immédiatement.",
-  },
-  [PERMISSIONS.SCHEDULE_DELETE]: {
-    label: 'Supprimer une tâche',
-    description: 'Retirer définitivement une tâche planifiée.',
-  },
-
-  [PERMISSIONS.SETTINGS_RENAME]: {
-    label: 'Renommer',
-    description: 'Changer le nom et la description du serveur dans le panel.',
-  },
-  [PERMISSIONS.SETTINGS_REINSTALL]: {
-    label: 'Réinstaller',
-    description:
-      "Relancer le script d'installation du template. Selon le template, les fichiers du " +
-      'serveur peuvent être écrasés.',
-  },
-  [PERMISSIONS.ACTIVITY_READ]: {
-    label: "Voir l'activité",
-    description: 'Consulter le journal des actions menées sur ce serveur et par qui.',
-  },
-
-  [PERMISSIONS.WEBHOOK_READ]: {
-    label: 'Voir les notifications',
-    description: 'Consulter les adresses prévenues des événements du serveur.',
-  },
-  [PERMISSIONS.WEBHOOK_CREATE]: {
-    label: 'Ajouter une notification',
-    description:
-      'Déclarer une adresse que le panel appellera. Le panel émet alors une requête sortante vers ' +
-      'une adresse choisie par le titulaire de cette permission.',
-  },
-  [PERMISSIONS.WEBHOOK_UPDATE]: {
-    label: 'Modifier une notification',
-    description: 'Changer l’adresse, les événements souscrits ou l’état d’une notification.',
-  },
-  [PERMISSIONS.WEBHOOK_DELETE]: {
-    label: 'Supprimer une notification',
-    description: 'Retirer une adresse prévenue.',
   },
 };
 
