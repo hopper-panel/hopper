@@ -1,15 +1,15 @@
--- Identifiant stable des templates et protection des personnalisations.
+-- Stable template identifier, and protection for customisations.
 --
--- `key` est unique et non nul, mais la table contient déjà des lignes : la
--- colonne est donc ajoutée en deux temps, avec un remplissage intermédiaire.
--- L'ajouter directement en NOT NULL échouerait sur toute instance existante.
+-- `key` is unique and not null, but the table already holds rows: the column is
+-- therefore added in two steps, with a backfill in between. Adding it straight
+-- as NOT NULL would fail on any existing instance.
 
 ALTER TABLE "templates" ADD COLUMN "key" TEXT;
 ALTER TABLE "templates" ADD COLUMN "modifiedByAdmin" BOOLEAN NOT NULL DEFAULT false;
 
--- Remplissage des lignes existantes : le nom, réduit à un identifiant.
--- `id` est concaténé pour garantir l'unicité si deux templates portent le même
--- nom dans des groupes différents.
+-- Backfill of the existing rows: the name, reduced to an identifier. `id` is
+-- appended to guarantee uniqueness if two templates carry the same name in
+-- different groups.
 UPDATE "templates"
 SET "key" = regexp_replace(lower("name"), '[^a-z0-9]+', '-', 'g') || '-' || "id"::text
 WHERE "key" IS NULL;

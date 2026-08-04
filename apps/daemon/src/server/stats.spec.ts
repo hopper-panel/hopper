@@ -35,7 +35,7 @@ function sample(overrides: {
 
 describe('calculateCpuPercent', () => {
   it('reads 100% for one fully consumed core', () => {
-    // 1 ms de CPU conteneur sur 8 ms de CPU machine, 8 cœurs : un cœur plein.
+    // 1 ms of container CPU out of 8 ms of host CPU, 8 cores: one full core.
     const stats = sample({
       cpu: 2_000_000,
       previousCpu: 1_000_000,

@@ -36,7 +36,7 @@ system:
 
 docker:
   # Sous Linux : /var/run/docker.sock
-  # Sous Windows avec Docker Desktop : //./pipe/docker_engine
+  # Under Windows with Docker Desktop: //./pipe/docker_engine
   socket: //./pipe/docker_engine
   network:
     autoCreate: true

@@ -86,7 +86,7 @@ describe('scopeAllows', () => {
   });
 
   it('is not fooled by a path that starts the same', () => {
-    // `/api/administration` n'est pas `/api/admin/` : la comparaison porte sur
+    // `/api/administration` is not `/api/admin/`: the comparison is on
     // le segment complet, barre oblique comprise.
     expect(scopeAllows(['read'], 'GET', '/api/administration')).toBe(true);
   });

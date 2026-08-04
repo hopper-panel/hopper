@@ -326,7 +326,7 @@ export function importPterodactylEgg(raw: unknown, options: ImportOptions): EggI
   return { template, warnings };
 }
 
-/** Transforme « Paper (1.8) » en « paper-1-8 ». */
+/** Turns "Paper (1.8)" into "paper-1-8". */
 export function slugify(value: string): string {
   const slug = value
     .normalize('NFD')

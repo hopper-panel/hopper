@@ -46,7 +46,7 @@ export class MailService {
     const settings = await this.settings.all();
 
     if (!settings.mailEnabled) {
-      throw new BadRequestException('Activez l’envoi de courriels avant de faire un test.');
+      throw new BadRequestException('Enable mail sending before running a test.');
     }
 
     if (settings.mailHost === '' || settings.mailFromAddress === '') {

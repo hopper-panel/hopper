@@ -109,7 +109,7 @@ export function AdminOverviewPage() {
 
                   <p className="mt-1 text-xs text-content-muted">
                     {node.reachable
-                      ? `hopperd ${node.version} · ${node.cpuCount} cœurs · ` +
+                      ? `hopperd ${node.version} · ${node.cpuCount} cores · ` +
                         `${formatBytes(node.memoryTotalBytes ?? 0)} · ` +
                         `${node.runningContainers} conteneur(s) en marche · ${node.latencyMs} ms`
                       : node.reason}

@@ -66,7 +66,7 @@ describe('serialisation', () => {
     expect(deserializeSetting('twoFactorRequirement', serializeSetting('admins'))).toBe('admins');
   });
 
-  it('rend undefined sur une valeur illisible', () => {
+  it('returns undefined on an unreadable value', () => {
     // A corrupt row has to be ignored, not fail the reading of every other
     // setting.
     expect(deserializeSetting('mailPort', 'pas un nombre')).toBeUndefined();

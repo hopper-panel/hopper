@@ -205,7 +205,7 @@ export class BackupsService {
     }
 
     if (backup.successful === null) {
-      throw new ConflictException('Cette sauvegarde est en cours.');
+      throw new ConflictException('This backup is still running.');
     }
 
     const node = await this.nodes.getConnection(server.node.uuid);
@@ -373,7 +373,7 @@ function defaultBackupName(): string {
   const pad = (value: number) => String(value).padStart(2, '0');
 
   return (
-    `Sauvegarde du ${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ` +
+    `Backup of ${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ` +
     `${pad(now.getHours())}:${pad(now.getMinutes())}`
   );
 }

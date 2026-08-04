@@ -177,7 +177,7 @@ describe('the templates .jar file rule', () => {
   const RULES = String.raw`required|string|max:100|regex:/^[A-Za-z0-9._-]+\.jar$/`;
 
   it.each(['server.jar', 'proxy.jar', 'paper-1.21.4.jar', 'Mon_Serveur-2.jar'])(
-    'accepte « %s »',
+    'accepts "%s"',
     (value) => {
       expect(accepts(value, RULES)).toBe(true);
     },
@@ -191,7 +191,7 @@ describe('the templates .jar file rule', () => {
     'server.jar.txt',
     'serveur bizarre.jar',
     '',
-  ])('refuse « %s »', (value) => {
+  ])('rejects "%s"', (value) => {
     expect(accepts(value, RULES)).toBe(false);
   });
 });

@@ -63,7 +63,7 @@ export function parseField(raw: string, field: keyof CronExpression): number[] {
   const trimmed = raw.trim();
 
   if (trimmed === '') {
-    throw new CronError(`Champ « ${range.label} » vide.`);
+    throw new CronError(`Field "${range.label}" is empty.`);
   }
 
   const values = new Set<number>();
@@ -142,7 +142,7 @@ function toNumber(text: string, range: FieldRange, part: string): number {
   const value = Number.parseInt(text, 10);
 
   if (!/^\d+$/.test(text.trim()) || !Number.isInteger(value)) {
-    throw new CronError(`« ${text} » n'est pas un nombre (champ ${range.label}).`);
+    throw new CronError(`"${text}" is not a number (field ${range.label}).`);
   }
 
   // The day-of-week domain accepts 7, folded to 0 above.
@@ -151,7 +151,7 @@ function toNumber(text: string, range: FieldRange, part: string): number {
   if (value < range.min || value > max) {
     throw new CronError(
       `"${value}" is outside the ${range.min}–${range.max} bounds of field ${range.label} ` +
-        `(expression « ${part} »).`,
+        `(expression "${part}").`,
     );
   }
 

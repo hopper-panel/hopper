@@ -125,7 +125,7 @@ describe('importPterodactylEgg', () => {
       ['^C', 'signal:SIGINT'],
       ['SIGINT', 'signal:SIGINT'],
       ['SIGTERM', 'signal:SIGTERM'],
-    ])('traduit « %s » en %s', (stop, expected) => {
+    ])('translates "%s" into %s', (stop, expected) => {
       const { template } = importPterodactylEgg(makeEgg({ config: { stop } }), OPTIONS);
       expect(template.stopCommand).toBe(expected);
     });

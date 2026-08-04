@@ -48,7 +48,7 @@ async function main(): Promise<void> {
     await docker.ensureNetwork();
   } catch (error: unknown) {
     throw new ConfigError(
-      `Docker est injoignable sur ${loaded.config.docker.socket}.`,
+      `Docker is unreachable on ${loaded.config.docker.socket}.`,
       `Check that the Docker service is running and that the daemon's user belongs to the "docker" group. Detail: ${String(error)}`,
     );
   }

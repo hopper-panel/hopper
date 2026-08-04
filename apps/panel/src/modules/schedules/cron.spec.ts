@@ -79,7 +79,7 @@ describe('parseField', () => {
       ['*/0', 'minute'],
       ['5-1', 'hour'],
       ['1-2-3', 'hour'],
-    ] as const)('refuse « %s » pour %s', (raw, field) => {
+    ] as const)('rejects "%s" for %s', (raw, field) => {
       expect(() => parseField(raw, field)).toThrow(CronError);
     });
   });

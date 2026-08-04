@@ -1,13 +1,13 @@
-// Schéma de données du panel Hopper.
+// Data schema of the Hopper panel.
 //
-// Conventions :
-//  • Chaque entité exposée dans l'API publique porte un `uuid` en plus de son
-//    `id` auto-incrémenté. L'`id` sert aux clés étrangères, l'`uuid` aux URL :
-//    il n'apprend rien sur le nombre d'utilisateurs ou de serveurs.
-//  • Les secrets (mots de passe, jetons, clés d'API) ne sont jamais stockés en
-//    clair. Le champ porte alors le suffixe `Hash`.
-//  • Les suppressions en cascade sont explicites : supprimer un node ne doit
-//    jamais effacer silencieusement des serveurs. Voir les `onDelete: Restrict`.
+// Conventions:
+//  • Every entity exposed in the public API carries a `uuid` on top of its
+//    auto-incremented `id`. The `id` is for foreign keys, the `uuid` for URLs:
+//    it tells nobody how many users or servers exist.
+//  • Secrets (passwords, tokens, API keys) are never stored in clear text. The
+//    field then carries the `Hash` suffix.
+//  • Cascading deletes are explicit: deleting a node must never silently erase
+//    servers. See the `onDelete: Restrict`.
 
 generator client {
   provider = "prisma-client-js"
@@ -19,13 +19,13 @@ datasource db {
 }
 
 // ---------------------------------------------------------------------------
-// Utilisateurs et authentification
+// Users and authentication
 // ---------------------------------------------------------------------------
 
 enum UserRole {
-  /// Accès complet, y compris aux nodes et à tous les serveurs.
+  /// Full access, nodes and every server included.
   ADMIN
-  /// N'accède qu'aux serveurs dont il est propriétaire ou sous-utilisateur.
+  /// Only reaches the servers it owns or is a subuser of.
   USER
 }
 
@@ -38,18 +38,18 @@ model User {
 
   passwordHash String
 
-  /// Secret TOTP, chiffré par CryptoService. Null tant que la 2FA est inactive.
+  /// TOTP secret, encrypted by CryptoService. Null while 2FA is inactive.
   totpSecret    String?
-  /// Faux tant que l'utilisateur n'a pas validé un premier code : un secret
-  /// généré mais non confirmé ne doit pas verrouiller le compte.
+  /// False until the user has validated a first code: a secret that has been
+  /// generated but not confirmed must not lock the account out.
   totpConfirmed Boolean @default(false)
 
-  /// Codes de récupération à usage unique, hashés. Vidés à la désactivation.
+  /// Single-use recovery codes, hashed. Cleared when 2FA is disabled.
   recoveryCodes RecoveryCode[]
 
-  /// Un compte suspendu ne peut plus se connecter, mais ses serveurs continuent
-  /// de tourner : couper les joueurs d'un serveur communautaire pour un litige
-  /// de facturation serait disproportionné.
+  /// A suspended account can no longer sign in, but its servers keep running:
+  /// cutting the players off a community server over a billing dispute would be
+  /// disproportionate.
   suspended Boolean @default(false)
 
   lastLoginAt DateTime?
@@ -73,7 +73,7 @@ model RecoveryCode {
   userId Int
   user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  /// Hash du code. Le code en clair n'est affiché qu'une fois, à la génération.
+  /// Hash of the code. The clear-text code is shown once, at generation time.
   codeHash String
   usedAt   DateTime?
 
@@ -83,18 +83,18 @@ model RecoveryCode {
   @@map("recovery_codes")
 }
 
-/// Session de rafraîchissement. L'access token, lui, n'est pas stocké : il est
-/// vérifié par signature et vit quelques minutes.
+/// Refresh session. The access token itself is not stored: it is verified by
+/// signature and lives a few minutes.
 model Session {
   id     Int  @id @default(autoincrement())
   userId Int
   user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  /// Hash du refresh token courant. Rotation à chaque rafraîchissement.
+  /// Hash of the current refresh token. Rotated at every refresh.
   tokenHash String @unique
 
-  /// Chaîne de rotation : détecter la réutilisation d'un ancien jeton révoque
-  /// toute la famille. C'est la contre-mesure au vol de refresh token.
+  /// Rotation chain: detecting the reuse of an old token revokes the whole
+  /// family. This is the countermeasure against refresh-token theft.
   family String
 
   userAgent String?
@@ -115,16 +115,16 @@ model ApiKey {
   userId Int
   user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  /// Partie publique de la clé, en clair : sert à retrouver la ligne.
+  /// Public part of the key, in clear text: used to find the row.
   identifier String @unique
-  /// Partie secrète, hashée.
+  /// Secret part, hashed.
   tokenHash  String
 
   memo   String
-  /// Permissions accordées à la clé, sous-ensemble de celles de l'utilisateur.
+  /// Permissions granted to the key, a subset of the user's own.
   scopes String[]
 
-  /// Restriction par IP source. Vide = aucune restriction.
+  /// Restriction by source IP. Empty = no restriction.
   allowedIps String[]
 
   lastUsedAt DateTime?
@@ -136,7 +136,7 @@ model ApiKey {
 }
 
 // ---------------------------------------------------------------------------
-// Infrastructure : nodes et ports
+// Infrastructure: nodes and ports
 // ---------------------------------------------------------------------------
 
 model Node {
@@ -145,41 +145,41 @@ model Node {
   name        String
   description String @default("")
 
-  /// Nom de domaine du daemon. Doit résoudre depuis le panel ET depuis le
-  /// navigateur des utilisateurs : la console s'y connecte directement.
+  /// Domain name of the daemon. Has to resolve from the panel AND from the
+  /// users' browsers: the console connects to it directly.
   fqdn   String
   scheme String @default("https")
   port   Int    @default(8443)
 
-  /// Partie publique du jeton, en clair : identifie le node dans un en-tête.
+  /// Public part of the token, in clear text: identifies the node in a header.
   daemonTokenId        String @unique
-  /// Partie secrète, chiffrée en AES-256-GCM par CryptoService.
+  /// Secret part, encrypted with AES-256-GCM by CryptoService.
   ///
-  /// Chiffrée et non hashée, contrairement aux mots de passe : le même jeton
-  /// sert dans les deux sens. Le panel le *présente* au daemon pour piloter les
-  /// conteneurs, et le *vérifie* quand le daemon rappelle `/api/remote/*`. Un
-  /// hash à sens unique interdirait le premier usage.
+  /// Encrypted and not hashed, unlike passwords: the same token serves both
+  /// directions. The panel *presents* it to the daemon to drive the containers,
+  /// and *verifies* it when the daemon calls back on `/api/remote/*`. A one-way
+  /// hash would rule the first use out.
   ///
-  /// La clé de déchiffrement vient de APP_SECRET, qui vit dans le fichier
-  /// d'environnement et non en base : un dump SQL seul ne suffit donc pas à
-  /// prendre le contrôle des nodes.
+  /// The decryption key comes from APP_SECRET, which lives in the environment
+  /// file and not in the database: a SQL dump alone is therefore not enough to
+  /// take control of the nodes.
   daemonTokenEncrypted String
-  /// Secret partagé de signature des JWT de console. Chiffré en AES-256-GCM
-  /// par CryptoService avant écriture : un dump de la base ne doit pas suffire
-  /// à forger des jetons de console.
+  /// Shared secret signing the console JWTs. Encrypted with AES-256-GCM by
+  /// CryptoService before it is written: a dump of the database must not be
+  /// enough to forge console tokens.
   jwtSecret            String
 
-  /// Capacité déclarée, en octets. Sert au contrôle de surallocation.
-  /// BigInt et non Int : un `integer` PostgreSQL plafonne à 2,1 Go, ce qui ne
-  /// suffit ni pour la RAM d'un node, ni pour la taille d'un disque.
+  /// Declared capacity, in bytes. Used for the overallocation check.
+  /// BigInt and not Int: a PostgreSQL `integer` tops out at 2.1 GB, which is
+  /// enough neither for a node's RAM nor for the size of a disk.
   memoryBytes          BigInt @default(0)
   diskBytes            BigInt @default(0)
-  /// Pourcentage de dépassement autorisé. -1 = aucune limite, 0 = strict.
+  /// Percentage of overcommit allowed. -1 = no limit, 0 = strict.
   memoryOverallocation Int    @default(0)
   diskOverallocation   Int    @default(0)
 
-  /// Un node en maintenance refuse la création de nouveaux serveurs ; les
-  /// serveurs existants continuent de fonctionner.
+  /// A node in maintenance refuses the creation of new servers; the existing
+  /// servers keep running.
   maintenance Boolean @default(false)
 
   sftpPort Int @default(2022)
@@ -189,8 +189,8 @@ model Node {
 
   allocations   Allocation[]
   databaseHosts DatabaseHost[]
-  /// Restrict et non Cascade : supprimer un node qui héberge encore des
-  /// serveurs doit échouer, pas détruire leurs données.
+  /// Restrict and not Cascade: deleting a node that still hosts servers has to
+  /// fail, not destroy their data.
   servers       Server[]
 
   @@map("nodes")
@@ -203,25 +203,25 @@ model Allocation {
 
   ip    String
   port  Int
-  /// Nom affiché aux joueurs à la place de l'IP, ex. `mc.example.com`.
+  /// Name shown to players in place of the IP, e.g. `mc.example.com`.
   alias String?
 
   serverId Int?
   server   Server? @relation("ServerAllocations", fields: [serverId], references: [id], onDelete: SetNull)
 
-  /// Contrepartie de `Server.primaryAllocation`. Prisma exige les deux côtés
-  /// d'une relation ; c'est l'unicité de `Server.primaryAllocationId` qui
-  /// garantit qu'un port ne sert de port principal qu'à un seul serveur.
+  /// Counterpart of `Server.primaryAllocation`. Prisma requires both sides of a
+  /// relation; it is the uniqueness of `Server.primaryAllocationId` that
+  /// guarantees a port is the primary port of a single server.
   primaryForServer Server? @relation("PrimaryAllocation")
 
-  /// Un port ne peut être alloué qu'une fois par node.
+  /// A port can only be allocated once per node.
   @@unique([nodeId, ip, port])
   @@index([serverId])
   @@map("allocations")
 }
 
 // ---------------------------------------------------------------------------
-// Templates de serveurs (l'équivalent des « eggs »)
+// Server templates (the counterpart of the "eggs")
 // ---------------------------------------------------------------------------
 
 model TemplateGroup {
@@ -243,51 +243,51 @@ model Template {
   groupId Int
   group   TemplateGroup @relation(fields: [groupId], references: [id], onDelete: Restrict)
 
-  /// Identifiant stable, indépendant du nom affiché.
+  /// Stable identifier, independent of the displayed name.
   ///
-  /// C'est la clé de mise à jour du catalogue livré avec Hopper : renommer
-  /// « Paper » en « PaperMC » ne doit pas créer un second template ni
-  /// orpheliner les serveurs qui s'y rattachent.
+  /// This is the update key of the catalogue shipped with Hopper: renaming
+  /// "Paper" to "PaperMC" must neither create a second template nor orphan the
+  /// servers attached to it.
   key String @unique
 
   name        String
   description String @default("")
   author      String @default("")
 
-  /// Vrai dès qu'un administrateur a modifié ce template depuis le panel.
+  /// True as soon as an administrator has edited this template from the panel.
   ///
-  /// Les mises à jour du catalogue embarqué sautent alors ce template : sans
-  /// ce garde-fou, une mise à jour de Hopper écraserait silencieusement une
-  /// image Docker personnalisée ou une commande de démarrage ajustée, et les
-  /// serveurs concernés cesseraient de fonctionner sans explication.
+  /// Updates of the bundled catalogue then skip this template: without that
+  /// guard, a Hopper update would silently overwrite a customised Docker image
+  /// or an adjusted startup command, and the servers concerned would stop
+  /// working with no explanation.
   modifiedByAdmin Boolean @default(false)
 
-  /// Images Docker proposées, sous forme `[{ "name": "Java 21", "image": "…" }]`.
+  /// Docker images on offer, shaped as `[{ "name": "Java 21", "image": "…" }]`.
   ///
-  /// Un tableau et non un objet : `jsonb` réordonne les clés d'un objet (par
-  /// longueur puis alphabétiquement), si bien que « la première image » n'avait
-  /// aucun sens stable. Un serveur créé sans choix explicite se retrouvait avec
-  /// une image arbitraire — Java 8 pour un template dont le défaut voulu était
-  /// Java 21. La première entrée du tableau est le défaut.
+  /// An array and not an object: `jsonb` reorders the keys of an object (by
+  /// length, then alphabetically), so that "the first image" had no stable
+  /// meaning. A server created without an explicit choice ended up with an
+  /// arbitrary image — Java 8 for a template whose intended default was Java
+  /// 21. The first entry of the array is the default.
   dockerImages Json
-  /// Gabarit de la commande de démarrage, variables `{{VAR}}` incluses.
+  /// Template of the startup command, `{{VAR}}` variables included.
   startup      String
 
-  /// Comment arrêter le serveur : `command:stop` ou `signal:SIGTERM`.
+  /// How to stop the server: `command:stop` or `signal:SIGTERM`.
   stopCommand      String  @default("command:stop")
-  /// Regex signalant que le serveur est prêt.
+  /// Regex signalling that the server is ready.
   startupDetection String?
 
-  /// Fichiers réécrits avant chaque démarrage (format ConfigFile du contrat).
+  /// Files rewritten before every start (ConfigFile shape from the contract).
   configFiles  Json     @default("[]")
-  /// Motifs glob que l'utilisateur ne peut ni lire ni modifier.
+  /// Glob patterns the user can neither read nor modify.
   fileDenylist String[]
 
   installContainer  String @default("debian:bookworm-slim")
   installEntrypoint String @default("/bin/bash")
   installScript     String @default("")
 
-  /// UUID de l'egg Pterodactyl d'origine, pour éviter les doubles imports.
+  /// UUID of the original Pterodactyl egg, to avoid double imports.
   importedFromEgg String?
 
   createdAt DateTime @default(now())
@@ -307,18 +307,17 @@ model TemplateVariable {
 
   name         String
   description  String @default("")
-  /// Nom de la variable d'environnement, ex. `MINECRAFT_VERSION`.
+  /// Name of the environment variable, e.g. `MINECRAFT_VERSION`.
   envVariable  String
   defaultValue String @default("")
 
-  /// L'utilisateur voit la variable dans l'interface.
+  /// The user sees the variable in the interface.
   userViewable Boolean @default(true)
-  /// L'utilisateur peut la modifier. Une variable modifiable est une entrée
-  /// dans la commande de démarrage : les règles ci-dessous sont la seule
-  /// barrière contre une valeur hostile.
+  /// The user can edit it. An editable variable is an input to the startup
+  /// command: the rules below are the only barrier against a hostile value.
   userEditable Boolean @default(false)
 
-  /// Règles de validation, ex. `required|string|max:20`.
+  /// Validation rules, e.g. `required|string|max:20`.
   rules String @default("nullable|string")
 
   @@unique([templateId, envVariable])
@@ -326,20 +325,20 @@ model TemplateVariable {
 }
 
 // ---------------------------------------------------------------------------
-// Serveurs
+// Servers
 // ---------------------------------------------------------------------------
 
 enum ServerStatus {
-  /// Créé en base, le daemon n'a pas encore confirmé l'installation.
+  /// Created in the database, the daemon has not confirmed the install yet.
   INSTALLING
   INSTALL_FAILED
-  /// Opérationnel.
+  /// Operational.
   READY
-  /// Suspendu par un administrateur : ni démarrage, ni fichiers, ni SFTP.
+  /// Suspended by an administrator: no start, no files, no SFTP.
   SUSPENDED
-  /// Suppression en cours côté daemon.
+  /// Deletion under way on the daemon side.
   DELETING
-  /// Réinstallation demandée.
+  /// Reinstall requested.
   REINSTALLING
 }
 
@@ -361,14 +360,14 @@ model Server {
 
   status ServerStatus @default(INSTALLING)
 
-  /// Allocation principale : celle injectée dans `server-port`.
+  /// Primary allocation: the one injected into `server-port`.
   primaryAllocationId Int?         @unique
   primaryAllocation   Allocation?  @relation("PrimaryAllocation", fields: [primaryAllocationId], references: [id], onDelete: SetNull)
-  /// Allocations supplémentaires (dynmap, voice chat, query…).
+  /// Extra allocations (dynmap, voice chat, query…).
   allocations         Allocation[] @relation("ServerAllocations")
 
-  // Limites de ressources. 0 = illimité, sauf pidsLimit.
-  // Voir Node.memoryBytes pour le choix de BigInt.
+  // Resource limits. 0 = unlimited, except for pidsLimit.
+  // See Node.memoryBytes for the choice of BigInt.
   memoryBytes     BigInt
   swapBytes       BigInt  @default(0)
   diskBytes       BigInt
@@ -381,14 +380,14 @@ model Server {
   dockerImage    String
   startupCommand String
 
-  /// Le daemon doit recréer le conteneur au prochain démarrage.
+  /// The daemon has to recreate the container on the next start.
   requiresRebuild Boolean @default(false)
 
-  /// Nombre de backups simultanés autorisés. 0 = backups désactivés.
+  /// Number of concurrent backups allowed. 0 = backups disabled.
   backupLimit     Int @default(3)
-  /// Nombre de bases de données autorisées (phase 7).
+  /// Number of databases allowed (phase 7).
   databaseLimit   Int @default(0)
-  /// Allocations supplémentaires que l'utilisateur peut s'attribuer seul.
+  /// Extra allocations the user can assign on their own.
   allocationLimit Int @default(0)
 
   createdAt DateTime @default(now())
@@ -409,11 +408,11 @@ model Server {
   @@map("servers")
 }
 
-/// Notification sortante, déclenchée par un événement d'un serveur.
+/// Outgoing notification, triggered by an event on a server.
 ///
-/// Attachée à un serveur et non à l'instance : c'est le propriétaire du serveur
-/// qui veut être prévenu de ses redémarrages, et lui seul doit pouvoir diriger
-/// une requête sortante depuis le panel.
+/// Attached to a server and not to the instance: it is the server's owner who
+/// wants to hear about its restarts, and they alone should be able to aim an
+/// outgoing request from the panel.
 model Webhook {
   id       Int    @id @default(autoincrement())
   uuid     String @unique @default(uuid())
@@ -423,22 +422,22 @@ model Webhook {
   url         String
   description String @default("")
 
-  /// Événements souscrits. Vide = aucun envoi.
+  /// Subscribed events. Empty = nothing is sent.
   events String[]
 
-  /// Clé de signature HMAC, chiffrée au repos. Le destinataire s'en sert pour
-  /// vérifier que la requête vient bien de ce panel.
+  /// HMAC signing key, encrypted at rest. The recipient uses it to check that
+  /// the request really comes from this panel.
   secretEncrypted String
 
   active Boolean @default(true)
 
-  /// Dernière tentative : code HTTP, ou message d'erreur réseau.
-  lastStatus      Int?
-  lastError       String?
-  lastAttemptAt   DateTime?
-  lastSuccessAt   DateTime?
-  /// Échecs consécutifs. Au-delà du seuil, le webhook se désactive seul.
-  failureCount    Int       @default(0)
+  /// Last attempt: HTTP status, or network error message.
+  lastStatus    Int?
+  lastError     String?
+  lastAttemptAt DateTime?
+  lastSuccessAt DateTime?
+  /// Consecutive failures. Past the threshold, the webhook disables itself.
+  failureCount  Int       @default(0)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -452,8 +451,8 @@ model ServerVariable {
   serverId Int
   server   Server @relation(fields: [serverId], references: [id], onDelete: Cascade)
 
-  /// Copie du nom de la variable d'environnement : un template modifié après
-  /// coup ne doit pas casser la commande de démarrage d'un serveur existant.
+  /// Copy of the environment variable name: a template edited after the fact
+  /// must not break the startup command of an existing server.
   envVariable String
   value       String
 
@@ -469,7 +468,7 @@ model Subuser {
   userId   Int
   user     User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  /// Permissions accordées, valeurs de `PERMISSIONS` dans @hopper/shared.
+  /// Permissions granted, values of `PERMISSIONS` in @hopper/shared.
   permissions String[]
 
   createdAt DateTime @default(now())
@@ -481,7 +480,7 @@ model Subuser {
 }
 
 // ---------------------------------------------------------------------------
-// Sauvegardes et planification
+// Backups and scheduling
 // ---------------------------------------------------------------------------
 
 enum BackupDriver {
@@ -498,19 +497,20 @@ model Backup {
   name   String
   driver BackupDriver @default(LOCAL)
 
-  /// Motifs exclus de l'archive, hérités du template puis personnalisables.
+  /// Patterns excluded from the archive, inherited from the template then
+  /// customisable.
   ignoredFiles String[]
 
   sizeBytes BigInt  @default(0)
-  /// SHA-256 de l'archive, vérifié avant toute restauration.
+  /// SHA-256 of the archive, verified before any restore.
   checksum  String?
 
-  /// Null tant que le daemon n'a pas rendu son verdict.
+  /// Null until the daemon has returned its verdict.
   successful  Boolean?
   errorDetail String?
 
-  /// Un backup verrouillé ne peut être supprimé ni par la rétention, ni par
-  /// l'utilisateur : c'est le filet avant une opération risquée.
+  /// A locked backup can be deleted neither by retention nor by the user: it is
+  /// the safety net before a risky operation.
   locked Boolean @default(false)
 
   completedAt DateTime?
@@ -536,12 +536,12 @@ model Schedule {
   cronDayOfWeek  String @default("*")
 
   active         Boolean @default(true)
-  /// Ne rien faire si le serveur est arrêté, au lieu de le démarrer.
+  /// Do nothing if the server is stopped, instead of starting it.
   onlyWhenOnline Boolean @default(false)
 
   lastRunAt DateTime?
   nextRunAt DateTime?
-  /// Vrai pendant l'exécution : empêche deux déclenchements concurrents.
+  /// True while running: prevents two concurrent triggers.
   running   Boolean   @default(false)
 
   createdAt DateTime @default(now())
@@ -566,17 +566,17 @@ model ScheduleTask {
   scheduleId Int
   schedule   Schedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
 
-  /// Ordre d'exécution dans la tâche planifiée.
+  /// Order of execution within the scheduled task.
   sequence Int
   action   TaskAction
-  /// Commande à envoyer, action de puissance, ou motifs à exclure du backup.
+  /// Command to send, power action, or patterns to exclude from the backup.
   payload  String     @default("")
 
-  /// Secondes d'attente avant cette étape : permet d'annoncer un redémarrage
-  /// puis d'attendre que les joueurs se déconnectent.
+  /// Seconds to wait before this step: makes it possible to announce a restart
+  /// then wait for the players to disconnect.
   offsetSeconds Int @default(0)
 
-  /// Poursuivre la séquence même si cette étape échoue.
+  /// Carry on with the sequence even if this step fails.
   continueOnFailure Boolean @default(false)
 
   @@unique([scheduleId, sequence])
@@ -584,31 +584,31 @@ model ScheduleTask {
 }
 
 // ---------------------------------------------------------------------------
-// Journal d'audit
+// Audit log
 // ---------------------------------------------------------------------------
 
 model AuditLog {
   id   Int    @id @default(autoincrement())
   uuid String @unique @default(uuid())
 
-  /// Null pour une action émise par le système (planificateur, daemon).
+  /// Null for an action issued by the system (scheduler, daemon).
   actorId Int?
   actor   User? @relation("AuditActor", fields: [actorId], references: [id], onDelete: SetNull)
 
-  /// Null pour une action qui ne concerne pas un serveur (création d'un node).
+  /// Null for an action that does not concern a server (creating a node).
   ///
-  /// En cascade : l'historique d'un serveur disparaît avec lui. La suppression
-  /// elle-même est journalisée au niveau instance, avec `serverId` nul et
-  /// l'UUID du serveur dans `metadata` — elle survit donc à la cascade.
+  /// Cascading: the history of a server disappears with it. The deletion itself
+  /// is logged at the instance level, with a null `serverId` and the server's
+  /// UUID in `metadata` — so it survives the cascade.
   serverId Int?
   server   Server? @relation("AuditServer", fields: [serverId], references: [id], onDelete: Cascade)
 
-  /// Identifiant de l'action, ex. `server.power.start`, `auth.login.failed`.
+  /// Identifier of the action, e.g. `server.power.start`, `auth.login.failed`.
   event String
 
   ip        String?
   userAgent String?
-  /// Contexte structuré : chemin du fichier, ancienne valeur, etc.
+  /// Structured context: file path, previous value, and so on.
   metadata  Json    @default("{}")
 
   createdAt DateTime @default(now())
@@ -621,11 +621,11 @@ model AuditLog {
 }
 
 // ---------------------------------------------------------------------------
-// Réglages d'instance
+// Instance settings
 // ---------------------------------------------------------------------------
 
-/// Réglages modifiables depuis l'interface d'administration, par opposition aux
-/// variables d'environnement qui exigent un redémarrage.
+/// Settings editable from the administration interface, as opposed to the
+/// environment variables, which require a restart.
 model Setting {
   key   String @id
   value String
@@ -635,33 +635,33 @@ model Setting {
   @@map("settings")
 }
 
-/// Serveur MySQL ou MariaDB sur lequel le panel peut créer des bases.
+/// MySQL or MariaDB server on which the panel can create databases.
 ///
-/// Le panel s'y connecte avec un compte d'administration : c'est lui qui crée
-/// les bases, les comptes et les droits. Ce compte est donc la clé de tout le
-/// serveur SQL — d'où le stockage chiffré, et non haché : le panel doit pouvoir
-/// le présenter à chaque connexion.
+/// The panel connects to it with an administration account: it is the panel
+/// that creates the databases, the accounts and the grants. That account is
+/// therefore the key to the whole SQL server — hence the encrypted storage,
+/// rather than hashed: the panel has to present it at every connection.
 model DatabaseHost {
   id   Int    @id @default(autoincrement())
   uuid String @unique @default(uuid())
   name String
 
-  /// Adresse par laquelle le **panel** joint le serveur SQL.
+  /// Address through which the **panel** reaches the SQL server.
   host String
   port Int    @default(3306)
 
   username          String
-  /// Chiffré avec APP_SECRET. Voir CryptoService.
+  /// Encrypted with APP_SECRET. See CryptoService.
   passwordEncrypted String
 
-  /// Adresse annoncée aux **joueurs** pour se connecter à leur base. Souvent
-  /// différente de `host` : le panel passe par un réseau interne, les clients
-  /// par l'adresse publique.
+  /// Address announced to the **players** to connect to their database. Often
+  /// different from `host`: the panel goes through an internal network, the
+  /// clients through the public address.
   publicHost String?
   publicPort Int?
 
-  /// Restreint ce host à un node : une base doit vivre près de son serveur.
-  /// Null, il est proposé à tous.
+  /// Restricts this host to one node: a database should live near its server.
+  /// Null, it is offered to all of them.
   nodeId Int?
   node   Node? @relation(fields: [nodeId], references: [id], onDelete: SetNull)
 
@@ -673,7 +673,7 @@ model DatabaseHost {
   @@map("database_hosts")
 }
 
-/// Base de données attribuée à un serveur.
+/// Database assigned to a server.
 model Database {
   id       Int    @id @default(autoincrement())
   uuid     String @unique @default(uuid())
@@ -683,12 +683,12 @@ model Database {
   hostId Int
   host   DatabaseHost @relation(fields: [hostId], references: [id], onDelete: Restrict)
 
-  /// Nom réel sur le serveur SQL, préfixé par l'identifiant du serveur.
+  /// Real name on the SQL server, prefixed with the server's identifier.
   database          String
   username          String
-  /// Chiffré : l'utilisateur doit pouvoir le relire pour configurer son plugin.
+  /// Encrypted: the user has to be able to read it back to configure a plugin.
   passwordEncrypted String
-  /// Motif d'hôte autorisé à se connecter, `%` par défaut.
+  /// Host pattern allowed to connect, `%` by default.
   remote            String @default("%")
 
   createdAt DateTime @default(now())
