@@ -10,8 +10,8 @@ describe('isBlockedAddress', () => {
     '172.16.0.1',
     '172.31.255.254',
     '192.168.1.1',
-    '169.254.169.254', // métadonnées AWS, GCP, Azure
-    '100.64.0.1', // CGNAT : mène à d'autres clients de l'hébergeur
+    '169.254.169.254', // AWS, GCP, Azure metadata
+    '100.64.0.1', // CGNAT: leads to the host's other customers
     '0.0.0.0',
     '224.0.0.1',
     '255.255.255.255',

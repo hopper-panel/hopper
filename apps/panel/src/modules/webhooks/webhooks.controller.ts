@@ -30,11 +30,11 @@ import {
 import { WebhooksService } from './webhooks.service.js';
 
 /**
- * Notifications sortantes d'un serveur.
+ * A server's outgoing notifications.
  *
- * Créer une notification donne au panel l'ordre d'émettre une requête vers une
- * adresse arbitraire : l'action est journalisée avec son URL, et la permission
- * correspondante doit s'accorder en connaissance de cause.
+ * Creating a notification orders the panel to issue a request to an arbitrary
+ * address: the action is logged with its URL, and the matching permission
+ * should be granted in full knowledge of that.
  */
 @Controller('api/servers/:serverId/webhooks')
 export class WebhooksController {
@@ -119,10 +119,10 @@ export class WebhooksController {
   }
 
   /**
-   * Envoi de vérification.
+   * Verification send.
    *
-   * Demande la permission de **modification** et non de lecture : c'est un
-   * envoi réel vers l'adresse enregistrée, pas une consultation.
+   * Requires the **update** permission and not the read one: this is a real
+   * send to the registered address, not a look at it.
    */
   @Post(':uuid/test')
   @RequireServerPermission(PERMISSIONS.WEBHOOK_UPDATE)
@@ -130,7 +130,7 @@ export class WebhooksController {
     return this.webhooks.test(serverId, uuid);
   }
 
-  /** Le secret de signature, à recopier chez le destinataire. */
+  /** The signing secret, to be copied over to the recipient. */
   @Get(':uuid/secret')
   @RequireServerPermission(PERMISSIONS.WEBHOOK_UPDATE)
   secret(@Param('serverId') serverId: string, @Param('uuid') uuid: string) {

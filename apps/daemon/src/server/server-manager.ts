@@ -7,15 +7,15 @@ import type { PanelClient } from '../panel/panel-client.js';
 import { ServerInstance } from './server-instance.js';
 
 /**
- * Registre des serveurs hébergés par ce node.
+ * Registry of the servers hosted by this node.
  *
- * Le daemon ne connaît que ce que le panel lui a transmis : il n'y a pas de
- * persistance ici. Au démarrage, la liste est rechargée depuis le panel puis
- * confrontée aux conteneurs réellement présents.
+ * The daemon knows only what the panel has told it: there is no persistence
+ * here. At startup the list is reloaded from the panel then compared with the
+ * containers actually present.
  */
 /**
- * Délais entre deux tentatives de récupération de la liste des serveurs, en
- * millisecondes. Le dernier est répété.
+ * Delays between two attempts at fetching the server list, in milliseconds.
+ * The last one repeats.
  */
 const RETRY_DELAYS_MS = [5_000, 15_000, 30_000, 60_000];
 
@@ -36,7 +36,7 @@ export class ServerManager {
     return this.servers.get(uuid);
   }
 
-  /** Récupère un serveur ou lève une erreur portant un code exploitable. */
+  /** Fetches a server, or throws an error carrying a usable code. */
   require(uuid: string): ServerInstance {
     const server = this.servers.get(uuid);
 
@@ -53,7 +53,7 @@ export class ServerManager {
     return [...this.servers.values()];
   }
 
-  /** Enregistre un serveur, ou met à jour sa configuration s'il existe déjà. */
+  /** Registers a server, or updates its configuration if it already exists. */
   upsert(configuration: ServerConfiguration): ServerInstance {
     const existing = this.servers.get(configuration.uuid);
 
@@ -97,33 +97,32 @@ export class ServerManager {
   }
 
   /**
-   * Aligne l'état interne sur les conteneurs présents sur l'hôte.
+   * Aligns the internal state with the containers present on the host.
    *
-   * Un conteneur Hopper présent mais absent de la liste du panel est **signalé,
-   * jamais supprimé** : c'est presque toujours le signe d'un panel mal
-   * configuré ou d'une base restaurée trop ancienne, et détruire les données
-   * d'un serveur sur cette base serait irréparable.
+   * A Hopper container that is present but absent from the panel's list is
+   * **reported, never deleted**: it is nearly always the sign of a
+   * misconfigured panel or a database restored from too far back, and
+   * destroying a server's data on that basis would be irreparable.
    */
   async reconcile(): Promise<void> {
-    // La liste vient du panel, seule source de vérité : le daemon ne persiste
-    // rien entre deux démarrages.
+    // The list comes from the panel, the only source of truth: the daemon
+    // persists nothing between two starts.
     try {
       const configurations = await this.panel.fetchServers();
       configurations.forEach((configuration) => this.upsert(configuration));
       this.cancelRetry();
     } catch (error: unknown) {
-      // Un panel injoignable au démarrage ne doit pas empêcher le daemon de
-      // servir : les conteneurs déjà lancés continuent de tourner, et
-      // l'opérateur a besoin que /healthz réponde pour diagnostiquer.
+      // An unreachable panel at startup must not stop the daemon from serving:
+      // the containers already launched keep running, and the operator needs
+      // /healthz to answer in order to diagnose.
       //
-      // Mais il ne doit pas non plus rester aveugle pour autant. Les deux
-      // services redémarrent ensemble après une mise à jour, et le daemon est
-      // presque toujours prêt le premier : sans nouvelle tentative, il
-      // répondait « Serveur inconnu de ce node » à toutes les consoles
-      // jusqu'au prochain redémarrage manuel.
+      // But it must not stay blind either. Both services restart together after
+      // an update, and the daemon is nearly always ready first: without a
+      // retry, it answered "Server unknown to this node" to every console until
+      // the next manual restart.
       this.logger.error(
         { err: error },
-        'Récupération des serveurs auprès du panel impossible : nouvelle tentative programmée',
+        'Could not fetch the servers from the panel: another attempt scheduled',
       );
 
       this.scheduleRetry();
@@ -138,7 +137,7 @@ export class ServerManager {
     if (orphans.length > 0) {
       this.logger.warn(
         { count: orphans.length, servers: orphans },
-        'Conteneurs Hopper présents sur l’hôte mais inconnus du panel. Ils ne sont pas supprimés : vérifiez la configuration du node.',
+        'Hopper containers present on the host but unknown to the panel. They are not deleted: check the node configuration.',
       );
     }
   }
@@ -156,8 +155,8 @@ export class ServerManager {
       void this.reconcile();
     }, delay);
 
-    // `unref` : ce minuteur ne doit pas retenir le processus en vie. Sans lui,
-    // un daemon arrêté pendant une attente resterait ouvert jusqu'à l'échéance.
+    // `unref`: this timer must not hold the process alive. Without it, a daemon
+    // stopped during a wait would stay open until the delay elapsed.
     this.retryTimer.unref();
   }
 
@@ -170,7 +169,7 @@ export class ServerManager {
     this.retryAttempt = 0;
   }
 
-  /** Détache tous les flux. Les conteneurs continuent de tourner. */
+  /** Detaches every stream. The containers keep running. */
   shutdown(): void {
     this.cancelRetry();
     this.list().forEach((server) => server.detach());

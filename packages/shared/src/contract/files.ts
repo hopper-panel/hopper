@@ -1,15 +1,15 @@
 import { z } from 'zod';
 
 /**
- * Contrat de l'API fichiers.
+ * Contract of the file API.
  *
- * Les chemins qui circulent ici sont **toujours relatifs au volume du serveur**,
- * en séparateurs POSIX (`plugins/config.yml`). Le chemin absolu sur la machine
- * hôte ne franchit jamais cette frontière : il apparaîtrait sinon dans un
- * message d'erreur affiché à l'utilisateur, révélant l'arborescence du node.
+ * The paths travelling here are **always relative to the server's volume**, in
+ * POSIX separators (`plugins/config.yml`). The absolute path on the host never
+ * crosses this boundary: it would otherwise surface in an error message shown
+ * to the user, revealing the node's directory tree.
  */
 
-/** Chemin fourni par le client. La validation réelle est faite par le jail. */
+/** Path supplied by the client. The real validation is done by the jail. */
 const filePathSchema = z.string().min(1).max(4096);
 
 export const fileEntrySchema = z.object({
@@ -58,8 +58,8 @@ export const copyFileRequestSchema = z.object({
 });
 
 export const deleteFilesRequestSchema = z.object({
-  // Borné : supprimer dix mille chemins en une requête tiendrait le daemon
-  // occupé assez longtemps pour que le panel considère le node hors ligne.
+  // Bounded: deleting ten thousand paths in one request would keep the daemon
+  // busy long enough for the panel to consider the node offline.
   files: z.array(filePathSchema).min(1).max(500),
 });
 
@@ -71,7 +71,7 @@ export const compressFilesRequestSchema = z.object({
 
 export const decompressFileRequestSchema = z.object({
   file: filePathSchema,
-  /** Dossier où extraire. */
+  /** Folder to extract into. */
   directory: filePathSchema.default('/'),
 });
 
@@ -85,20 +85,20 @@ export type CompressFilesRequest = z.infer<typeof compressFilesRequestSchema>;
 export type DecompressFileRequest = z.infer<typeof decompressFileRequestSchema>;
 
 /**
- * Taille maximale d'un fichier ouvert dans l'éditeur.
+ * Largest file that opens in the editor.
  *
- * Au-delà, on propose le téléchargement plutôt que l'édition : charger un
- * fichier de région de 200 Mio dans un éditeur de texte fige l'onglet, et
- * l'utilisateur n'a de toute façon rien à y modifier à la main.
+ * Past that, a download is offered rather than editing: loading a 200 MiB
+ * region file into a text editor freezes the tab, and the user has nothing to
+ * hand-edit in it anyway.
  */
 export const MAX_EDITABLE_FILE_BYTES = 4 * 1024 * 1024;
 
 /**
- * Taille maximale d'un envoi, par fichier.
+ * Largest upload, per file.
  *
- * Ce n'est **pas** un quota de disque : rien n'empêche d'envoyer mille fichiers
- * d'un gigaoctet. C'est une borne contre l'accident — le modpack de 60 Gio
- * glissé par erreur — en attendant les quotas par serveur.
+ * This is **not** a disk quota: nothing stops anyone uploading a thousand
+ * one-gigabyte files. It is a bound against the accident — the 60 GiB modpack
+ * dropped in by mistake — until per-server quotas exist.
  */
 export const MAX_UPLOAD_BYTES = 4 * 1024 * 1024 * 1024;
 
@@ -107,17 +107,17 @@ export const downloadFileQuerySchema = z.object({
 });
 
 export const uploadFileQuerySchema = z.object({
-  /** Dossier de destination, relatif à la racine du volume. */
+  /** Destination folder, relative to the volume root. */
   directory: z.string().min(1).default('/'),
   /**
-   * Nom du fichier envoyé — un nom, pas un chemin.
+   * Name of the uploaded file — a name, not a path.
    *
-   * Le jail garantit qu'aucune écriture ne sort du volume, mais il **replie**
-   * les chemins au lieu de les refuser : `../../../etc/cron.d/porte` devient
-   * `etc/cron.d/porte` *à l'intérieur* du volume. Rien n'échappe au
-   * cloisonnement, mais le fichier atterrit ailleurs que dans le dossier
-   * affiché, et la réponse annonce un succès. Un nom est donc validé pour ce
-   * qu'il est ici, là où le contrat le définit.
+   * The jail guarantees no write leaves the volume, but it **folds** paths back
+   * instead of refusing them: `../../../etc/cron.d/door` becomes
+   * `etc/cron.d/door` *inside* the volume. Nothing escapes the boundary, but
+   * the file lands somewhere other than the folder on screen, and the response
+   * reports success. So a name is validated for what it is here, where the
+   * contract defines it.
    */
   name: z
     .string()
@@ -125,17 +125,16 @@ export const uploadFileQuerySchema = z.object({
     .max(255)
     .refine(
       (value) => !/[/\\]/.test(value) && value !== '.' && value !== '..',
-      'Un nom de fichier ne peut contenir ni séparateur de chemin, ni « .. ».',
+      'A file name may contain neither a path separator nor "..".',
     ),
 });
 
 /**
- * Droits POSIX en notation octale.
+ * POSIX permissions in octal notation.
  *
- * Le bit `setuid` est volontairement hors de portée : un binaire setuid déposé
- * dans un volume s'exécuterait avec les droits de son propriétaire, ce qui
- * annulerait le cloisonnement du conteneur. Trois chiffres suffisent à tout ce
- * qu'un serveur Minecraft demande.
+ * The `setuid` bit is deliberately out of reach: a setuid binary dropped in a
+ * volume would run with its owner's rights, which would defeat the container
+ * boundary. Three digits cover everything a Minecraft server asks for.
  */
 export const chmodFilesRequestSchema = z.object({
   files: z.array(z.string().min(1)).min(1).max(500),

@@ -1,25 +1,25 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { WEBHOOK_EVENT_COLORS, WEBHOOK_EVENT_LABELS, type WebhookEvent } from './events.js';
 
-/** Contexte d'un événement, tel que le destinataire le reçoit. */
+/** An event's context, as the recipient receives it. */
 export interface WebhookContext {
   serverUuid: string;
   serverName: string;
-  /** Adresse de connexion du serveur, si elle existe. */
+  /** Connection address of the server, if it has one. */
   address: string | null;
   panelUrl: string;
   occurredAt: Date;
-  /** Détails propres à l'événement : taille d'une sauvegarde, cause d'un arrêt. */
+  /** Details specific to the event: a backup's size, the cause of a stop. */
   details?: Record<string, unknown>;
 }
 
 /**
- * Vrai pour une adresse de webhook Discord.
+ * True for a Discord webhook address.
  *
- * Discord n'accepte pas un JSON quelconque : il attend `content` ou `embeds`,
- * et répond 400 pour tout le reste. Comme c'est la destination de très loin la
- * plus courante, on lui parle sa langue plutôt que de laisser l'utilisateur
- * découvrir l'échec dans le journal des tentatives.
+ * Discord does not accept arbitrary JSON: it expects `content` or `embeds`, and
+ * answers 400 for anything else. Since it is by far the most common
+ * destination, we speak its language rather than let the user discover the
+ * failure in the delivery log.
  */
 export function isDiscordUrl(url: string): boolean {
   try {
@@ -36,7 +36,7 @@ export function isDiscordUrl(url: string): boolean {
   }
 }
 
-/** Corps générique : un JSON stable, documenté, facile à traiter par un script. */
+/** Generic body: stable, documented JSON, easy for a script to handle. */
 export function buildGenericPayload(event: WebhookEvent, context: WebhookContext): string {
   return JSON.stringify({
     event,
@@ -51,7 +51,7 @@ export function buildGenericPayload(event: WebhookEvent, context: WebhookContext
   });
 }
 
-/** Corps attendu par Discord : un embed coloré selon la gravité. */
+/** The body Discord expects: an embed coloured by severity. */
 export function buildDiscordPayload(event: WebhookEvent, context: WebhookContext): string {
   const fields = Object.entries(context.details ?? {}).map(([name, value]) => ({
     name,
@@ -60,7 +60,7 @@ export function buildDiscordPayload(event: WebhookEvent, context: WebhookContext
   }));
 
   if (context.address) {
-    fields.unshift({ name: 'Adresse', value: context.address, inline: true });
+    fields.unshift({ name: 'Address', value: context.address, inline: true });
   }
 
   return JSON.stringify({
@@ -70,7 +70,7 @@ export function buildDiscordPayload(event: WebhookEvent, context: WebhookContext
         url: `${context.panelUrl.replace(/\/$/, '')}/server/${context.serverUuid}`,
         color: WEBHOOK_EVENT_COLORS[event],
         timestamp: context.occurredAt.toISOString(),
-        // Discord refuse un embed de plus de 25 champs.
+        // Discord refuses an embed with more than 25 fields.
         fields: fields.slice(0, 25),
         footer: { text: 'Hopper' },
       },
@@ -92,22 +92,22 @@ export function buildPayload(
 }
 
 /**
- * Signature du corps, à vérifier par le destinataire.
+ * Signature of the body, for the recipient to verify.
  *
- * Sans elle, n'importe qui connaissant l'adresse du webhook — elle finit
- * toujours par circuler — pourrait fabriquer de fausses notifications.
+ * Without it, anyone knowing the webhook's address — it always ends up
+ * circulating — could forge notifications.
  */
 export function signPayload(secret: string, body: string): string {
   return `sha256=${createHmac('sha256', secret).update(body).digest('hex')}`;
 }
 
 /**
- * Vérifie une signature. Fournie pour les destinataires écrits contre ce panel,
- * et utilisée par les tests.
+ * Verifies a signature. Provided for recipients written against this panel, and
+ * used by the tests.
  *
- * La comparaison est à temps constant : comparer deux chaînes avec `===`
- * s'arrête au premier octet différent, ce qui laisse mesurer la progression
- * d'une signature devinée octet par octet.
+ * The comparison is constant-time: comparing two strings with `===` stops at
+ * the first differing byte, which allows measuring the progress of a signature
+ * guessed byte by byte.
  */
 export function verifySignature(secret: string, body: string, signature: string): boolean {
   const expected = Buffer.from(signPayload(secret, body));

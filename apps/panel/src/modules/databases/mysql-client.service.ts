@@ -10,31 +10,30 @@ export interface HostCredentials {
 }
 
 /**
- * Exécution des ordres SQL d'administration sur un serveur MySQL/MariaDB.
+ * Running administrative SQL statements on a MySQL/MariaDB server.
  *
- * Toutes les requêtes de ce fichier sont des **DDL** — création de base, de
- * compte, attribution de droits. Aucune ne peut être paramétrée sur ses
- * identifiants : `CREATE DATABASE ?` n'existe pas. Les noms sont donc validés
- * puis échappés par `identifiers.ts`, qui est la barrière contre l'injection ;
- * ici, on se contente de ne jamais interpoler autre chose que le résultat de
- * `quoteIdentifier`.
+ * Every query in this file is **DDL** — creating a database, an account,
+ * granting rights. None can be parameterised on its identifiers:
+ * `CREATE DATABASE ?` does not exist. The names are therefore validated then
+ * escaped by `identifiers.ts`, which is the barrier against injection; here, we
+ * simply never interpolate anything other than the result of `quoteIdentifier`.
  *
- * Les valeurs — mot de passe, motif d'hôte — passent, elles, en paramètres.
+ * The values — password, host pattern — do travel as parameters.
  *
- * Une connexion par opération, sans pool : le panel crée une base de temps en
- * temps, pas mille par seconde. Un pool maintiendrait des connexions ouvertes
- * vers chaque serveur SQL déclaré, pour un gain nul.
+ * One connection per operation, no pool: the panel creates a database now and
+ * then, not a thousand a second. A pool would hold connections open towards
+ * every declared SQL server, for no gain.
  */
 @Injectable()
 export class MysqlClientService {
   private readonly logger = new Logger(MysqlClientService.name);
 
   /**
-   * Vérifie que le panel peut administrer ce serveur.
+   * Checks that the panel can administer this server.
    *
-   * Contrôle les **droits**, et pas seulement la connexion : un compte capable
-   * de se connecter mais pas de créer de base donnerait un host qui paraît sain
-   * et échoue à la première utilisation.
+   * Tests the **privileges**, not merely the connection: an account able to
+   * connect but not to create a database would give a host that looks healthy
+   * and fails on first use.
    */
   async testConnection(credentials: HostCredentials): Promise<{ version: string }> {
     return this.withConnection(credentials, async (connection) => {
@@ -47,7 +46,7 @@ export class MysqlClientService {
 
       if (!/ALL PRIVILEGES|CREATE USER|GRANT OPTION/i.test(flat)) {
         throw new ServiceUnavailableException(
-          "Ce compte se connecte mais n'a pas les droits de créer des bases et des comptes.",
+          'This account connects but lacks the rights to create databases and accounts.',
         );
       }
 
@@ -56,12 +55,13 @@ export class MysqlClientService {
   }
 
   /**
-   * Crée la base, le compte, et lui donne les droits sur cette base seulement.
+   * Creates the database, the account, and grants it rights on that database
+   * only.
    *
-   * L'ordre compte : le compte est créé avant la base pour qu'un échec de
-   * création laisse le moins de traces possible. En cas de problème, tout est
-   * défait — un compte orphelin sur un serveur SQL partagé est une porte que
-   * personne ne surveille.
+   * The order matters: the account is created before the database so that a
+   * failure leaves as little behind as possible. On any problem everything is
+   * undone — an orphan account on a shared SQL server is a door nobody
+   * watches.
    */
   async createDatabase(
     credentials: HostCredentials,
@@ -77,8 +77,8 @@ export class MysqlClientService {
           input.remote,
           input.password,
         ]);
-        // Droits limités à cette base : le compte ne voit rien du reste du
-        // serveur SQL, pas même la liste des autres bases.
+        // Rights limited to this database: the account sees nothing of the
+        // rest of the SQL server, not even the list of the other databases.
         await connection.query(`GRANT ALL PRIVILEGES ON ${database}.* TO ?@?`, [
           input.username,
           input.remote,
@@ -115,11 +115,11 @@ export class MysqlClientService {
   }
 
   /**
-   * Retire base et compte, en ignorant ce qui n'existe pas.
+   * Removes the database and the account, ignoring what does not exist.
    *
-   * `IF EXISTS` partout : la suppression doit aboutir même si quelqu'un a
-   * effacé la base à la main sur le serveur SQL. Sans cela, l'entrée resterait
-   * indéfiniment dans le panel, impossible à retirer.
+   * `IF EXISTS` everywhere: the deletion has to succeed even if somebody wiped
+   * the database by hand on the SQL server. Without that, the entry would stay
+   * in the panel forever, impossible to remove.
    */
   private async cleanup(
     connection: mysql.Connection,
@@ -147,16 +147,16 @@ export class MysqlClientService {
         user: credentials.username,
         password: credentials.password,
         connectTimeout: 10_000,
-        // `multipleStatements` reste **désactivé**, ce qui est le défaut. Un
-        // point-virgule qui franchirait la validation ne pourrait pas enchaîner
-        // une seconde instruction : c'est la dernière barrière, après celles
-        // d'`identifiers.ts`.
+        // `multipleStatements` stays **off**, which is the default. A
+        // semicolon that got past validation could not chain a second
+        // statement: this is the last barrier, after those in
+        // `identifiers.ts`.
         multipleStatements: false,
       });
     } catch (error: unknown) {
-      this.logger.error(`Connexion à ${credentials.host}:${credentials.port} : ${String(error)}`);
+      this.logger.error(`Connecting to ${credentials.host}:${credentials.port}: ${String(error)}`);
       throw new ServiceUnavailableException(
-        'Le serveur de bases de données est injoignable ou refuse ces identifiants.',
+        'The database server is unreachable or refuses these credentials.',
       );
     }
 

@@ -11,25 +11,25 @@ import { buildPayload, signPayload, type WebhookContext } from './payload.js';
 import { UnsafeWebhookUrlError, assertSafeWebhookUrl } from './url-guard.js';
 import type { CreateWebhookDto, UpdateWebhookDto } from './webhooks.dto.js';
 
-/** Au-delà, l'adresse est tenue pour morte et la notification se met en pause. */
+/** Past this, the address is taken for dead and the notification pauses. */
 const MAX_CONSECUTIVE_FAILURES = 20;
 
 /**
- * Un destinataire qui ne répond pas ne doit pas retenir le panel : la requête
- * qui a déclenché l'événement — un démarrage de serveur — est déjà terminée,
- * mais le processus, lui, garde la connexion ouverte.
+ * A recipient that does not answer must not hold the panel back: the request
+ * that triggered the event — a server start — is already finished, but the
+ * process keeps the connection open.
  */
 const DELIVERY_TIMEOUT_MS = 5000;
 
 /**
- * Notifications sortantes.
+ * Outgoing notifications.
  *
- * Le panel appelle une adresse choisie par l'utilisateur : c'est une capacité
- * de requête sortante donnée à un compte non administrateur, donc un vecteur de
- * SSRF. Toute création et **tout envoi** passent par `assertSafeWebhookUrl`.
+ * The panel calls an address chosen by the user: that is an outbound-request
+ * capability handed to a non-administrator account, so an SSRF vector. Every
+ * creation and **every send** goes through `assertSafeWebhookUrl`.
  *
- * L'envoi n'est jamais attendu par l'appelant : un webhook lent ne doit pas
- * ralentir un démarrage de serveur, et son échec ne doit rien faire échouer.
+ * The send is never awaited by the caller: a slow webhook must not slow a
+ * server start, and its failure must make nothing else fail.
  */
 @Injectable()
 export class WebhooksService {
@@ -42,7 +42,7 @@ export class WebhooksService {
   ) {}
 
   // -------------------------------------------------------------------------
-  // Gestion
+  // Management
   // -------------------------------------------------------------------------
 
   async list(serverUuid: string) {
@@ -69,8 +69,8 @@ export class WebhooksService {
         url: dto.url,
         description: dto.description,
         events: dto.events,
-        // Le secret est chiffré et non haché : le destinataire doit pouvoir le
-        // relire pour vérifier nos signatures, donc nous aussi pour signer.
+        // The secret is encrypted, not hashed: the recipient has to read it
+        // back to check our signatures, so we do too in order to sign.
         secretEncrypted: this.crypto.encrypt(randomBytes(32).toString('base64url')),
       },
     });
@@ -92,9 +92,9 @@ export class WebhooksService {
         description: dto.description,
         events: dto.events,
         active: dto.active,
-        // Réactiver remet le compteur à zéro : sans cela, une notification
-        // mise en pause après vingt échecs se redésactiverait au premier
-        // suivant, même si la panne est réparée.
+        // Re-enabling resets the counter: without that, a notification paused
+        // after twenty failures would pause again on the very next one, even
+        // with the outage fixed.
         ...(dto.active === true ? { failureCount: 0, lastError: null } : {}),
       },
     });
@@ -107,17 +107,17 @@ export class WebhooksService {
     await this.prisma.webhook.delete({ where: { id: webhook.id } });
   }
 
-  /** Envoi de démonstration, déclenché depuis l'interface. */
+  /** Demonstration send, triggered from the interface. */
   async test(serverUuid: string, uuid: string) {
     const webhook = await this.requireWebhook(serverUuid, uuid);
     const server = await this.requireServer(serverUuid);
 
     const context = await this.contextFor(server.id, {
-      raison: 'Envoi de vérification demandé depuis le panel',
+      reason: 'Verification send requested from the panel',
     });
 
     if (!context) {
-      throw new NotFoundException('Serveur introuvable.');
+      throw new NotFoundException('Server not found.');
     }
 
     const result = await this.deliver(webhook, 'server.started', context);
@@ -129,7 +129,7 @@ export class WebhooksService {
     };
   }
 
-  /** Le secret, montré une fois à la demande pour configurer le destinataire. */
+  /** The secret, shown once on request to configure the recipient. */
   async revealSecret(serverUuid: string, uuid: string): Promise<{ secret: string }> {
     const webhook = await this.requireWebhook(serverUuid, uuid);
 
@@ -137,18 +137,18 @@ export class WebhooksService {
   }
 
   // -------------------------------------------------------------------------
-  // Diffusion
+  // Dispatch
   // -------------------------------------------------------------------------
 
   /**
-   * Prévient les destinataires abonnés à cet événement.
+   * Notifies the recipients subscribed to this event.
    *
-   * Ne lève jamais et n'est pas attendue : l'appelant a fait son travail, une
-   * notification est un effet de bord.
+   * Never throws and is not awaited: the caller has done its work, a
+   * notification is a side effect.
    */
   dispatch(serverId: number, event: WebhookEvent, details?: Record<string, unknown>): void {
     void this.dispatchNow(serverId, event, details).catch((error: unknown) => {
-      this.logger.error(`Diffusion de ${event} impossible : ${String(error)}`);
+      this.logger.error(`Could not dispatch ${event}: ${String(error)}`);
     });
   }
 
@@ -171,7 +171,7 @@ export class WebhooksService {
       return;
     }
 
-    // En parallèle : un destinataire lent ne doit pas retarder les autres.
+    // In parallel: a slow recipient must not delay the others.
     await Promise.all(webhooks.map((webhook) => this.deliver(webhook, event, context)));
   }
 
@@ -218,8 +218,8 @@ export class WebhooksService {
     let outcome: { ok: boolean; status: number | null; error: string | null };
 
     try {
-      // Revalidée à chaque envoi : entre la création et maintenant, le nom a pu
-      // se mettre à pointer vers le réseau interne.
+      // Revalidated on every send: between creation and now, the name may have
+      // started pointing at the internal network.
       await assertSafeWebhookUrl(webhook.url);
 
       const response = await fetch(webhook.url, {
@@ -237,7 +237,7 @@ export class WebhooksService {
       outcome = {
         ok: response.ok,
         status: response.status,
-        error: response.ok ? null : `Le destinataire a répondu ${response.status}.`,
+        error: response.ok ? null : `The recipient answered ${response.status}.`,
       };
     } catch (error: unknown) {
       outcome = {
@@ -272,14 +272,14 @@ export class WebhooksService {
           lastAttemptAt: new Date(),
           lastSuccessAt: outcome.ok ? new Date() : undefined,
           failureCount,
-          // Une adresse morte finit par être mise en pause : sans cela, chaque
-          // événement paierait cinq secondes de délai d'attente, indéfiniment.
+          // A dead address eventually gets paused: without that, every event
+          // would pay five seconds of timeout, forever.
           active: failureCount >= MAX_CONSECUTIVE_FAILURES ? false : undefined,
         },
       })
       .catch(() => {
-        // La notification a pu être supprimée pendant l'envoi : l'échec de
-        // l'écriture ne doit pas remonter jusqu'au serveur qui démarre.
+        // The notification may have been deleted mid-send: the write failing
+        // must not travel back up to the server that is starting.
       });
   }
 
@@ -290,7 +290,7 @@ export class WebhooksService {
       await assertSafeWebhookUrl(url);
     } catch (error: unknown) {
       throw new BadRequestException(
-        error instanceof UnsafeWebhookUrlError ? error.message : 'Adresse refusée.',
+        error instanceof UnsafeWebhookUrlError ? error.message : 'Address refused.',
       );
     }
   }
@@ -302,7 +302,7 @@ export class WebhooksService {
     });
 
     if (!server) {
-      throw new NotFoundException('Serveur introuvable.');
+      throw new NotFoundException('Server not found.');
     }
 
     return server;
@@ -314,9 +314,9 @@ export class WebhooksService {
       include: { server: { select: { uuid: true } } },
     });
 
-    // Le serveur est vérifié en plus de l'identifiant : sans cela, un
-    // utilisateur légitime sur *son* serveur pourrait manipuler la notification
-    // d'un autre en connaissant son UUID.
+    // The server is checked on top of the identifier: without that, a
+    // legitimate user on *their* server could manipulate another's notification
+    // by knowing its UUID.
     if (!webhook || webhook.server.uuid !== serverUuid) {
       throw new NotFoundException('Notification introuvable.');
     }
