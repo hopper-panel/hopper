@@ -12,6 +12,7 @@ import {
   type ServerSummary,
   type UserSummary,
 } from '../../lib/api';
+import { useTranslation } from '../../i18n';
 import { describeStatus, formatAddress, formatBytes } from '../../lib/format';
 
 const GIB = 1024 ** 3;
@@ -25,6 +26,7 @@ interface TemplateSummary {
 }
 
 export function AdminServersPage() {
+  const { t } = useTranslation();
   const queryClient = useQueryClient();
   const [creating, setCreating] = useState(false);
 
@@ -98,7 +100,7 @@ export function AdminServersPage() {
                       <p className="text-xs text-content-muted">{server.template.name}</p>
                     </td>
                     <td className="px-5 py-3">
-                      <Badge tone={status.tone}>{status.label}</Badge>
+                      <Badge tone={status.tone}>{t(status.key)}</Badge>
                     </td>
                     <td className="px-5 py-3 text-content-muted">{server.node.name}</td>
                     <td className="px-5 py-3 font-mono text-xs text-content-muted">

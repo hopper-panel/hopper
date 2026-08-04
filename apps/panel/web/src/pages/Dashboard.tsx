@@ -2,21 +2,24 @@ import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { PageHeader } from '../components/PageHeader';
 import { Badge, Card, EmptyState, Spinner } from '../components/ui';
+import { useTranslation } from '../i18n';
 import { api, type Paginated, type ServerSummary } from '../lib/api';
 import { describeStatus, formatAddress, formatBytes, formatCpu } from '../lib/format';
 
 export function DashboardPage() {
+  const { t } = useTranslation();
+
   const { data, isLoading, error } = useQuery({
     queryKey: ['servers'],
     queryFn: () => api.get<Paginated<ServerSummary>>('/api/servers'),
   });
 
   if (isLoading) {
-    return <Spinner label="Chargement de vos serveurs…" />;
+    return <Spinner label={t('common.loading')} />;
   }
 
   if (error) {
-    return <EmptyState title="Chargement impossible" description={String(error)} />;
+    return <EmptyState title={t('common.loadFailed')} description={String(error)} />;
   }
 
   const servers = data?.data ?? [];
@@ -24,19 +27,16 @@ export function DashboardPage() {
   return (
     <>
       <PageHeader
-        title="Mes serveurs"
+        title={t('dashboard.title')}
         description={
           servers.length > 0
-            ? `${data?.meta.total} serveur${(data?.meta.total ?? 0) > 1 ? 's' : ''}`
+            ? t('dashboard.subtitle', { count: data?.meta.total ?? servers.length })
             : undefined
         }
       />
 
       {servers.length === 0 ? (
-        <EmptyState
-          title="Aucun serveur pour l'instant"
-          description="Les serveurs auxquels vous avez accès apparaîtront ici. Demandez à un administrateur d'en créer un, ou d'être ajouté comme sous-utilisateur."
-        />
+        <EmptyState title={t('dashboard.empty')} description={t('dashboard.emptyHint')} />
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {servers.map((server) => (
@@ -49,6 +49,7 @@ export function DashboardPage() {
 }
 
 function ServerCard({ server }: { server: ServerSummary }) {
+  const { t } = useTranslation();
   const status = describeStatus(server.status);
 
   return (
@@ -61,18 +62,18 @@ function ServerCard({ server }: { server: ServerSummary }) {
               {formatAddress(server.primaryAllocation)}
             </p>
           </div>
-          <Badge tone={status.tone}>{status.label}</Badge>
+          <Badge tone={status.tone}>{t(status.key)}</Badge>
         </div>
 
         <dl className="mt-4 grid grid-cols-3 gap-3 border-t border-border-subtle pt-4 text-xs">
-          <Stat label="Mémoire" value={formatBytes(server.memoryBytes)} />
-          <Stat label="Disque" value={formatBytes(server.diskBytes)} />
-          <Stat label="CPU" value={formatCpu(server.cpuPercent)} />
+          <Stat label={t('console.memory')} value={formatBytes(server.memoryBytes)} />
+          <Stat label={t('console.disk')} value={formatBytes(server.diskBytes)} />
+          <Stat label={t('card.cpu')} value={formatCpu(server.cpuPercent)} />
         </dl>
 
         <p className="mt-3 text-xs text-content-muted">
           {server.template.name} · {server.node.name}
-          {!server.isOwner ? ' · partagé avec vous' : ''}
+          {server.isOwner ? '' : ` · ${t('card.shared')}`}
         </p>
       </Card>
     </Link>

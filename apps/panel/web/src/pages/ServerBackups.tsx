@@ -7,6 +7,7 @@ import { Toggle } from '../components/Toggle';
 import { Alert, Badge, Button, Card, EmptyState, Field, Input, Spinner } from '../components/ui';
 import { ApiError, api } from '../lib/api';
 import { formatBytes, formatDate } from '../lib/format';
+import { useTranslation } from '../i18n';
 import { useServerContext } from '../lib/server-context';
 
 interface Backup {
@@ -35,6 +36,7 @@ export function ServerBackupsPage() {
   const queryClient = useQueryClient();
   // Permissions fournies par `ServerLayout`, comme pour les autres onglets.
   const { can } = useServerContext();
+  const { t } = useTranslation();
 
   const [name, setName] = useState('');
   const [ignored, setIgnored] = useState('');
@@ -59,7 +61,7 @@ export function ServerBackupsPage() {
   };
 
   const fail = (error: unknown): void => {
-    setFailure(error instanceof ApiError ? error.message : 'Opération impossible.');
+    setFailure(error instanceof ApiError ? error.message : t('common.operationFailed'));
   };
 
   const create = useMutation({
@@ -120,7 +122,7 @@ export function ServerBackupsPage() {
   });
 
   if (backups.isLoading) {
-    return <Spinner label="Chargement des sauvegardes…" />;
+    return <Spinner label={t('common.loading')} />;
   }
 
   const list = backups.data?.data ?? [];
@@ -131,16 +133,12 @@ export function ServerBackupsPage() {
   return (
     <>
       <PageHeader
-        title="Sauvegardes"
-        description={
-          meta
-            ? `${meta.used} sur ${meta.limit} emplacement${meta.limit > 1 ? 's' : ''} utilisé${meta.used > 1 ? 's' : ''}.`
-            : undefined
-        }
+        title={t('backups.title')}
+        description={meta ? t('backups.slots', { used: meta.used, limit: meta.limit }) : undefined}
         action={
           can('backup.create') ? (
             <Button variant="primary" onClick={() => setCreating(true)} disabled={running || full}>
-              Créer une sauvegarde
+              {t('backups.create')}
             </Button>
           ) : null
         }
@@ -154,7 +152,7 @@ export function ServerBackupsPage() {
 
       <Modal
         open={creating}
-        title="Créer une sauvegarde"
+        title={t('backups.create')}
         onClose={() => setCreating(false)}
         footer={
           <>
@@ -166,31 +164,21 @@ export function ServerBackupsPage() {
               onClick={() => create.mutate()}
               disabled={create.isPending || running || full}
             >
-              {create.isPending ? 'Lancement…' : 'Démarrer la sauvegarde'}
+              {create.isPending ? t('backups.creating') : t('backups.start')}
             </Button>
           </>
         }
       >
         <div className="flex flex-col gap-5">
-          <Field label="Nom de la sauvegarde" hint="Laissé vide, un nom daté est attribué.">
+          <Field label={t('backups.name')} hint={t('backups.nameHint')}>
             <Input
               value={name}
               onChange={(event) => setName(event.target.value)}
-              placeholder="Sauvegarde du 3 août 2026 21:40"
+              placeholder={t('backups.namePlaceholder')}
             />
           </Field>
 
-          <Field
-            label="Fichiers et dossiers exclus"
-            hint={
-              <>
-                Un motif par ligne, syntaxe <code>.gitignore</code> : <code>*</code> et{' '}
-                <code>**</code> sont acceptés, et <code>!</code> en tête réintègre ce qu’une règle
-                précédente excluait. Laissé vide, le fichier <code>.hopperignore</code> placé à la
-                racine du serveur est utilisé s’il existe.
-              </>
-            }
-          >
+          <Field label={t('backups.excluded')} hint={t('backups.excludedHint')}>
             <textarea
               className="min-h-32 w-full rounded-lg border border-border-subtle bg-surface px-3 py-2 font-mono text-xs text-content placeholder:text-content-subtle focus:border-accent focus:outline-none"
               placeholder={IGNORE_PLACEHOLDER}
@@ -203,31 +191,20 @@ export function ServerBackupsPage() {
           <Toggle
             checked={locked}
             onChange={setLocked}
-            label="Verrouillée"
-            description="Empêche la suppression de cette sauvegarde, y compris par la rétention automatique, tant qu’elle n’est pas déverrouillée."
+            label={t('backups.locked')}
+            description={t('backups.lockedHint')}
           />
 
-          {running ? (
-            <Alert tone="info">
-              Une sauvegarde est déjà en cours. Attendez qu’elle se termine avant d’en lancer une
-              autre.
-            </Alert>
-          ) : null}
+          {running ? <Alert tone="info">{t('backups.runningNotice')}</Alert> : null}
 
           {full && !running ? (
-            <Alert tone="info">
-              Les {meta?.limit} emplacements sont utilisés : la plus ancienne sauvegarde non
-              verrouillée sera remplacée.
-            </Alert>
+            <Alert tone="info">{t('backups.fullNotice', { limit: meta?.limit ?? 0 })}</Alert>
           ) : null}
         </div>
       </Modal>
 
       {list.length === 0 ? (
-        <EmptyState
-          title="Aucune sauvegarde"
-          description="Une sauvegarde archive l’intégralité des fichiers du serveur et permet de revenir en arrière."
-        />
+        <EmptyState title={t('backups.empty')} description={t('backups.emptyHint')} />
       ) : (
         <div className="flex flex-col gap-2">
           {list.map((backup) => (
@@ -237,7 +214,7 @@ export function ServerBackupsPage() {
                   <div className="flex items-center gap-2">
                     <span className="truncate font-medium text-content">{backup.name}</span>
                     <StatusBadge backup={backup} />
-                    {backup.locked && <Badge tone="warn">Verrouillée</Badge>}
+                    {backup.locked && <Badge tone="warn">{t('backups.lockedBadge')}</Badge>}
                   </div>
 
                   <p className="mt-1 text-xs text-content-muted">
@@ -258,7 +235,7 @@ export function ServerBackupsPage() {
                       href={`/api/servers/${uuid}/backups/${backup.uuid}/download`}
                       className="rounded-lg border border-border-subtle px-3 py-1.5 text-sm text-content-muted transition-colors hover:bg-surface-hover hover:text-content"
                     >
-                      Télécharger
+                      {t('backups.download')}
                     </a>
                   )}
 
@@ -270,7 +247,7 @@ export function ServerBackupsPage() {
                       }
                       disabled={toggleLock.isPending}
                     >
-                      {backup.locked ? 'Déverrouiller' : 'Verrouiller'}
+                      {t(backup.locked ? 'backups.unlock' : 'backups.lock')}
                     </Button>
                   )}
 
@@ -280,7 +257,7 @@ export function ServerBackupsPage() {
                       onClick={() => setConfirming(`restore:${backup.uuid}`)}
                       disabled={restore.isPending}
                     >
-                      Restaurer
+                      {t('backups.restore')}
                     </Button>
                   )}
 
@@ -290,32 +267,29 @@ export function ServerBackupsPage() {
                       onClick={() => setConfirming(`delete:${backup.uuid}`)}
                       disabled={remove.isPending}
                     >
-                      Supprimer
+                      {t('common.delete')}
                     </Button>
                   )}
                 </div>
               </div>
 
-              {/* La restauration écrase le serveur : elle mérite une confirmation
-                  qui dit exactement ce qui va disparaître, pas un « êtes-vous
-                  sûr ? » que l'on valide sans lire. */}
+              {/* Restoring overwrites the server: it deserves a confirmation
+                  that says exactly what disappears, not an "are you sure?"
+                  that gets clicked through. */}
               {confirming === `restore:${backup.uuid}` && (
                 <div className="mt-3">
                   <Alert tone="info">
-                    <p>
-                      Tous les fichiers actuels du serveur seront supprimés puis remplacés par ceux
-                      de cette sauvegarde. Le serveur doit être arrêté.
-                    </p>
+                    <p>{t('backups.restoreWarning')}</p>
                     <div className="mt-3 flex gap-2">
                       <Button
                         variant="danger"
                         onClick={() => restore.mutate(backup.uuid)}
                         disabled={restore.isPending}
                       >
-                        {restore.isPending ? 'Restauration…' : 'Restaurer et écraser'}
+                        {restore.isPending ? t('backups.restoring') : t('backups.restoreAction')}
                       </Button>
                       <Button variant="ghost" onClick={() => setConfirming(null)}>
-                        Annuler
+                        {t('common.cancel')}
                       </Button>
                     </div>
                   </Alert>
@@ -325,14 +299,14 @@ export function ServerBackupsPage() {
               {confirming === `delete:${backup.uuid}` && (
                 <div className="mt-3">
                   <Alert tone="danger">
-                    <p>Cette archive sera définitivement supprimée du node.</p>
+                    <p>{t('backups.deleteWarning')}</p>
                     <div className="mt-3 flex gap-2">
                       <Button
                         variant="danger"
                         onClick={() => remove.mutate(backup.uuid)}
                         disabled={remove.isPending}
                       >
-                        Supprimer définitivement
+                        {t('backups.deleteAction')}
                       </Button>
                       <Button variant="ghost" onClick={() => setConfirming(null)}>
                         Annuler
@@ -350,13 +324,15 @@ export function ServerBackupsPage() {
 }
 
 function StatusBadge({ backup }: { backup: Backup }) {
+  const { t } = useTranslation();
+
   if (backup.successful === null) {
-    return <Badge tone="warn">En cours…</Badge>;
+    return <Badge tone="warn">{t('backups.inProgress')}</Badge>;
   }
 
   return backup.successful ? (
-    <Badge tone="online">Terminée</Badge>
+    <Badge tone="online">{t('backups.done')}</Badge>
   ) : (
-    <Badge tone="danger">Échouée</Badge>
+    <Badge tone="danger">{t('backups.failed')}</Badge>
   );
 }

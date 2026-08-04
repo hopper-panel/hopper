@@ -1,22 +1,22 @@
 import { useQuery } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
+import { useTranslation } from '../i18n';
 import { api, type Paginated, type ServerSummary } from '../lib/api';
 import { formatAddress } from '../lib/format';
 import { Modal } from './Modal';
 import { Field, Input, Spinner } from './ui';
 
 /**
- * Recherche de serveur.
+ * Server search.
  *
- * Interroge l'API à mesure de la frappe, mais seulement à partir de deux
- * caractères et après une pause : une requête par touche renverrait surtout
- * des résultats déjà périmés au moment où ils arrivent, et ferait travailler la
- * base pour rien.
+ * Queries as you type, but only from two characters on and after a pause: one
+ * request per keystroke would mostly return results already stale by the time
+ * they arrive.
  *
- * La recherche porte sur le nom, l'identifiant **et** le port, parce que ce
- * sont les trois façons dont on désigne un serveur en pratique : son nom quand
- * on le connaît, son UUID quand on l'a relevé dans un journal, son port quand
- * on ne dispose que de l'adresse donnée aux joueurs.
+ * It matches the name, the identifier **and** the port, because those are the
+ * three ways a server is named in practice: its name when you know it, its UUID
+ * when you read it in a log, its port when all you have is the address given to
+ * players.
  */
 export function SearchDialog({
   open,
@@ -27,6 +27,7 @@ export function SearchDialog({
   onClose: () => void;
   onSelect: (uuid: string) => void;
 }) {
+  const { t } = useTranslation();
   const [term, setTerm] = useState('');
   const [debounced, setDebounced] = useState('');
 
@@ -35,8 +36,8 @@ export function SearchDialog({
     return () => clearTimeout(timer);
   }, [term]);
 
-  // La saisie précédente ne doit pas réapparaître à la réouverture : on
-  // cherche presque toujours autre chose.
+  // The previous entry must not come back when reopening: one is almost
+  // always looking for something else.
   useEffect(() => {
     if (!open) {
       setTerm('');
@@ -56,24 +57,21 @@ export function SearchDialog({
   const servers = results.data?.data ?? [];
 
   return (
-    <Modal open={open} title="Rechercher un serveur" onClose={onClose}>
-      <Field
-        label="Terme de recherche"
-        hint="Un nom de serveur, un identifiant ou un port. Deux caractères au minimum."
-      >
+    <Modal open={open} title={t('search.title')} onClose={onClose}>
+      <Field label={t('search.field')} hint={t('search.hint')}>
         <Input
           value={term}
           onChange={(event) => setTerm(event.target.value)}
-          placeholder="survie, 25565, 1b32d12d-…"
+          placeholder={t('search.placeholder')}
           autoFocus
         />
       </Field>
 
       <div className="mt-4">
         {debounced.length < 2 ? null : results.isFetching ? (
-          <Spinner label="Recherche…" />
+          <Spinner label={t('search.searching')} />
         ) : servers.length === 0 ? (
-          <p className="text-sm text-content-muted">Aucun serveur ne correspond.</p>
+          <p className="text-sm text-content-muted">{t('search.empty')}</p>
         ) : (
           <ul className="flex flex-col gap-1">
             {servers.map((server) => (

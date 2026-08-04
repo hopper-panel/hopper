@@ -91,21 +91,32 @@ export function formatAddress(
   return `${host}:${allocation.port}`;
 }
 
-const STATUS_LABELS: Record<
-  string,
-  { label: string; tone: 'online' | 'offline' | 'warn' | 'danger' }
-> = {
-  INSTALLING: { label: 'Installing', tone: 'warn' },
-  INSTALL_FAILED: { label: 'Install failed', tone: 'danger' },
-  READY: { label: 'Ready', tone: 'online' },
-  SUSPENDED: { label: 'Suspended', tone: 'danger' },
-  DELETING: { label: 'Deleting', tone: 'warn' },
-  REINSTALLING: { label: 'Reinstalling', tone: 'warn' },
+type Tone = 'online' | 'offline' | 'warn' | 'danger';
+
+const STATUSES: Record<string, { key: StatusKey; tone: Tone }> = {
+  READY: { key: 'status.ready', tone: 'online' },
+  INSTALLING: { key: 'status.installing', tone: 'warn' },
+  INSTALL_FAILED: { key: 'status.installFailed', tone: 'danger' },
+  SUSPENDED: { key: 'status.suspended', tone: 'danger' },
+  DELETING: { key: 'status.deleting', tone: 'warn' },
+  REINSTALLING: { key: 'status.reinstalling', tone: 'warn' },
 };
 
-/** Stored server status, distinct from the runtime state reported by the daemon. */
-export function describeStatus(status: string) {
-  // An unknown status is shown as-is rather than hidden: a raw value beats a
-  // server with no visible state at all.
-  return STATUS_LABELS[status] ?? { label: status, tone: 'offline' as const };
+type StatusKey =
+  | 'status.ready'
+  | 'status.installing'
+  | 'status.installFailed'
+  | 'status.suspended'
+  | 'status.deleting'
+  | 'status.reinstalling';
+
+/**
+ * Stored server status, distinct from the runtime state the daemon reports.
+ *
+ * Returns a message key rather than a label: the caller translates. An unknown
+ * status falls back to "installing" — never to nothing, a server with no
+ * visible state at all is worse than a slightly wrong one.
+ */
+export function describeStatus(status: string): { key: StatusKey; tone: Tone } {
+  return STATUSES[status] ?? { key: 'status.installing', tone: 'offline' };
 }
