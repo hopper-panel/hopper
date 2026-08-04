@@ -336,13 +336,8 @@ async function dockerChecks(): Promise<Check[]> {
   }
 
   const checks: Check[] = [];
-  const version = await dockerVersion(socket);
 
-  checks.push(
-    version === null
-      ? fail('Docker', 'socket present but cannot be queried — insufficient permissions?')
-      : ok('Docker', `engine ${version}`),
-  );
+  checks.push(describeDockerProbe(await probeDocker(socket)));
 
   const volumes = '/var/lib/hopper/volumes';
   const info = await stat(volumes).catch(() => null);
@@ -356,8 +351,47 @@ async function dockerChecks(): Promise<Check[]> {
   return checks;
 }
 
-/** Queries the Docker engine's `/version` over its Unix socket. */
-function dockerVersion(socketPath: string): Promise<string | null> {
+/** Outcome of asking the Docker engine for its version. */
+export type DockerProbe =
+  | { status: 'answered'; version: string }
+  /** The socket is there, but this process is not allowed to open it. */
+  | { status: 'forbidden' }
+  /** The socket is there and nothing answers on it. */
+  | { status: 'silent'; reason: string }
+  /** It answered, but not with something we understand. */
+  | { status: 'unreadable' };
+
+/**
+ * Turns a probe into a verdict.
+ *
+ * The distinction that matters is between *not allowed to look* and *nothing
+ * there*. The panel runs as `hopper` and the Docker socket belongs to root: on
+ * a single-machine install — by far the most common — the panel cannot open it,
+ * and that is the correct configuration. Membership of the `docker` group is
+ * equivalent to root on the host, and the panel is the process exposed to the
+ * internet; it has no business holding that. `hopperd` runs as root and is the
+ * one that talks to Docker.
+ *
+ * So a refusal is reported as healthy, not as a failure and not as a warning: a
+ * warning every healthy installation carries forever is a warning people learn
+ * to skip. A socket that answers nothing, in contrast, means the engine is down
+ * — fatal on a machine that hosts servers, and worth the exit code.
+ */
+export function describeDockerProbe(probe: DockerProbe): Check {
+  switch (probe.status) {
+    case 'answered':
+      return ok('Docker', `engine ${probe.version}`);
+    case 'forbidden':
+      return ok('Docker', 'socket not readable by the panel — normal, hopperd queries it as root');
+    case 'silent':
+      return fail('Docker', `socket present but nothing answers (${probe.reason}) — is it running?`);
+    case 'unreadable':
+      return warn('Docker', 'the socket answered something unexpected');
+  }
+}
+
+/** Asks the Docker engine for its version over its Unix socket. */
+function probeDocker(socketPath: string): Promise<DockerProbe> {
   return new Promise((resolve) => {
     const call = request({ socketPath, path: '/version', timeout: 2000 }, (response) => {
       let body = '';
@@ -366,15 +400,29 @@ function dockerVersion(socketPath: string): Promise<string | null> {
       response.on('end', () => {
         try {
           const parsed = JSON.parse(body) as { Version?: string };
-          resolve(parsed.Version ?? null);
+          resolve(
+            parsed.Version === undefined
+              ? { status: 'unreadable' }
+              : { status: 'answered', version: parsed.Version },
+          );
         } catch {
-          resolve(null);
+          resolve({ status: 'unreadable' });
         }
       });
     });
 
     call.on('timeout', () => call.destroy());
-    call.on('error', () => resolve(null));
+
+    call.on('error', (error: NodeJS.ErrnoException) => {
+      // EACCES is the panel being told off by the kernel, EPERM its
+      // capability-based sibling. Neither says anything about Docker's health.
+      resolve(
+        error.code === 'EACCES' || error.code === 'EPERM'
+          ? { status: 'forbidden' }
+          : { status: 'silent', reason: error.code ?? error.message },
+      );
+    });
+
     call.end();
   });
 }
