@@ -3,26 +3,26 @@ import type Dockerode from 'dockerode';
 import { buildEnvironment, buildInvocation } from '../server/invocation.js';
 
 /**
- * Traduction d'une configuration de serveur en conteneur Docker.
+ * Translating a server configuration into a Docker container.
  *
- * Ce fichier concentre tout le durcissement. Les choix ci-dessous partent du
- * principe que **l'opérateur du serveur est hostile** : il peut téléverser
- * n'importe quel plugin et exécuter n'importe quelle commande dans sa console.
- * Ce qui l'empêche de sortir du conteneur, c'est uniquement ce qui est écrit ici.
+ * This file concentrates all the hardening. The choices below assume the
+ * **server's operator is hostile**: they can upload any plugin and run any
+ * command in their console. What stops them from leaving the container is only
+ * what is written here.
  */
 
-/** Période de référence du quota CPU des cgroups, en microsecondes. */
+/** Reference period of the cgroup CPU quota, in microseconds. */
 const CPU_PERIOD_US = 100_000;
 
-/** Répertoire de travail à l'intérieur du conteneur. */
+/** Working directory inside the container. */
 export const CONTAINER_WORKING_DIR = '/home/container';
 
 /**
- * UID/GID du processus dans le conteneur.
+ * UID/GID of the process inside the container.
  *
- * Aligné sur le propriétaire des fichiers côté hôte : sans cela, le serveur ne
- * pourrait pas écrire dans son propre volume, ou écrirait des fichiers que le
- * daemon ne saurait plus lire.
+ * Aligned with the file owner on the host side: without that, the server could
+ * not write into its own volume, or would write files the daemon could no
+ * longer read.
  */
 export interface OwnershipOptions {
   uid: number;
@@ -31,16 +31,16 @@ export interface OwnershipOptions {
 
 export interface ContainerBuildOptions {
   configuration: ServerConfiguration;
-  /** Chemin du volume sur l'hôte. */
+  /** Path of the volume on the host. */
   volumePath: string;
-  /** Réseau bridge dédié aux serveurs. */
+  /** Bridge network dedicated to the servers. */
   networkName: string;
   ownership: OwnershipOptions;
   timezone: string;
   /**
-   * Appliquer le poids d'E/S. Voir `docker.blkioWeight` dans daemon.yml : sans
-   * l'ordonnanceur BFQ, le noyau n'expose pas `io.weight` et le conteneur
-   * refuse de démarrer.
+   * Apply the I/O weight. See `docker.blkioWeight` in daemon.yml: without the
+   * BFQ scheduler the kernel does not expose `io.weight` and the container
+   * refuses to start.
    */
   enableBlkioWeight?: boolean;
 }
@@ -50,8 +50,8 @@ export function containerNameFor(uuid: string): string {
 }
 
 /**
- * Convertit un pourcentage de cœur en quota cgroup.
- * 200 % → deux cœurs pleins. 0 laisse le conteneur sans limite.
+ * Converts a percentage of a core into a cgroup quota.
+ * 200% → two full cores. 0 leaves the container unlimited.
  */
 export function cpuQuotaFor(cpuPercent: number): number | undefined {
   if (cpuPercent <= 0) {
@@ -62,17 +62,17 @@ export function cpuQuotaFor(cpuPercent: number): number | undefined {
 }
 
 /**
- * Calcule `MemorySwap` au sens de Docker.
+ * Computes `MemorySwap` in Docker's sense.
  *
- * Docker attend la somme mémoire + swap, alors que le panel raisonne en swap
- * additionnel — la confusion entre les deux est le grand classique du réglage
- * de conteneurs, et donne des serveurs qui swappent sans limite.
+ * Docker expects memory + swap, whereas the panel thinks in additional swap —
+ * confusing the two is the classic container-tuning mistake, and it produces
+ * servers that swap without limit.
  *
- * @returns -1 pour un swap illimité, sinon `memory + swap`.
+ * @returns -1 for unlimited swap, otherwise `memory + swap`.
  */
 export function memorySwapFor(memoryBytes: number, swapBytes: number): number | undefined {
   if (memoryBytes <= 0) {
-    // Sans limite mémoire, une limite de swap n'a pas de sens pour Docker.
+    // With no memory limit, a swap limit makes no sense to Docker.
     return undefined;
   }
 
@@ -83,7 +83,7 @@ export function memorySwapFor(memoryBytes: number, swapBytes: number): number | 
   return memoryBytes + swapBytes;
 }
 
-/** Ports publiés sur l'hôte, en TCP et UDP. */
+/** Ports published on the host, in TCP and UDP. */
 export function portBindingsFor(configuration: ServerConfiguration): {
   exposed: Record<string, Record<string, never>>;
   bindings: Record<string, { HostIp: string; HostPort: string }[]>;
@@ -94,8 +94,8 @@ export function portBindingsFor(configuration: ServerConfiguration): {
   const allocations = [configuration.allocations.default, ...configuration.allocations.additional];
 
   for (const allocation of allocations) {
-    // UDP autant que TCP : la requête de statut Minecraft, le protocole Bedrock
-    // et les plugins de chat vocal en dépendent.
+    // UDP as much as TCP: the Minecraft status query, the Bedrock protocol and
+    // voice-chat plugins all depend on it.
     for (const protocol of ['tcp', 'udp'] as const) {
       const key = `${allocation.port}/${protocol}`;
       exposed[key] = {};
@@ -107,9 +107,9 @@ export function portBindingsFor(configuration: ServerConfiguration): {
 }
 
 /**
- * Construit les options de création d'un conteneur de serveur.
+ * Builds the creation options for a server container.
  *
- * @throws {InvocationError} si la commande de démarrage est inexploitable.
+ * @throws {InvocationError} if the startup command is unusable.
  */
 export function buildContainerOptions(
   options: ContainerBuildOptions,
@@ -129,9 +129,9 @@ export function buildContainerOptions(
   return {
     name: containerNameFor(configuration.uuid),
     Image: configuration.container.image,
-    // Un tableau, jamais une chaîne : Docker exécuterait une chaîne via
-    // `/bin/sh -c`, ce qui réintroduirait exactement l'interprétation shell que
-    // `buildInvocation` s'emploie à éviter.
+    // An array, never a string: Docker would run a string through `/bin/sh -c`,
+    // which would reintroduce exactly the shell interpretation
+    // `buildInvocation` works to avoid.
     Cmd: invocation.argv,
     Env: [
       ...buildEnvironment({
@@ -145,9 +145,9 @@ export function buildContainerOptions(
     WorkingDir: CONTAINER_WORKING_DIR,
     User: `${ownership.uid}:${ownership.gid}`,
 
-    // TTY : la console est un flux unique et `stop` peut être écrit sur stdin.
-    // Sans TTY, Docker multiplexe stdout/stderr avec un en-tête de 8 octets
-    // qu'il faudrait démultiplexer, pour aucun gain.
+    // TTY: the console is a single stream and `stop` can be written to stdin.
+    // Without a TTY, Docker multiplexes stdout/stderr with an 8-byte header
+    // that would have to be demultiplexed, for no gain.
     Tty: true,
     OpenStdin: true,
     StdinOnce: false,
@@ -167,11 +167,11 @@ export function buildContainerOptions(
       PortBindings: bindings,
       NetworkMode: networkName,
 
-      // --- Limites de ressources -------------------------------------------
+      // --- Resource limits -------------------------------------------------
       Memory: configuration.build.memoryBytes || undefined,
       MemorySwap: memorySwapFor(configuration.build.memoryBytes, configuration.build.swapBytes),
-      // Une réservation égale à la limite évite que le noyau ne réclame la
-      // mémoire du serveur sous pression, ce qui provoquerait des à-coups.
+      // A reservation equal to the limit stops the kernel from reclaiming the
+      // server's memory under pressure, which would cause stutters.
       MemoryReservation: configuration.build.memoryBytes || undefined,
       CpuPeriod: configuration.build.cpuPercent > 0 ? CPU_PERIOD_US : undefined,
       CpuQuota: cpuQuotaFor(configuration.build.cpuPercent),
@@ -180,29 +180,29 @@ export function buildContainerOptions(
       PidsLimit: configuration.build.pidsLimit,
       OomKillDisable: configuration.build.oomKillDisabled,
 
-      // --- Durcissement -----------------------------------------------------
+      // --- Hardening --------------------------------------------------------
       Privileged: false,
-      // Le serveur n'a besoin d'aucune capability : il écoute sur un port
-      // au-dessus de 1024 et n'écrit que dans son volume.
+      // The server needs no capability: it listens on a port above 1024 and
+      // only writes into its volume.
       CapDrop: ['ALL'],
       SecurityOpt: ['no-new-privileges'],
-      // Empêche un processus du conteneur de voir ou de signaler les processus
-      // de l'hôte et des autres serveurs.
+      // Stops a process in the container from seeing or signalling the host's
+      // processes and those of the other servers.
       UsernsMode: '',
       ReadonlyRootfs: false,
       Tmpfs: {
-        // /tmp en mémoire, borné : un serveur qui remplit /tmp ne doit pas
-        // saturer le disque de l'hôte, en dehors de son propre volume.
+        // /tmp in memory, bounded: a server that fills /tmp must not saturate
+        // the host's disk, outside its own volume.
         '/tmp': 'rw,exec,nosuid,size=128m',
       },
 
-      // Un serveur qui plante en boucle ne doit pas redémarrer indéfiniment
-      // sans que personne ne le sache : c'est le daemon qui décide.
+      // A server crashing in a loop must not restart forever with nobody the
+      // wiser: the daemon is what decides.
       RestartPolicy: { Name: 'no', MaximumRetryCount: 0 },
 
       LogConfig: {
-        // La console vient du flux d'attache, pas des journaux Docker : les
-        // laisser grossir remplirait /var/lib/docker pour rien.
+        // The console comes from the attach stream, not from Docker's logs:
+        // letting them grow would fill /var/lib/docker for nothing.
         Type: 'json-file',
         Config: { 'max-size': '5m', 'max-file': '1' },
       },

@@ -31,16 +31,16 @@ const OPTIONS = {
   timezone: 'Europe/Paris',
 };
 
-describe('poids d’E/S', () => {
-  // Sans BFQ, le noyau n'expose pas io.weight et le conteneur refuse de
-  // démarrer avec une erreur OCI illisible. Le défaut doit donc être « ne rien
-  // poser », et non « poser 500 ».
-  it("n'est pas appliqué par défaut", () => {
+describe('I/O weight', () => {
+  // Without BFQ the kernel does not expose io.weight and the container
+  // refuses to start with an unreadable OCI error. The default therefore has to
+  // be "set nothing", not "set 500".
+  it('is not applied by default', () => {
     const options = buildContainerOptions({ configuration: makeConfiguration(), ...OPTIONS });
     expect(options.HostConfig?.BlkioWeight).toBeUndefined();
   });
 
-  it('est appliqué quand l’hôte le supporte', () => {
+  it('is applied when the host supports it', () => {
     const options = buildContainerOptions({
       configuration: makeConfiguration(),
       ...OPTIONS,
@@ -52,47 +52,47 @@ describe('poids d’E/S', () => {
 });
 
 describe('cpuQuotaFor', () => {
-  it('convertit un pourcentage en quota cgroup', () => {
+  it('converts a percentage into a cgroup quota', () => {
     expect(cpuQuotaFor(100)).toBe(100_000);
     expect(cpuQuotaFor(200)).toBe(200_000);
     expect(cpuQuotaFor(50)).toBe(50_000);
   });
 
-  it('ne pose pas de quota quand le CPU est illimité', () => {
+  it('sets no quota when the CPU is unlimited', () => {
     expect(cpuQuotaFor(0)).toBeUndefined();
     expect(cpuQuotaFor(-1)).toBeUndefined();
   });
 });
 
 describe('memorySwapFor', () => {
-  // Docker attend mémoire + swap, le panel raisonne en swap additionnel.
-  // Confondre les deux donne un serveur qui swappe sans limite.
-  it('additionne la mémoire et le swap', () => {
+  // Docker expects memory + swap, the panel thinks in additional swap.
+  // Confusing the two gives a server that swaps without limit.
+  it('adds the memory and the swap together', () => {
     expect(memorySwapFor(4 * GIB, 2 * GIB)).toBe(6 * GIB);
   });
 
-  it('interdit le swap quand il vaut zéro', () => {
+  it('forbids swap when it is zero', () => {
     expect(memorySwapFor(4 * GIB, 0)).toBe(4 * GIB);
   });
 
-  it('rend le swap illimité pour -1', () => {
+  it('makes swap unlimited for -1', () => {
     expect(memorySwapFor(4 * GIB, -1)).toBe(-1);
   });
 
-  it('ne pose rien quand la mémoire est illimitée', () => {
+  it('sets nothing when the memory is unlimited', () => {
     expect(memorySwapFor(0, 0)).toBeUndefined();
   });
 });
 
 describe('portBindingsFor', () => {
-  it('publie le port principal en TCP et en UDP', () => {
+  it('publishes the primary port in TCP and UDP', () => {
     const { exposed, bindings } = portBindingsFor(makeConfiguration());
 
     expect(Object.keys(exposed).sort()).toEqual(['25565/tcp', '25565/udp']);
     expect(bindings['25565/tcp']).toEqual([{ HostIp: '0.0.0.0', HostPort: '25565' }]);
   });
 
-  it('publie aussi les ports supplémentaires', () => {
+  it('publishes the additional ports too', () => {
     const configuration = makeConfiguration({
       allocations: {
         default: { ip: '0.0.0.0', port: 25565 },
@@ -112,77 +112,77 @@ describe('portBindingsFor', () => {
 describe('buildContainerOptions', () => {
   const options = buildContainerOptions({ configuration: makeConfiguration(), ...OPTIONS });
 
-  it('nomme le conteneur de façon prévisible', () => {
+  it('names the container predictably', () => {
     expect(options.name).toBe(containerNameFor('3f2504e0-4f89-41d3-9a0c-0305e82c3301'));
     expect(options.name).toBe('hopper-3f2504e0-4f89-41d3-9a0c-0305e82c3301');
   });
 
-  // Une chaîne serait exécutée par Docker via `/bin/sh -c`, ce qui
-  // réintroduirait l'interprétation shell que buildInvocation évite.
-  it('passe la commande en tableau, jamais en chaîne', () => {
+  // A string would be run by Docker through `/bin/sh -c`, which would
+  // reintroduce the shell interpretation buildInvocation avoids.
+  it('passes the command as an array, never as a string', () => {
     expect(Array.isArray(options.Cmd)).toBe(true);
-    // 4 Gio de conteneur → 3276 Mio de tas : la marge laissée au hors-tas de la
-    // JVM et au cache de pages évite que le noyau ne tue le serveur
-    // (voir `heapBudgetMib`).
+    // A 4 GiB container → a 3276 MiB heap: the headroom left to the JVM's
+    // off-heap and to the page cache stops the kernel from killing the server
+    // (see `heapBudgetMib`).
     expect(options.Cmd).toEqual(['java', '-Xmx3276M', '-jar', 'server.jar']);
   });
 
-  it('monte le volume sur le répertoire de travail', () => {
+  it('mounts the volume on the working directory', () => {
     expect(options.HostConfig?.Binds).toEqual([`${OPTIONS.volumePath}:/home/container:rw`]);
     expect(options.WorkingDir).toBe('/home/container');
   });
 
-  it('exécute le serveur sous un utilisateur non privilégié', () => {
+  it('runs the server as an unprivileged user', () => {
     expect(options.User).toBe('988:988');
   });
 
-  describe('durcissement', () => {
-    it("n'est jamais privilégié", () => {
+  describe('hardening', () => {
+    it('is never privileged', () => {
       expect(options.HostConfig?.Privileged).toBe(false);
     });
 
-    it('abandonne toutes les capabilities', () => {
+    it('drops every capability', () => {
       expect(options.HostConfig?.CapDrop).toEqual(['ALL']);
     });
 
-    it('interdit l’acquisition de nouveaux privilèges', () => {
+    it('forbids acquiring new privileges', () => {
       expect(options.HostConfig?.SecurityOpt).toContain('no-new-privileges');
     });
 
-    it('borne le nombre de processus', () => {
+    it('bounds the number of processes', () => {
       expect(options.HostConfig?.PidsLimit).toBe(512);
     });
 
-    it('ne monte jamais le socket Docker', () => {
+    it('never mounts the Docker socket', () => {
       const binds = options.HostConfig?.Binds ?? [];
       expect(binds.some((bind) => bind.includes('docker.sock'))).toBe(false);
     });
 
-    it('ne laisse pas Docker redémarrer le conteneur tout seul', () => {
+    it('does not let Docker restart the container on its own', () => {
       expect(options.HostConfig?.RestartPolicy?.Name).toBe('no');
     });
 
-    it('borne /tmp en mémoire', () => {
+    it('bounds /tmp in memory', () => {
       expect(options.HostConfig?.Tmpfs?.['/tmp']).toContain('size=128m');
       expect(options.HostConfig?.Tmpfs?.['/tmp']).toContain('nosuid');
     });
 
-    it('borne les journaux Docker', () => {
+    it('bounds the Docker logs', () => {
       const logConfig = options.HostConfig?.LogConfig as
         { Config?: Record<string, string> } | undefined;
       expect(logConfig?.Config?.['max-size']).toBe('5m');
     });
   });
 
-  describe('limites de ressources', () => {
-    it('applique la mémoire et le quota CPU', () => {
+  describe('resource limits', () => {
+    it('applies the memory and the CPU quota', () => {
       expect(options.HostConfig?.Memory).toBe(4 * GIB);
       expect(options.HostConfig?.MemorySwap).toBe(4 * GIB);
       expect(options.HostConfig?.CpuQuota).toBe(200_000);
       expect(options.HostConfig?.CpuPeriod).toBe(100_000);
     });
 
-    it('omet les limites quand elles valent zéro', () => {
+    it('omits the limits when they are zero', () => {
       const unlimited = buildContainerOptions({
         configuration: makeConfiguration({
           build: { memoryBytes: 0, swapBytes: 0, cpuPercent: 0, diskBytes: 0 },
@@ -192,22 +192,22 @@ describe('buildContainerOptions', () => {
 
       expect(unlimited.HostConfig?.Memory).toBeUndefined();
       expect(unlimited.HostConfig?.CpuQuota).toBeUndefined();
-      // La limite de processus, elle, reste toujours posée.
+      // The process limit, in contrast, is always set.
       expect(unlimited.HostConfig?.PidsLimit).toBe(512);
     });
   });
 
-  it('étiquette le conteneur pour la réconciliation au démarrage', () => {
+  it('labels the container for reconciliation at startup', () => {
     expect(options.Labels?.['io.hopper.managed']).toBe('true');
     expect(options.Labels?.['io.hopper.server']).toBe('3f2504e0-4f89-41d3-9a0c-0305e82c3301');
   });
 
-  it('ouvre un TTY et stdin pour la console', () => {
+  it('opens a TTY and stdin for the console', () => {
     expect(options.Tty).toBe(true);
     expect(options.OpenStdin).toBe(true);
   });
 
-  it('injecte le fuseau horaire et les variables du template', () => {
+  it('injects the time zone and the template variables', () => {
     expect(options.Env).toContain('TZ=Europe/Paris');
     expect(options.Env).toContain('SERVER_JARFILE=server.jar');
     expect(options.Env).toContain('SERVER_PORT=25565');

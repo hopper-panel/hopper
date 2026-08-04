@@ -12,10 +12,10 @@ export interface DockerInfo {
 }
 
 /**
- * Accès au démon Docker de la machine hôte.
+ * Access to the host machine's Docker daemon.
  *
- * Le socket Docker équivaut à un accès root : il n'est manipulé que par ce
- * module, et n'est jamais monté dans un conteneur de serveur.
+ * The Docker socket is equivalent to root access: it is handled by this module
+ * only, and is never mounted into a server container.
  */
 export class DockerClient {
   private readonly docker: Dockerode;
@@ -24,8 +24,8 @@ export class DockerClient {
     private readonly config: DaemonConfig,
     private readonly logger: Logger,
   ) {
-    // `socketPath` accepte aussi bien un socket Unix (`/var/run/docker.sock`)
-    // qu'un pipe nommé Windows (`//./pipe/docker_engine`) en développement.
+    // `socketPath` accepts a Unix socket (`/var/run/docker.sock`) as well as a
+    // Windows named pipe (`//./pipe/docker_engine`) in development.
     this.docker = new Dockerode({ socketPath: config.docker.socket });
   }
 
@@ -34,17 +34,17 @@ export class DockerClient {
   }
 
   /**
-   * Vérifie que Docker répond et que sa version est exploitable.
-   * Appelé au démarrage : mieux vaut refuser de démarrer que découvrir le
-   * problème à la première création de serveur.
+   * Checks that Docker answers and that its version is usable.
+   * Called at startup: better to refuse to start than to discover the problem
+   * at the first server creation.
    */
   async ping(): Promise<void> {
     await this.docker.ping();
   }
 
   async info(): Promise<DockerInfo> {
-    // `Dockerode.info()` est typé `any` : on referme le typage tout de suite
-    // plutôt que de laisser cette valeur se propager dans le reste du daemon.
+    // `Dockerode.info()` is typed `any`: the typing is closed back right away
+    // rather than letting that value spread through the rest of the daemon.
     const info: unknown = await this.docker.info();
     const version = await this.docker.version();
 
@@ -56,35 +56,35 @@ export class DockerClient {
 
     return {
       version: version.Version,
-      storageDriver: raw.Driver ?? 'inconnu',
+      storageDriver: raw.Driver ?? 'unknown',
       cgroupVersion: raw.CgroupVersion ?? '1',
       runningContainers: raw.ContainersRunning ?? 0,
     };
   }
 
   /**
-   * Crée le réseau bridge dédié s'il n'existe pas.
+   * Creates the dedicated bridge network if it does not exist.
    *
-   * Un réseau à part plutôt que le bridge par défaut : sur `bridge`, tous les
-   * conteneurs se voient entre eux, et un serveur pourrait scanner puis
-   * atteindre les ports internes des serveurs voisins.
+   * A separate network rather than the default bridge: on `bridge`, every
+   * container sees every other, and a server could scan then reach the internal
+   * ports of its neighbours.
    */
   async ensureNetwork(): Promise<void> {
     const { name, autoCreate, subnet, gateway, enableIpv6 } = this.config.docker.network;
 
     const networks = await this.docker.listNetworks({ filters: { name: [name] } });
     if (networks.some((network) => network.Name === name)) {
-      this.logger.debug({ network: name }, 'Réseau Docker déjà présent');
+      this.logger.debug({ network: name }, 'Docker network already present');
       return;
     }
 
     if (!autoCreate) {
       throw new Error(
-        `Le réseau Docker « ${name} » n'existe pas et docker.network.autoCreate vaut false.`,
+        `The Docker network "${name}" does not exist and docker.network.autoCreate is false.`,
       );
     }
 
-    this.logger.info({ network: name, subnet }, 'Création du réseau Docker');
+    this.logger.info({ network: name, subnet }, 'Creating the Docker network');
 
     await this.docker.createNetwork({
       Name: name,
@@ -99,10 +99,10 @@ export class DockerClient {
   }
 
   /**
-   * Télécharge une image si elle est absente.
+   * Downloads an image if it is missing.
    *
-   * Le flux de progression est consommé jusqu'au bout : ne pas le lire laisse
-   * la requête HTTP ouverte et le téléchargement se bloque à mi-parcours.
+   * The progress stream is consumed to the end: not reading it leaves the HTTP
+   * request open and the download stalls halfway.
    */
   async pullImage(image: string, onProgress?: (line: string) => void): Promise<void> {
     const existing = await this.docker.listImages({ filters: { reference: [image] } });
@@ -110,7 +110,7 @@ export class DockerClient {
       return;
     }
 
-    this.logger.info({ image }, "Téléchargement de l'image Docker");
+    this.logger.info({ image }, 'Downloading the Docker image');
 
     try {
       const stream = await this.docker.pull(image);
@@ -127,36 +127,37 @@ export class DockerClient {
         );
       });
     } catch (error: unknown) {
-      // « denied » de Docker ne dit ni quelle image, ni pourquoi. Sur une image
-      // absente d'un registre public, cela signifie presque toujours qu'elle
-      // n'a jamais été publiée — un message qui nomme l'image épargne une demi-
-      // heure de recherche à l'opérateur.
+      // Docker's "denied" says neither which image nor why. On an image absent
+      // from a public registry it nearly always means it was never published —
+      // a message naming the image saves the operator half an hour of
+      // searching.
       throw new Error(
-        `Téléchargement de l'image « ${image} » impossible. Vérifiez qu'elle existe et que ce node peut l'atteindre. Détail : ${String(error)}`,
+        `Could not download the image "${image}". Check that it exists and that this node can reach it. Detail: ${String(error)}`,
       );
     }
   }
 
   /**
-   * S'attache au flux d'entrée/sortie d'un conteneur, sans passer par dockerode.
+   * Attaches to a container's input/output stream, without going through
+   * dockerode.
    *
-   * `container.attach()` sérialise ses propres options dans le corps de la
-   * requête POST (`JSON.stringify(opts._body || opts)` dans docker-modem). Comme
-   * la connexion est ensuite promue en flux brut, ces octets partent sur le
-   * même socket que stdin : selon le moment où Docker répond, ils atterrissent
-   * dans la console du serveur Minecraft, qui reçoit
-   * `{"stream":true,"stdin":true,…}` comme une commande tapée par un joueur.
+   * `container.attach()` serialises its own options into the body of the POST
+   * request (`JSON.stringify(opts._body || opts)` in docker-modem). Since the
+   * connection is then promoted to a raw stream, those bytes leave on the same
+   * socket as stdin: depending on when Docker answers, they land in the
+   * Minecraft server's console, which receives
+   * `{"stream":true,"stdin":true,…}` as a command typed by a player.
    *
-   * Le comportement est intermittent — il dépend de la course entre l'écriture
-   * du corps et la promotion de la connexion — donc invisible la moitié du
-   * temps, et d'autant plus désagréable à diagnostiquer.
+   * The behaviour is intermittent — it depends on the race between writing the
+   * body and promoting the connection — so invisible half the time, and all the
+   * more unpleasant to diagnose.
    *
-   * Passer `_body: {}` ne suffit pas : docker-modem n'écrit alors plus rien, et
-   * c'est justement cette écriture qui déclenche l'envoi des en-têtes. La
-   * requête reste en suspens et l'attache n'aboutit jamais.
+   * Passing `_body: {}` is not enough: docker-modem then writes nothing at all,
+   * and it is precisely that write which triggers sending the headers. The
+   * request hangs and the attach never completes.
    *
-   * On émet donc la requête d'upgrade nous-mêmes, avec `Content-Length: 0` :
-   * aucun octet ne précède le flux, stdin est propre dès la première seconde.
+   * So the upgrade request is issued here, with `Content-Length: 0`: no byte
+   * precedes the stream, stdin is clean from the first second.
    */
   attachToContainer(containerName: string): Promise<Duplex> {
     const query = 'stream=1&stdin=1&stdout=1&stderr=1';
@@ -176,12 +177,12 @@ export class DockerClient {
       request.on('upgrade', (_response, socket: Duplex) => resolve(socket));
       request.on('error', reject);
 
-      // Docker refuse l'attache si le conteneur n'existe pas : la réponse est
-      // alors une vraie réponse HTTP, pas un upgrade.
+      // Docker refuses the attach if the container does not exist: the answer
+      // is then a real HTTP response, not an upgrade.
       request.on('response', (response) => {
         reject(
           new Error(
-            `Attache refusée par Docker (HTTP ${response.statusCode ?? 0}) pour ${containerName}.`,
+            `Attach refused by Docker (HTTP ${response.statusCode ?? 0}) for ${containerName}.`,
           ),
         );
       });
@@ -190,7 +191,7 @@ export class DockerClient {
     });
   }
 
-  /** Conteneurs gérés par Hopper présents sur l'hôte, par UUID de serveur. */
+  /** Hopper-managed containers present on the host, by server UUID. */
   async listManagedContainers(): Promise<Map<string, Dockerode.ContainerInfo>> {
     const containers = await this.docker.listContainers({
       all: true,

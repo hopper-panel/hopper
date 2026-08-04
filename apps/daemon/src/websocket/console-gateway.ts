@@ -20,37 +20,36 @@ import type { ServerInstance } from '../server/server-instance.js';
 import type { ServerManager } from '../server/server-manager.js';
 
 /**
- * Délai laissé au client pour s'authentifier après l'ouverture du WebSocket.
- * Une connexion muette au-delà est fermée : elle consomme un descripteur de
- * fichier sans jamais rien faire.
+ * Time the client is given to authenticate after the WebSocket opens.
+ * A connection silent beyond that is closed: it consumes a file descriptor
+ * without ever doing anything.
  */
 const AUTH_TIMEOUT_MS = 10_000;
 
-/** Commandes par minute et par connexion. */
+/** Commands per minute, per connection. */
 const COMMAND_RATE_LIMIT = 60;
 const COMMAND_RATE_WINDOW_MS = 60_000;
 
-/** Actions de puissance requises pour chaque commande de contrôle. */
+/** Permission required for each power action. */
 const POWER_PERMISSIONS: Record<PowerAction, Permission> = {
   start: PERMISSIONS.CONTROL_START,
   stop: PERMISSIONS.CONTROL_STOP,
   restart: PERMISSIONS.CONTROL_RESTART,
-  // Tuer un serveur peut corrompre une map : c'est la permission d'arrêt, mais
-  // le geste est volontairement distinct côté interface.
+  // Killing a server can corrupt a map: it is the stop permission, but the
+  // gesture is deliberately distinct in the interface.
   kill: PERMISSIONS.CONTROL_STOP,
 };
 
 /**
- * Passerelle WebSocket de la console.
+ * WebSocket gateway for the console.
  *
- * Le navigateur se connecte **directement au daemon**, sans passer par le panel.
- * L'autorisation repose entièrement sur un JWT de courte durée signé par le
- * panel avec le secret partagé de ce node : le daemon le vérifie seul, sans
- * aucun appel réseau. C'est ce qui permet à cinquante consoles ouvertes de ne
- * rien coûter au panel.
+ * The browser connects **straight to the daemon**, without going through the
+ * panel. Authorisation rests entirely on a short-lived JWT signed by the panel
+ * with this node's shared secret: the daemon verifies it on its own, with no
+ * network call. That is what lets fifty open consoles cost the panel nothing.
  *
- * Conséquence assumée : une permission retirée dans le panel ne prend effet
- * qu'au renouvellement du jeton, d'où sa durée de vie de dix minutes.
+ * The accepted consequence: a permission revoked in the panel only takes effect
+ * when the token is renewed, hence its ten-minute lifetime.
  */
 export function registerConsoleGateway(
   app: FastifyInstance,
@@ -61,14 +60,14 @@ export function registerConsoleGateway(
   app.get('/api/servers/:uuid/ws', { websocket: true }, (socket, request) => {
     const { uuid } = request.params as { uuid: string };
 
-    // L'origine est vérifiée avant toute chose : le navigateur n'applique pas la
-    // politique de même origine aux WebSockets, c'est donc au serveur de le
-    // faire. Sans ce contrôle, n'importe quel site visité par un utilisateur
-    // connecté pourrait ouvrir une console vers ses serveurs.
+    // The origin is checked before anything else: browsers do not apply the
+    // same-origin policy to WebSockets, so it is up to the server to do it.
+    // Without this check, any site visited by a signed-in user could open a
+    // console onto their servers.
     const origin = request.headers.origin;
     if (origin && !config.api.allowedOrigins.includes(origin)) {
-      logger.warn({ origin, server: uuid }, 'Connexion WebSocket refusée : origine non autorisée');
-      socket.close(1008, 'Origine non autorisée.');
+      logger.warn({ origin, server: uuid }, 'WebSocket connection refused: origin not allowed');
+      socket.close(1008, 'Origin not allowed.');
       return;
     }
 
@@ -103,9 +102,9 @@ class ConsoleSession {
       this.send({
         event: 'error',
         code: WS_ERROR_CODES.UNAUTHENTICATED,
-        message: 'Authentification non fournie.',
+        message: 'No authentication supplied.',
       });
-      this.socket.close(1008, 'Authentification non fournie.');
+      this.socket.close(1008, 'No authentication supplied.');
     }, AUTH_TIMEOUT_MS);
 
     this.socket.on('message', (raw: Buffer) => {
@@ -131,7 +130,7 @@ class ConsoleSession {
       this.send({
         event: 'error',
         code: WS_ERROR_CODES.INVALID_MESSAGE,
-        message: 'Message illisible.',
+        message: 'Unreadable message.',
       });
       return;
     }
@@ -142,7 +141,7 @@ class ConsoleSession {
       this.send({
         event: 'error',
         code: WS_ERROR_CODES.INVALID_MESSAGE,
-        message: 'Message non conforme au protocole.',
+        message: 'Message does not follow the protocol.',
       });
       return;
     }
@@ -152,13 +151,13 @@ class ConsoleSession {
       return;
     }
 
-    // Tout message autre que `auth` avant authentification est ignoré : sans
-    // cela, un client pourrait envoyer des commandes puis s'authentifier.
+    // Any message other than `auth` before authentication is ignored: without
+    // that, a client could send commands and authenticate afterwards.
     if (!this.authenticated || !this.server) {
       this.send({
         event: 'error',
         code: WS_ERROR_CODES.UNAUTHENTICATED,
-        message: 'Authentifiez-vous avant toute autre action.',
+        message: 'Authenticate before doing anything else.',
       });
       return;
     }
@@ -190,14 +189,14 @@ class ConsoleSession {
       const claims = consoleTokenPayloadSchema.safeParse(payload);
 
       if (!claims.success) {
-        throw new Error('Charge utile du jeton non conforme.');
+        throw new Error('Token payload does not conform.');
       }
 
-      // Un jeton valide pour un autre serveur ne doit pas ouvrir celui-ci :
-      // c'est la vérification qui empêche un utilisateur d'utiliser le jeton de
-      // son propre serveur pour lire la console de quelqu'un d'autre.
+      // A token valid for another server must not open this one: this is the
+      // check that stops a user from using their own server's token to read
+      // somebody else's console.
       if (claims.data.serverUuid !== this.serverUuid) {
-        throw new Error('Le jeton ne concerne pas ce serveur.');
+        throw new Error('The token does not concern this server.');
       }
 
       const server = this.manager.get(this.serverUuid);
@@ -206,19 +205,19 @@ class ConsoleSession {
         this.send({
           event: 'error',
           code: WS_ERROR_CODES.INTERNAL,
-          message: 'Serveur inconnu de ce node.',
+          message: 'Server unknown to this node.',
         });
-        this.socket.close(1011, 'Serveur inconnu.');
+        this.socket.close(1011, 'Unknown server.');
         return;
       }
 
-      // Une session déjà authentifiée l'est de nouveau à chaque renouvellement
-      // de jeton, sur la **même** connexion. Rejouer la mise en place complète
-      // dans ce cas ajoutait un second jeu d'écouteurs sur le serveur sans
-      // retirer le premier : chaque ligne de console partait alors deux fois,
-      // puis trois après le renouvellement suivant, et ainsi de suite. Le
-      // symptôme — une console qui se met à tout dupliquer au bout de quelques
-      // minutes — ne ressemble pas à sa cause.
+      // An already-authenticated session authenticates again on every token
+      // renewal, over the **same** connection. Replaying the full setup in that
+      // case added a second set of listeners on the server without removing the
+      // first: every console line then went out twice, then three times after
+      // the next renewal, and so on. The symptom — a console that starts
+      // duplicating everything after a few minutes — does not look like its
+      // cause.
       const renewal = this.authenticated;
 
       this.clearAuthTimer();
@@ -239,14 +238,14 @@ class ConsoleSession {
       });
 
       if (!renewal) {
-        // Le rappel de l'état et le tampon de console n'ont de sens qu'à la
-        // première authentification : les renvoyer ferait afficher une seconde
-        // copie de l'historique au client, qui n'a rien perdu entre-temps.
+        // Replaying the state and the console buffer only makes sense on the
+        // first authentication: sending them again would show the client a
+        // second copy of a history it never lost.
         this.send({ event: 'status', state: server.currentState });
 
-        // Un serveur en marche enverra son propre relevé dans la seconde ; un
-        // serveur à l'arrêt n'en enverra jamais, et sa page resterait vide de
-        // tout chiffre — dont l'espace disque, qu'il occupe pourtant toujours.
+        // A running server will send its own sample within the second; a
+        // stopped one never will, and its page would stay empty of any figure —
+        // including disk space, which it still occupies.
         if (!isActiveState(server.currentState)) {
           this.send({ event: 'stats', usage: server.idleUsage });
         }
@@ -254,19 +253,19 @@ class ConsoleSession {
         this.sendConsoleSnapshot();
       }
     } catch (error: unknown) {
-      this.logger.debug({ server: this.serverUuid, err: error }, 'Jeton de console refusé');
+      this.logger.debug({ server: this.serverUuid, err: error }, 'Console token refused');
       this.send({
         event: 'error',
         code: WS_ERROR_CODES.INVALID_TOKEN,
-        message: 'Jeton invalide ou expiré.',
+        message: 'Invalid or expired token.',
       });
-      this.socket.close(1008, 'Jeton invalide.');
+      this.socket.close(1008, 'Invalid token.');
     }
   }
 
   /**
-   * Le jeton expire pendant que la console est ouverte. On prévient le client
-   * en avance pour qu'il en demande un nouveau au panel, sans coupure visible.
+   * The token expires while the console is open. The client is warned ahead of
+   * time so it can ask the panel for a new one, with no visible break.
    */
   private scheduleTokenTimers(expiresAtSeconds: number): void {
     this.clearTokenTimers();
@@ -281,7 +280,7 @@ class ConsoleSession {
     this.expiryTimer = setTimeout(
       () => {
         this.send({ event: 'token_expired' });
-        this.socket.close(1008, 'Jeton expiré.');
+        this.socket.close(1008, 'Token expired.');
       },
       Math.max(0, remainingMs),
     );
@@ -331,7 +330,7 @@ class ConsoleSession {
     this.send({
       event: 'error',
       code: WS_ERROR_CODES.FORBIDDEN,
-      message: `Permission manquante : ${permission}.`,
+      message: `Missing permission: ${permission}.`,
     });
   }
 
@@ -345,7 +344,7 @@ class ConsoleSession {
       this.send({
         event: 'error',
         code: WS_ERROR_CODES.RATE_LIMITED,
-        message: 'Trop de commandes envoyées. Patientez quelques instants.',
+        message: 'Too many commands sent. Wait a moment.',
       });
       return;
     }
@@ -356,7 +355,7 @@ class ConsoleSession {
       this.send({
         event: 'error',
         code: WS_ERROR_CODES.SERVER_LOCKED,
-        message: error instanceof Error ? error.message : 'Commande refusée.',
+        message: error instanceof Error ? error.message : 'Command refused.',
       });
     }
   }
@@ -375,15 +374,15 @@ class ConsoleSession {
       this.send({
         event: 'error',
         code: WS_ERROR_CODES.SERVER_LOCKED,
-        message: error instanceof Error ? error.message : 'Action refusée.',
+        message: error instanceof Error ? error.message : 'Action refused.',
       });
     }
   }
 
   /**
-   * Une console ouverte ne doit pas servir à noyer un serveur de commandes.
-   * La fenêtre glissante est locale à la connexion : c'est suffisant ici, le
-   * jeton étant lui-même délivré par le panel qui limite déjà son émission.
+   * An open console must not be used to drown a server in commands.
+   * The sliding window is local to the connection: that is enough here, since
+   * the token itself is issued by the panel, which already limits its issuance.
    */
   private consumeCommandQuota(): boolean {
     const now = Date.now();
@@ -414,9 +413,9 @@ class ConsoleSession {
   private cleanup(): void {
     this.clearAuthTimer();
     this.clearTokenTimers();
-    // Sans ce détachement, chaque console fermée laisserait un écouteur sur
-    // l'instance : au bout de quelques centaines d'ouvertures, Node avertit
-    // d'une fuite et le serveur diffuse dans le vide.
+    // Without this detachment, every closed console would leave a listener on
+    // the instance: after a few hundred openings, Node warns about a leak and
+    // the server broadcasts into the void.
     this.detachers.forEach((detach) => detach());
     this.detachers = [];
   }
