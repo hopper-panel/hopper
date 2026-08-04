@@ -1,0 +1,59 @@
+# Configuration de hopperd — à placer dans /etc/hopper/daemon.yml
+#
+# Ce fichier contient le secret du node et la clé de signature des JWT.
+#   chown root:root /etc/hopper/daemon.yml
+#   chmod 600       /etc/hopper/daemon.yml
+# Le daemon refuse de démarrer si d'autres utilisateurs peuvent le lire.
+#
+# Les valeurs entre < > sont fournies par le panel au moment de la création du
+# node (Admin → Nodes → Configuration).
+
+debug: false
+
+uuid: <uuid-du-node>
+tokenId: <identifiant-du-jeton>
+tokenSecret: <secret-du-jeton>
+
+api:
+  host: 0.0.0.0
+  port: 8443
+  ssl:
+    enabled: true
+    certificatePath: /etc/letsencrypt/live/node.example.com/fullchain.pem
+    keyPath: /etc/letsencrypt/live/node.example.com/privkey.pem
+  # 1 Go
+  uploadLimitBytes: 1073741824
+  # Origines autorisées à ouvrir un WebSocket : l'URL publique du panel.
+  # Une liste vide bloque toutes les consoles.
+  allowedOrigins:
+    - https://panel.example.com
+
+panel:
+  url: https://panel.example.com
+  # Secret partagé avec le panel, utilisé pour vérifier les JWT de console.
+  jwtSecret: <secret-jwt>
+
+system:
+  rootDirectory: /var/lib/hopper
+  # dataDirectory, backupDirectory et tmpDirectory dérivent de rootDirectory
+  # s'ils ne sont pas précisés. Pointez backupDirectory vers un autre disque si
+  # vous en avez un : une sauvegarde sur le même disque que les données ne
+  # protège que des erreurs humaines, pas d'une panne matérielle.
+  uid: 988
+  gid: 988
+  timezone: Europe/Paris
+  sftp:
+    enabled: true
+    bindAddress: 0.0.0.0
+    bindPort: 2022
+    hostKeyPath: /etc/hopper/ssh_host_ed25519_key
+
+docker:
+  socket: /var/run/docker.sock
+  network:
+    name: hopper0
+    autoCreate: true
+    subnet: 172.28.0.0/16
+    gateway: 172.28.0.1
+    enableIpv6: false
+  pruneUnusedImages: false

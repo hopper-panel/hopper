@@ -1,0 +1,47 @@
+[Unit]
+Description=Hopper Daemon
+Documentation=https://github.com/hopper-panel/hopper
+After=network-online.target docker.service
+Requires=docker.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+
+# Le daemon tourne en root, et ce n'est pas un raccourci.
+#
+# Il écrit dans les volumes des serveurs, qui appartiennent à l'UID du
+# conteneur (988 par défaut) et non au sien, et reprend la propriété des
+# fichiers après chaque installation. Sous un compte ordinaire, le premier
+# envoi de fichier échoue en EACCES.
+#
+# Le gain de sécurité qu'on croirait obtenir en l'exécutant sans privilèges est
+# de toute façon illusoire : ce compte devrait appartenir au groupe « docker »,
+# et cette appartenance équivaut déjà à root — il suffit de lancer un conteneur
+# privilégié montant « / » pour le démontrer.
+User=root
+Group=root
+
+WorkingDirectory=/opt/hopper/apps/daemon
+ExecStart=/usr/bin/node dist/index.js --config /etc/hopper/daemon.yml
+
+Restart=on-failure
+RestartSec=5
+# Un daemon qui redémarre en boucle doit finir par s'arrêter, sinon la panne
+# reste invisible dans les journaux, noyée sous les redémarrages.
+StartLimitBurst=5
+StartLimitIntervalSec=120
+
+# Les serveurs Minecraft ouvrent beaucoup de descripteurs : sockets des
+# joueurs, fichiers de région, flux de console. La valeur par défaut de systemd
+# est atteinte vers la vingtaine de serveurs.
+LimitNOFILE=65535
+
+NoNewPrivileges=false
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=hopperd
+
+[Install]
+WantedBy=multi-user.target

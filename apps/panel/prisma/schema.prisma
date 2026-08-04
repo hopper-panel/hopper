@@ -1,0 +1,660 @@
+// Schéma de données du panel Hopper.
+//
+// Conventions :
+//  • Chaque entité exposée dans l'API publique porte un `uuid` en plus de son
+//    `id` auto-incrémenté. L'`id` sert aux clés étrangères, l'`uuid` aux URL :
+//    il n'apprend rien sur le nombre d'utilisateurs ou de serveurs.
+//  • Les secrets (mots de passe, jetons, clés d'API) ne sont jamais stockés en
+//    clair. Le champ porte alors le suffixe `Hash`.
+//  • Les suppressions en cascade sont explicites : supprimer un node ne doit
+//    jamais effacer silencieusement des serveurs. Voir les `onDelete: Restrict`.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Utilisateurs et authentification
+// ---------------------------------------------------------------------------
+
+enum UserRole {
+  /// Accès complet, y compris aux nodes et à tous les serveurs.
+  ADMIN
+  /// N'accède qu'aux serveurs dont il est propriétaire ou sous-utilisateur.
+  USER
+}
+
+model User {
+  id       Int      @id @default(autoincrement())
+  uuid     String   @unique @default(uuid())
+  email    String   @unique
+  username String   @unique
+  role     UserRole @default(USER)
+
+  passwordHash String
+
+  /// Secret TOTP, chiffré par CryptoService. Null tant que la 2FA est inactive.
+  totpSecret    String?
+  /// Faux tant que l'utilisateur n'a pas validé un premier code : un secret
+  /// généré mais non confirmé ne doit pas verrouiller le compte.
+  totpConfirmed Boolean @default(false)
+
+  /// Codes de récupération à usage unique, hashés. Vidés à la désactivation.
+  recoveryCodes RecoveryCode[]
+
+  /// Un compte suspendu ne peut plus se connecter, mais ses serveurs continuent
+  /// de tourner : couper les joueurs d'un serveur communautaire pour un litige
+  /// de facturation serait disproportionné.
+  suspended Boolean @default(false)
+
+  lastLoginAt DateTime?
+  lastLoginIp String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  sessions     Session[]
+  apiKeys      ApiKey[]
+  ownedServers Server[]   @relation("ServerOwner")
+  subuserOf    Subuser[]
+  auditEntries AuditLog[] @relation("AuditActor")
+
+  @@index([suspended])
+  @@map("users")
+}
+
+model RecoveryCode {
+  id     Int  @id @default(autoincrement())
+  userId Int
+  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// Hash du code. Le code en clair n'est affiché qu'une fois, à la génération.
+  codeHash String
+  usedAt   DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@map("recovery_codes")
+}
+
+/// Session de rafraîchissement. L'access token, lui, n'est pas stocké : il est
+/// vérifié par signature et vit quelques minutes.
+model Session {
+  id     Int  @id @default(autoincrement())
+  userId Int
+  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// Hash du refresh token courant. Rotation à chaque rafraîchissement.
+  tokenHash String @unique
+
+  /// Chaîne de rotation : détecter la réutilisation d'un ancien jeton révoque
+  /// toute la famille. C'est la contre-mesure au vol de refresh token.
+  family String
+
+  userAgent String?
+  ip        String?
+
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+  @@index([family])
+  @@index([expiresAt])
+  @@map("sessions")
+}
+
+model ApiKey {
+  id     Int  @id @default(autoincrement())
+  userId Int
+  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// Partie publique de la clé, en clair : sert à retrouver la ligne.
+  identifier String @unique
+  /// Partie secrète, hashée.
+  tokenHash  String
+
+  memo   String
+  /// Permissions accordées à la clé, sous-ensemble de celles de l'utilisateur.
+  scopes String[]
+
+  /// Restriction par IP source. Vide = aucune restriction.
+  allowedIps String[]
+
+  lastUsedAt DateTime?
+  expiresAt  DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([userId])
+  @@map("api_keys")
+}
+
+// ---------------------------------------------------------------------------
+// Infrastructure : nodes et ports
+// ---------------------------------------------------------------------------
+
+model Node {
+  id          Int    @id @default(autoincrement())
+  uuid        String @unique @default(uuid())
+  name        String
+  description String @default("")
+
+  /// Nom de domaine du daemon. Doit résoudre depuis le panel ET depuis le
+  /// navigateur des utilisateurs : la console s'y connecte directement.
+  fqdn   String
+  scheme String @default("https")
+  port   Int    @default(8443)
+
+  /// Partie publique du jeton, en clair : identifie le node dans un en-tête.
+  daemonTokenId        String @unique
+  /// Partie secrète, chiffrée en AES-256-GCM par CryptoService.
+  ///
+  /// Chiffrée et non hashée, contrairement aux mots de passe : le même jeton
+  /// sert dans les deux sens. Le panel le *présente* au daemon pour piloter les
+  /// conteneurs, et le *vérifie* quand le daemon rappelle `/api/remote/*`. Un
+  /// hash à sens unique interdirait le premier usage.
+  ///
+  /// La clé de déchiffrement vient de APP_SECRET, qui vit dans le fichier
+  /// d'environnement et non en base : un dump SQL seul ne suffit donc pas à
+  /// prendre le contrôle des nodes.
+  daemonTokenEncrypted String
+  /// Secret partagé de signature des JWT de console. Chiffré en AES-256-GCM
+  /// par CryptoService avant écriture : un dump de la base ne doit pas suffire
+  /// à forger des jetons de console.
+  jwtSecret            String
+
+  /// Capacité déclarée, en octets. Sert au contrôle de surallocation.
+  /// BigInt et non Int : un `integer` PostgreSQL plafonne à 2,1 Go, ce qui ne
+  /// suffit ni pour la RAM d'un node, ni pour la taille d'un disque.
+  memoryBytes          BigInt @default(0)
+  diskBytes            BigInt @default(0)
+  /// Pourcentage de dépassement autorisé. -1 = aucune limite, 0 = strict.
+  memoryOverallocation Int    @default(0)
+  diskOverallocation   Int    @default(0)
+
+  /// Un node en maintenance refuse la création de nouveaux serveurs ; les
+  /// serveurs existants continuent de fonctionner.
+  maintenance Boolean @default(false)
+
+  sftpPort Int @default(2022)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  allocations   Allocation[]
+  databaseHosts DatabaseHost[]
+  /// Restrict et non Cascade : supprimer un node qui héberge encore des
+  /// serveurs doit échouer, pas détruire leurs données.
+  servers       Server[]
+
+  @@map("nodes")
+}
+
+model Allocation {
+  id     Int  @id @default(autoincrement())
+  nodeId Int
+  node   Node @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+
+  ip    String
+  port  Int
+  /// Nom affiché aux joueurs à la place de l'IP, ex. `mc.example.com`.
+  alias String?
+
+  serverId Int?
+  server   Server? @relation("ServerAllocations", fields: [serverId], references: [id], onDelete: SetNull)
+
+  /// Contrepartie de `Server.primaryAllocation`. Prisma exige les deux côtés
+  /// d'une relation ; c'est l'unicité de `Server.primaryAllocationId` qui
+  /// garantit qu'un port ne sert de port principal qu'à un seul serveur.
+  primaryForServer Server? @relation("PrimaryAllocation")
+
+  /// Un port ne peut être alloué qu'une fois par node.
+  @@unique([nodeId, ip, port])
+  @@index([serverId])
+  @@map("allocations")
+}
+
+// ---------------------------------------------------------------------------
+// Templates de serveurs (l'équivalent des « eggs »)
+// ---------------------------------------------------------------------------
+
+model TemplateGroup {
+  id          Int    @id @default(autoincrement())
+  uuid        String @unique @default(uuid())
+  name        String @unique
+  description String @default("")
+
+  templates Template[]
+
+  createdAt DateTime @default(now())
+
+  @@map("template_groups")
+}
+
+model Template {
+  id      Int           @id @default(autoincrement())
+  uuid    String        @unique @default(uuid())
+  groupId Int
+  group   TemplateGroup @relation(fields: [groupId], references: [id], onDelete: Restrict)
+
+  /// Identifiant stable, indépendant du nom affiché.
+  ///
+  /// C'est la clé de mise à jour du catalogue livré avec Hopper : renommer
+  /// « Paper » en « PaperMC » ne doit pas créer un second template ni
+  /// orpheliner les serveurs qui s'y rattachent.
+  key String @unique
+
+  name        String
+  description String @default("")
+  author      String @default("")
+
+  /// Vrai dès qu'un administrateur a modifié ce template depuis le panel.
+  ///
+  /// Les mises à jour du catalogue embarqué sautent alors ce template : sans
+  /// ce garde-fou, une mise à jour de Hopper écraserait silencieusement une
+  /// image Docker personnalisée ou une commande de démarrage ajustée, et les
+  /// serveurs concernés cesseraient de fonctionner sans explication.
+  modifiedByAdmin Boolean @default(false)
+
+  /// Images Docker proposées, sous forme `[{ "name": "Java 21", "image": "…" }]`.
+  ///
+  /// Un tableau et non un objet : `jsonb` réordonne les clés d'un objet (par
+  /// longueur puis alphabétiquement), si bien que « la première image » n'avait
+  /// aucun sens stable. Un serveur créé sans choix explicite se retrouvait avec
+  /// une image arbitraire — Java 8 pour un template dont le défaut voulu était
+  /// Java 21. La première entrée du tableau est le défaut.
+  dockerImages Json
+  /// Gabarit de la commande de démarrage, variables `{{VAR}}` incluses.
+  startup      String
+
+  /// Comment arrêter le serveur : `command:stop` ou `signal:SIGTERM`.
+  stopCommand      String  @default("command:stop")
+  /// Regex signalant que le serveur est prêt.
+  startupDetection String?
+
+  /// Fichiers réécrits avant chaque démarrage (format ConfigFile du contrat).
+  configFiles  Json     @default("[]")
+  /// Motifs glob que l'utilisateur ne peut ni lire ni modifier.
+  fileDenylist String[]
+
+  installContainer  String @default("debian:bookworm-slim")
+  installEntrypoint String @default("/bin/bash")
+  installScript     String @default("")
+
+  /// UUID de l'egg Pterodactyl d'origine, pour éviter les doubles imports.
+  importedFromEgg String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  variables TemplateVariable[]
+  servers   Server[]
+
+  @@index([groupId])
+  @@map("templates")
+}
+
+model TemplateVariable {
+  id         Int      @id @default(autoincrement())
+  templateId Int
+  template   Template @relation(fields: [templateId], references: [id], onDelete: Cascade)
+
+  name         String
+  description  String @default("")
+  /// Nom de la variable d'environnement, ex. `MINECRAFT_VERSION`.
+  envVariable  String
+  defaultValue String @default("")
+
+  /// L'utilisateur voit la variable dans l'interface.
+  userViewable Boolean @default(true)
+  /// L'utilisateur peut la modifier. Une variable modifiable est une entrée
+  /// dans la commande de démarrage : les règles ci-dessous sont la seule
+  /// barrière contre une valeur hostile.
+  userEditable Boolean @default(false)
+
+  /// Règles de validation, ex. `required|string|max:20`.
+  rules String @default("nullable|string")
+
+  @@unique([templateId, envVariable])
+  @@map("template_variables")
+}
+
+// ---------------------------------------------------------------------------
+// Serveurs
+// ---------------------------------------------------------------------------
+
+enum ServerStatus {
+  /// Créé en base, le daemon n'a pas encore confirmé l'installation.
+  INSTALLING
+  INSTALL_FAILED
+  /// Opérationnel.
+  READY
+  /// Suspendu par un administrateur : ni démarrage, ni fichiers, ni SFTP.
+  SUSPENDED
+  /// Suppression en cours côté daemon.
+  DELETING
+  /// Réinstallation demandée.
+  REINSTALLING
+}
+
+model Server {
+  id   Int    @id @default(autoincrement())
+  uuid String @unique @default(uuid())
+
+  name        String
+  description String @default("")
+
+  ownerId Int
+  owner   User @relation("ServerOwner", fields: [ownerId], references: [id], onDelete: Restrict)
+
+  nodeId Int
+  node   Node @relation(fields: [nodeId], references: [id], onDelete: Restrict)
+
+  templateId Int
+  template   Template @relation(fields: [templateId], references: [id], onDelete: Restrict)
+
+  status ServerStatus @default(INSTALLING)
+
+  /// Allocation principale : celle injectée dans `server-port`.
+  primaryAllocationId Int?         @unique
+  primaryAllocation   Allocation?  @relation("PrimaryAllocation", fields: [primaryAllocationId], references: [id], onDelete: SetNull)
+  /// Allocations supplémentaires (dynmap, voice chat, query…).
+  allocations         Allocation[] @relation("ServerAllocations")
+
+  // Limites de ressources. 0 = illimité, sauf pidsLimit.
+  // Voir Node.memoryBytes pour le choix de BigInt.
+  memoryBytes     BigInt
+  swapBytes       BigInt  @default(0)
+  diskBytes       BigInt
+  cpuPercent      Int     @default(0)
+  cpuSet          String  @default("")
+  ioWeight        Int     @default(500)
+  pidsLimit       Int     @default(512)
+  oomKillDisabled Boolean @default(false)
+
+  dockerImage    String
+  startupCommand String
+
+  /// Le daemon doit recréer le conteneur au prochain démarrage.
+  requiresRebuild Boolean @default(false)
+
+  /// Nombre de backups simultanés autorisés. 0 = backups désactivés.
+  backupLimit     Int @default(3)
+  /// Nombre de bases de données autorisées (phase 7).
+  databaseLimit   Int @default(0)
+  /// Allocations supplémentaires que l'utilisateur peut s'attribuer seul.
+  allocationLimit Int @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  variables    ServerVariable[]
+  subusers     Subuser[]
+  backups      Backup[]
+  databases    Database[]
+  schedules    Schedule[]
+  auditEntries AuditLog[]       @relation("AuditServer")
+
+  @@index([ownerId])
+  @@index([nodeId])
+  @@index([templateId])
+  @@index([status])
+  @@map("servers")
+}
+
+model ServerVariable {
+  id       Int    @id @default(autoincrement())
+  serverId Int
+  server   Server @relation(fields: [serverId], references: [id], onDelete: Cascade)
+
+  /// Copie du nom de la variable d'environnement : un template modifié après
+  /// coup ne doit pas casser la commande de démarrage d'un serveur existant.
+  envVariable String
+  value       String
+
+  @@unique([serverId, envVariable])
+  @@map("server_variables")
+}
+
+model Subuser {
+  id       Int    @id @default(autoincrement())
+  uuid     String @unique @default(uuid())
+  serverId Int
+  server   Server @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  userId   Int
+  user     User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// Permissions accordées, valeurs de `PERMISSIONS` dans @hopper/shared.
+  permissions String[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([serverId, userId])
+  @@index([userId])
+  @@map("subusers")
+}
+
+// ---------------------------------------------------------------------------
+// Sauvegardes et planification
+// ---------------------------------------------------------------------------
+
+enum BackupDriver {
+  LOCAL
+  S3
+}
+
+model Backup {
+  id       Int    @id @default(autoincrement())
+  uuid     String @unique @default(uuid())
+  serverId Int
+  server   Server @relation(fields: [serverId], references: [id], onDelete: Cascade)
+
+  name   String
+  driver BackupDriver @default(LOCAL)
+
+  /// Motifs exclus de l'archive, hérités du template puis personnalisables.
+  ignoredFiles String[]
+
+  sizeBytes BigInt  @default(0)
+  /// SHA-256 de l'archive, vérifié avant toute restauration.
+  checksum  String?
+
+  /// Null tant que le daemon n'a pas rendu son verdict.
+  successful  Boolean?
+  errorDetail String?
+
+  /// Un backup verrouillé ne peut être supprimé ni par la rétention, ni par
+  /// l'utilisateur : c'est le filet avant une opération risquée.
+  locked Boolean @default(false)
+
+  completedAt DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@index([serverId])
+  @@index([createdAt])
+  @@map("backups")
+}
+
+model Schedule {
+  id       Int    @id @default(autoincrement())
+  uuid     String @unique @default(uuid())
+  serverId Int
+  server   Server @relation(fields: [serverId], references: [id], onDelete: Cascade)
+
+  name String
+
+  cronMinute     String @default("*")
+  cronHour       String @default("*")
+  cronDayOfMonth String @default("*")
+  cronMonth      String @default("*")
+  cronDayOfWeek  String @default("*")
+
+  active         Boolean @default(true)
+  /// Ne rien faire si le serveur est arrêté, au lieu de le démarrer.
+  onlyWhenOnline Boolean @default(false)
+
+  lastRunAt DateTime?
+  nextRunAt DateTime?
+  /// Vrai pendant l'exécution : empêche deux déclenchements concurrents.
+  running   Boolean   @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tasks ScheduleTask[]
+
+  @@index([serverId])
+  @@index([active, nextRunAt])
+  @@map("schedules")
+}
+
+enum TaskAction {
+  COMMAND
+  POWER
+  BACKUP
+}
+
+model ScheduleTask {
+  id         Int      @id @default(autoincrement())
+  uuid       String   @unique @default(uuid())
+  scheduleId Int
+  schedule   Schedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+
+  /// Ordre d'exécution dans la tâche planifiée.
+  sequence Int
+  action   TaskAction
+  /// Commande à envoyer, action de puissance, ou motifs à exclure du backup.
+  payload  String     @default("")
+
+  /// Secondes d'attente avant cette étape : permet d'annoncer un redémarrage
+  /// puis d'attendre que les joueurs se déconnectent.
+  offsetSeconds Int @default(0)
+
+  /// Poursuivre la séquence même si cette étape échoue.
+  continueOnFailure Boolean @default(false)
+
+  @@unique([scheduleId, sequence])
+  @@map("schedule_tasks")
+}
+
+// ---------------------------------------------------------------------------
+// Journal d'audit
+// ---------------------------------------------------------------------------
+
+model AuditLog {
+  id   Int    @id @default(autoincrement())
+  uuid String @unique @default(uuid())
+
+  /// Null pour une action émise par le système (planificateur, daemon).
+  actorId Int?
+  actor   User? @relation("AuditActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  /// Null pour une action qui ne concerne pas un serveur (création d'un node).
+  ///
+  /// En cascade : l'historique d'un serveur disparaît avec lui. La suppression
+  /// elle-même est journalisée au niveau instance, avec `serverId` nul et
+  /// l'UUID du serveur dans `metadata` — elle survit donc à la cascade.
+  serverId Int?
+  server   Server? @relation("AuditServer", fields: [serverId], references: [id], onDelete: Cascade)
+
+  /// Identifiant de l'action, ex. `server.power.start`, `auth.login.failed`.
+  event String
+
+  ip        String?
+  userAgent String?
+  /// Contexte structuré : chemin du fichier, ancienne valeur, etc.
+  metadata  Json    @default("{}")
+
+  createdAt DateTime @default(now())
+
+  @@index([actorId])
+  @@index([serverId])
+  @@index([event])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+// ---------------------------------------------------------------------------
+// Réglages d'instance
+// ---------------------------------------------------------------------------
+
+/// Réglages modifiables depuis l'interface d'administration, par opposition aux
+/// variables d'environnement qui exigent un redémarrage.
+model Setting {
+  key   String @id
+  value String
+
+  updatedAt DateTime @updatedAt
+
+  @@map("settings")
+}
+
+/// Serveur MySQL ou MariaDB sur lequel le panel peut créer des bases.
+///
+/// Le panel s'y connecte avec un compte d'administration : c'est lui qui crée
+/// les bases, les comptes et les droits. Ce compte est donc la clé de tout le
+/// serveur SQL — d'où le stockage chiffré, et non haché : le panel doit pouvoir
+/// le présenter à chaque connexion.
+model DatabaseHost {
+  id   Int    @id @default(autoincrement())
+  uuid String @unique @default(uuid())
+  name String
+
+  /// Adresse par laquelle le **panel** joint le serveur SQL.
+  host String
+  port Int    @default(3306)
+
+  username          String
+  /// Chiffré avec APP_SECRET. Voir CryptoService.
+  passwordEncrypted String
+
+  /// Adresse annoncée aux **joueurs** pour se connecter à leur base. Souvent
+  /// différente de `host` : le panel passe par un réseau interne, les clients
+  /// par l'adresse publique.
+  publicHost String?
+  publicPort Int?
+
+  /// Restreint ce host à un node : une base doit vivre près de son serveur.
+  /// Null, il est proposé à tous.
+  nodeId Int?
+  node   Node? @relation(fields: [nodeId], references: [id], onDelete: SetNull)
+
+  databases Database[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("database_hosts")
+}
+
+/// Base de données attribuée à un serveur.
+model Database {
+  id       Int    @id @default(autoincrement())
+  uuid     String @unique @default(uuid())
+  serverId Int
+  server   Server @relation(fields: [serverId], references: [id], onDelete: Cascade)
+
+  hostId Int
+  host   DatabaseHost @relation(fields: [hostId], references: [id], onDelete: Restrict)
+
+  /// Nom réel sur le serveur SQL, préfixé par l'identifiant du serveur.
+  database          String
+  username          String
+  /// Chiffré : l'utilisateur doit pouvoir le relire pour configurer son plugin.
+  passwordEncrypted String
+  /// Motif d'hôte autorisé à se connecter, `%` par défaut.
+  remote            String @default("%")
+
+  createdAt DateTime @default(now())
+
+  @@unique([hostId, database])
+  @@index([serverId])
+  @@map("databases")
+}

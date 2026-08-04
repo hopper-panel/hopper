@@ -1,0 +1,34 @@
+name: ✨ Proposition de fonctionnalité
+description: Suggérer une amélioration
+labels: ['enhancement', 'triage']
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Quel problème cela résout-il ?
+      description: Décrivez la gêne concrète, pas la solution que vous imaginez.
+      placeholder: "Quand je gère 20 serveurs, je n'ai aucun moyen de voir lesquels ont crashé cette nuit."
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Solution envisagée
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considérées
+
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Vérifications
+      options:
+        - label: J'ai consulté la feuille de route du README et cette fonctionnalité n'y figure pas déjà.
+          required: true
+        - label: J'ai cherché dans les issues et discussions existantes.
+          required: true

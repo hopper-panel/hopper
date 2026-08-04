@@ -1,0 +1,22 @@
+packages:
+  - 'apps/*'
+  - 'apps/panel/web'
+  - 'packages/*'
+
+# Ces paquets exécutent un script d'installation ; on l'autorise explicitement
+# (pnpm >= 10 bloque les postinstall par défaut).
+# Une seule version de Fastify dans tout le dépôt. Sans cela, @nestjs/platform-fastify
+# et le daemon en installent deux, et TypeScript considère leurs `FastifyInstance`
+# comme des types distincts : plus aucun plugin ne s'enregistre.
+overrides:
+  fastify: ^5.11.2
+
+onlyBuiltDependencies:
+  - '@prisma/client'
+  - '@prisma/engines'
+  - 'argon2'
+  - 'cpu-features'
+  - 'esbuild'
+  - 'prisma'
+  - 'ssh2'
+  - 'unrs-resolver'
