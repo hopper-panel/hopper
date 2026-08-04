@@ -3,17 +3,17 @@ import { useTranslation } from '../i18n';
 import { cx } from '../lib/cx';
 
 /**
- * Boîte de dialogue modale.
+ * Modal dialog.
  *
- * Écrite à la main plutôt qu'avec `<dialog>` natif : celui-ci impose son propre
- * fond, son propre centrage et une pile d'affichage au-dessus de tout le
- * document, qu'il faut ensuite défaire pour l'accorder au thème. Une centaine
- * de lignes ici donnent le même comportement sans lutter contre le navigateur.
+ * Hand-written rather than using the native `<dialog>`: that one imposes its
+ * own backdrop, its own centring and a stacking context above the whole
+ * document, all of which then has to be undone to match the theme. A hundred
+ * lines here give the same behaviour without fighting the browser.
  *
- * Trois choses qu'on oublie facilement et qui rendent une modale pénible :
- * Échap doit fermer, le clic sur le fond aussi, et le défilement de la page en
- * arrière-plan doit être suspendu — sinon la molette fait glisser le document
- * sous la boîte, qui semble alors flotter dans le vide.
+ * Three things easily forgotten that make a modal unpleasant: Escape has to
+ * close it, so does a click on the backdrop, and the page behind must stop
+ * scrolling — otherwise the wheel slides the document under the box, which then
+ * seems to float in mid-air.
  */
 export function Modal({
   open,
@@ -27,23 +27,23 @@ export function Modal({
   title: string;
   onClose: () => void;
   children: ReactNode;
-  /** Actions, alignées à droite en bas de la boîte. */
+  /** Actions, right-aligned at the bottom of the box. */
   footer?: ReactNode;
-  /** `lg` pour un contenu dense — une liste de permissions commentées. */
+  /** `lg` for dense content — a list of annotated permissions. */
   size?: 'md' | 'lg';
 }) {
   const { t } = useTranslation();
   const panelRef = useRef<HTMLDivElement>(null);
 
   /**
-   * `onClose` passe par une ref plutôt que par les dépendances de l'effet.
+   * `onClose` goes through a ref rather than the effect's dependencies.
    *
-   * L'appelant l'écrit presque toujours en ligne — `onClose={() => setOpen(false)}` —
-   * donc une fonction neuve à chaque rendu. Placée en dépendance, elle faisait
-   * rejouer l'effet à *chaque* rendu du parent : le focus repartait alors sur
-   * le premier champ de la boîte et le défilement du corps était rétabli puis
-   * resuspendu. Concrètement, cliquer dans une zone de texte pendant que la
-   * page se rafraîchissait en arrière-plan renvoyait le curseur ailleurs.
+   * The caller nearly always writes it inline — `onClose={() => setOpen(false)}`
+   * — so a fresh function on every render. Placed in the dependencies, it
+   * replayed the effect on *every* render of the parent: focus jumped back to
+   * the box's first field and the body's scrolling was restored then suspended
+   * again. In practice, clicking into a textarea while the page refreshed in
+   * the background sent the caret elsewhere.
    */
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
@@ -59,8 +59,8 @@ export function Modal({
       }
     };
 
-    // Le focus entre dans la boîte : sans cela il resterait sur le bouton qui
-    // l'a ouverte, et la tabulation parcourrait la page derrière.
+    // Focus moves into the box: without it, focus would stay on the button
+    // that opened it, and tabbing would walk the page behind.
     const previouslyFocused = document.activeElement as HTMLElement | null;
     panelRef.current?.querySelector<HTMLElement>('input, textarea, button')?.focus();
 
@@ -73,8 +73,8 @@ export function Modal({
       document.body.style.overflow = previousOverflow;
       previouslyFocused?.focus();
     };
-    // Volontairement limité à `open` : l'effet met en place et défait
-    // l'ouverture, il ne doit pas rejouer sur un simple rendu.
+    // Deliberately limited to `open`: the effect sets the opening up and tears
+    // it down, it must not replay on a mere render.
   }, [open]);
 
   if (!open) {
@@ -83,14 +83,14 @@ export function Modal({
 
   return (
     <div
-      // Fond assombri, sans `backdrop-blur` : flouter tout l'arrière-plan
-      // oblige le compositeur à le recalculer à chaque image, sur toute la
-      // surface de la fenêtre. Le coût est invisible sur une page figée et
-      // très net dès que quelque chose s'anime derrière.
+      // A darkened backdrop, without `backdrop-blur`: blurring the whole
+      // background forces the compositor to recompute it on every frame, over
+      // the entire window. The cost is invisible on a still page and very
+      // noticeable as soon as something animates behind.
       className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/70 p-4 pt-16"
-      // Le clic ne ferme que s'il naît **et** se termine sur le fond : une
-      // sélection de texte commencée dans un champ et relâchée à l'extérieur
-      // refermerait sinon la boîte en perdant la saisie.
+      // The click only closes if it starts **and** ends on the backdrop: a
+      // text selection begun in a field and released outside would otherwise
+      // close the box and lose what was typed.
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) {
           onClose();

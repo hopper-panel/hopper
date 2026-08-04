@@ -3,24 +3,24 @@ import { cx } from '../lib/cx';
 
 export interface MenuAction {
   label: string;
-  /** Pictogramme, à gauche du libellé. Une simple chaîne suffit. */
+  /** Glyph, to the left of the label. A plain string is enough. */
   icon?: ReactNode;
   onSelect: () => void;
-  /** Rouge et détaché du reste : pour ce qui détruit. */
+  /** Red and set apart from the rest: for what destroys. */
   destructive?: boolean;
-  /** Absent de la liste plutôt que grisé, comme partout ailleurs. */
+  /** Absent from the list rather than greyed out, as everywhere else. */
   hidden?: boolean;
 }
 
 /**
- * Menu contextuel d'une ligne, ouvert par trois points.
+ * Context menu for a row, opened by three dots.
  *
- * Écrit à la main plutôt qu'emprunté à une bibliothèque de composants : c'est
- * une centaine de lignes, contre une dépendance qui apporterait son propre
- * système de portails et de thèmes pour ce seul usage.
+ * Hand-written rather than borrowed from a component library: it is a hundred
+ * lines, against a dependency that would bring its own portal and theming
+ * system for this one use.
  *
- * Le menu se ferme au clic à l'extérieur et à la touche Échap — sans quoi il
- * resterait ouvert derrière la boîte de dialogue qu'il vient de déclencher.
+ * The menu closes on a click outside and on Escape — without which it would
+ * stay open behind the dialog it just triggered.
  */
 export function KebabMenu({ actions, label }: { actions: MenuAction[]; label: string }) {
   const [open, setOpen] = useState(false);
@@ -43,8 +43,8 @@ export function KebabMenu({ actions, label }: { actions: MenuAction[]; label: st
       }
     };
 
-    // `mousedown` et non `click` : un clic sur un autre bouton déclencherait
-    // sinon son action avant que ce menu n'ait disparu.
+    // `mousedown` and not `click`: a click on another button would otherwise
+    // fire its action before this menu had gone.
     document.addEventListener('mousedown', onPointerDown);
     document.addEventListener('keydown', onKeyDown);
 
@@ -79,8 +79,8 @@ export function KebabMenu({ actions, label }: { actions: MenuAction[]; label: st
       {open ? (
         <div
           role="menu"
-          // Aligné à droite et remontant si nécessaire : sur les dernières
-          // lignes d'une longue liste, un menu qui descend sort de l'écran.
+          // Right-aligned and rising if need be: on the last rows of a long
+          // list, a menu that drops down runs off the screen.
           className="absolute right-0 z-20 mt-1 min-w-44 overflow-hidden rounded-lg border border-border-subtle bg-surface-raised py-1 shadow-lg"
         >
           {visible.map((action) => (

@@ -848,6 +848,8 @@ export const en = {
   'files.sendingProgress': '{done} of {total}',
   'fileEdit.readOnly': 'Read only: you do not have permission to edit files.',
   'fileEdit.loading': 'Loading the file…',
+
+  'fileEdit.backToFiles': 'Back to the files',
 } as const;
 
 export type MessageKey = keyof typeof en;

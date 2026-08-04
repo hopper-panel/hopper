@@ -215,7 +215,7 @@ function AllocationRow({
             </Button>
           ) : null}
 
-          {/* Le port principal n'est pas retirable : le serveur n'aurait plus
+          {/* The primary port cannot be removed: the server would have no
               listen address. Hiding the button avoids a refusal that would
               look like a breakage. */}
           {canDelete && !allocation.primary ? (

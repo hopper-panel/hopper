@@ -29,8 +29,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       try {
         return await api.get<CurrentUser>('/api/auth/me');
       } catch (error) {
-        // Pas de session : ce n'est pas une panne, c'est l'état normal d'un
-        // visiteur non connecté. Retourner null évite d'afficher une erreur.
+        // No session: this is not an outage, it is the normal state of a
+        // signed-out visitor. Returning null avoids showing an error.
         if (error instanceof ApiError && (error.status === 401 || error.status === 403)) {
           return null;
         }
@@ -53,8 +53,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logoutMutation = useMutation({
     mutationFn: () => api.post<void>('/api/auth/logout', {}),
     onSettled: () => {
-      // Le cache est vidé même si l'appel échoue : rester sur une interface
-      // peuplée alors qu'on croit être déconnecté est pire qu'une erreur.
+      // The cache is cleared even if the call fails: staying on a populated
+      // interface while believing one is signed out is worse than an error.
       queryClient.clear();
     },
   });
@@ -75,10 +75,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 }
 
 /**
- * Le fournisseur et son hook restent dans le même fichier : les séparer
- * éloignerait le contexte de son unique consommateur sans rien gagner. Le
- * rafraîchissement à chaud de ce module force un rechargement complet, ce qui
- * est sans conséquence — il ne change quasiment jamais.
+ * The provider and its hook stay in the same file: separating them would move
+ * the context away from its only consumer for no gain. Hot-reloading this
+ * module forces a full reload, which is of no consequence — it hardly ever
+ * changes.
  */
 // eslint-disable-next-line react-refresh/only-export-components
 export function useAuth(): AuthContextValue {

@@ -9,16 +9,16 @@ import { ApiError, api } from '../lib/api';
 import { useServerContext } from '../lib/server-context';
 
 /**
- * Éditeur de fichier, sur sa propre page.
+ * File editor, on a page of its own.
  *
- * Il vivait dans une carte glissée au-dessus de la liste : le contenu du
- * fichier se retrouvait comprimé entre l'en-tête et l'arborescence, et la liste
- * restait affichée en dessous sans servir à rien. Une page distincte donne toute
- * la hauteur au texte et, surtout, une **URL** — un fichier ouvert se recharge,
- * se met en favori et se transmet.
+ * It used to live in a card slipped above the listing: the file's content ended
+ * up squeezed between the header and the tree, and the listing stayed on show
+ * below serving no purpose. A separate page gives the text the full height and,
+ * above all, a **URL** — an open file can be reloaded, bookmarked and passed
+ * on.
  *
- * Le chemin passe en paramètre de requête plutôt qu'en segment d'URL : il
- * contient des barres obliques, qui découperaient sinon la route.
+ * The path travels as a query parameter rather than a URL segment: it contains
+ * slashes, which would otherwise cut the route up.
  */
 export function ServerFileEditPage() {
   const { t } = useTranslation();
@@ -56,8 +56,8 @@ export function ServerFileEditPage() {
       return response.text();
     },
     enabled: path !== '',
-    // Un fichier ouvert ne doit pas se recharger sous les doigts de celui qui
-    // l'édite : un retour sur l'onglet écraserait ses modifications.
+    // An open file must not reload under the fingers of whoever is editing it:
+    // coming back to the tab would overwrite their changes.
     refetchOnWindowFocus: false,
   });
 
@@ -69,8 +69,8 @@ export function ServerFileEditPage() {
     mutationFn: (value: string) =>
       api.post<void>(`/api/servers/${uuid}/files/write`, { file: path, content: value }),
     onSuccess: () => {
-      // Le brouillon devient la nouvelle référence : sans cela le fichier
-      // resterait marqué comme modifié juste après avoir été enregistré.
+      // The draft becomes the new reference: without it the file would stay
+      // marked as edited right after being saved.
       setDraft(null);
       setSavedAt(new Date());
       setError(null);
@@ -80,8 +80,8 @@ export function ServerFileEditPage() {
       setError(caught instanceof ApiError ? caught.message : t('common.operationFailed')),
   });
 
-  // Recalculé à chaque frappe, mais c'est une simple jointure de nombres : le
-  // coût est sans commune mesure avec le rendu d'un élément par ligne.
+  // Recomputed on every keystroke, but it is a plain join of numbers: the cost
+  // is nothing next to rendering one element per line.
   const lineNumbers = useMemo(() => {
     const count = content.split('\n').length;
 
@@ -91,8 +91,8 @@ export function ServerFileEditPage() {
   const directory = parentOf(path);
   const filesUrl = `/server/${uuid}/files?d=${encodeURIComponent(directory)}`;
 
-  // Prévient la fermeture de l'onglet ou le rechargement quand un travail non
-  // enregistré serait perdu. Le navigateur impose son propre message.
+  // Warns before closing the tab or reloading when unsaved work would be lost.
+  // The browser imposes its own message.
   useEffect(() => {
     if (!dirty) {
       return;
@@ -175,7 +175,7 @@ export function ServerFileEditPage() {
           <Alert>
             {load.error instanceof Error ? load.error.message : t('common.loadFailed')}{' '}
             <button className="underline" onClick={() => void navigate(filesUrl)}>
-              Revenir aux fichiers
+              {t('fileEdit.backToFiles')}
             </button>
           </Alert>
         </div>
@@ -185,14 +185,14 @@ export function ServerFileEditPage() {
         <Spinner label={t('fileEdit.loading')} />
       ) : load.error ? null : (
         <Card className="p-0">
-          {/* La hauteur est portée par le conteneur, et non par le texte. Sur
-              une rangée flex, un enfant n'est pas comprimé sous la hauteur de
-              son contenu : la gouttière d'un fichier de dix mille lignes
-              aurait étiré la carte sur toute cette hauteur. */}
+          {/* The height is carried by the container, not by the text. On a
+              flex row, a child is not squeezed below the height of its content:
+              the gutter of a ten-thousand-line file would have stretched the
+              card over all of it. */}
           <div className="flex h-[calc(100vh-22rem)] min-h-96 overflow-hidden rounded-lg bg-[#14161c]">
-            {/* La gouttière est un seul nœud de texte, et non une ligne par
-                numéro : un fichier de configuration un peu long en compte
-                plusieurs milliers, et autant d'éléments figeraient l'onglet. */}
+            {/* The gutter is a single text node, not one line per number: a
+                configuration file of any length holds several thousand, and
+                that many elements would freeze the tab. */}
             <div
               ref={gutterRef}
               aria-hidden
@@ -208,9 +208,9 @@ export function ServerFileEditPage() {
               onChange={(event) => setDraft(event.target.value)}
               onKeyDown={handleKeyDown}
               onScroll={(event) => {
-                // La gouttière suit le défilement vertical du texte. Elle est
-                // en `overflow-hidden`, ce qui n'empêche pas de la faire
-                // défiler par programme.
+                // The gutter follows the text's vertical scroll. It is
+                // `overflow-hidden`, which does not stop it from being
+                // scrolled programmatically.
                 if (gutterRef.current) {
                   gutterRef.current.scrollTop = event.currentTarget.scrollTop;
                 }
@@ -218,15 +218,15 @@ export function ServerFileEditPage() {
               readOnly={!canWrite}
               spellCheck={false}
               autoComplete="off"
-              // Le retour à la ligne automatique romprait la correspondance
-              // entre les lignes affichées et leurs numéros : une ligne longue
-              // en occuperait deux et tout le reste serait décalé. On défile
-              // donc horizontalement, comme dans un éditeur de code.
+              // Soft wrapping would break the match between the displayed
+              // lines and their numbers: a long line would take two and
+              // everything below would shift. So it scrolls horizontally, as a
+              // code editor does.
               wrap="off"
               aria-label={`Contenu de ${path}`}
-              // Hauteur relative à la fenêtre : un éditeur qui grandit avec son
-              // contenu obligerait à faire défiler la page entière pour
-              // atteindre le bas d'un fichier un peu long.
+              // Height relative to the window: an editor growing with its
+              // content would force scrolling the whole page to reach the
+              // bottom of any sizeable file.
               className="h-full w-full resize-none border-0 bg-transparent p-4 font-mono text-xs leading-relaxed text-content focus:outline-none"
             />
           </div>

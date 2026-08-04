@@ -38,8 +38,8 @@ export function AdminOverviewPage() {
   const overview = useQuery({
     queryKey: ['admin', 'overview'],
     queryFn: () => api.get<Overview>('/api/admin/overview'),
-    // Nodes are probed live: refreshing regularly makes this page a
-    // page un tableau de bord utilisable, et non une photographie.
+    // Nodes are probed live: refreshing regularly makes this page a usable
+    // dashboard rather than a snapshot.
     refetchInterval: 15_000,
   });
 

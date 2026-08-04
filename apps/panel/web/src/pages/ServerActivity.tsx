@@ -25,8 +25,8 @@ export function ServerActivityPage() {
   const activity = useQuery({
     queryKey: ['server', uuid, 'activity', page],
     queryFn: () => api.get<Paginated<Entry>>(`/api/servers/${uuid}/activity?page=${page}`),
-    // The page being read must not shift under the eye: the log is
-    // lit, il ne se surveille pas en direct.
+    // The page being read must not shift under the eye: the log is read, not
+    // watched live.
     refetchOnWindowFocus: false,
   });
 
@@ -54,9 +54,9 @@ export function ServerActivityPage() {
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="text-sm font-medium text-content">
-                      {/* Une action sans acteur vient du planificateur ou du
+                      {/* An action with no actor comes from the scheduler or the
                           daemon: crediting nobody would be wrong, and crediting
-                          utilisateur encore plus. */}
+                          a user even more so. */}
                       {entry.actor?.username ?? t('activity.system')}
                     </span>
                     <code className="font-mono text-xs text-content-subtle">{entry.event}</code>

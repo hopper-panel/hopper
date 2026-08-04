@@ -127,8 +127,8 @@ export function ApiKeysCard() {
         </div>
       ) : null}
 
-      {/* Montré une seule fois : le jeton n'est pas conservé en clair, et aucune
-          route ne le réexpose. */}
+      {/* Shown once only: the token is not kept in the clear, and no route
+          exposes it again. */}
       {issued ? (
         <div className="mb-4">
           <Alert tone="info">

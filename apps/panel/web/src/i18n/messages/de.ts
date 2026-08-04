@@ -854,4 +854,6 @@ export const de: Partial<Messages> = {
   'files.sendingProgress': '{done} von {total}',
   'fileEdit.readOnly': 'Nur lesen: du darfst die Dateien nicht ändern.',
   'fileEdit.loading': 'Datei wird geladen…',
+
+  'fileEdit.backToFiles': 'Zurück zu den Dateien',
 };

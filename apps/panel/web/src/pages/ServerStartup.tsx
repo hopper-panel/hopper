@@ -41,7 +41,7 @@ export function ServerStartupPage() {
     refetchOnWindowFocus: false,
   });
 
-  // Les champs partent des valeurs du serveur, mais la saisie en cours ne doit
+  // The fields start from the server's values, but what is being typed must
   // not be overwritten by a refetch: the local copy is taken on the first
   // arrival of the data, and after each save.
   useEffect(() => {
@@ -123,7 +123,7 @@ export function ServerStartupPage() {
 
       {failure ? (
         <div className="mb-4">
-          {/* Les refus de validation arrivent en plusieurs lignes, une par
+          {/* Validation refusals arrive as several lines, one per
               variable: flattening them would hide what needs fixing. */}
           <Alert tone="danger">
             <span className="whitespace-pre-line">{failure}</span>
@@ -137,7 +137,7 @@ export function ServerStartupPage() {
           <pre className="overflow-x-auto rounded-lg bg-[#14161c] p-3 font-mono text-xs leading-relaxed text-content">
             {data.startupCommand}
           </pre>
-          {/* Le gabarit appartient au template : le laisser modifier par
+          {/* The line belongs to the template: letting it be edited by
               a server user would amount to letting them choose which program
               runs inside the container. */}
           <p className="mt-2 text-xs text-content-muted">{t('startup.commandHint')}</p>
@@ -157,7 +157,7 @@ export function ServerStartupPage() {
                 {candidate.name}
               </option>
             ))}
-            {/* L'image en place peut ne plus figurer dans le template : la
+            {/* The image in use may no longer be listed in the template:
                 showing it anyway avoids displaying a value other than the one
                 actually in use. */}
             {data.dockerImages.every((candidate) => candidate.image !== data.dockerImage) ? (

@@ -1,10 +1,9 @@
 /**
- * Client HTTP du panel.
+ * The panel's HTTP client.
  *
- * L'authentification repose sur les cookies httpOnly posés par l'API : aucun
- * jeton n'est stocké côté JavaScript, donc une faille XSS ne permet pas d'en
- * exfiltrer un. En contrepartie, chaque requête doit être émise avec
- * `credentials: 'include'`.
+ * Authentication rests on the httpOnly cookies the API sets: no token is stored
+ * on the JavaScript side, so an XSS flaw cannot exfiltrate one. In exchange,
+ * every request has to be sent with `credentials: 'include'`.
  */
 
 export class ApiError extends Error {
@@ -29,9 +28,9 @@ interface ErrorBody {
   issues?: { path: string; message: string }[];
 }
 
-/** Refresh en cours, partagé : évite N rotations concurrentes sur une page qui
- *  déclenche plusieurs requêtes en même temps — et donc N révocations en
- *  cascade par le détecteur de réutilisation de jeton. */
+/** In-flight refresh, shared: avoids N concurrent rotations on a page firing
+ *  several requests at once — and therefore N cascading revocations by the
+ *  token-reuse detector. */
 let refreshInFlight: Promise<boolean> | null = null;
 
 async function refreshSession(): Promise<boolean> {
@@ -56,8 +55,8 @@ async function parseError(response: Response): Promise<ApiError> {
   try {
     body = (await response.json()) as ErrorBody;
   } catch {
-    // Réponse non JSON (502 d'un reverse proxy, page d'erreur HTML) : le
-    // message générique ci-dessous vaut mieux qu'une exception de parsing.
+    // A non-JSON answer (a reverse proxy's 502, an HTML error page): the
+    // generic message below beats a parsing exception.
   }
 
   const message = Array.isArray(body.message)
@@ -76,9 +75,9 @@ async function send<T>(path: string, options: RequestOptions, retry: boolean): P
     body: options.body === undefined ? undefined : JSON.stringify(options.body),
   });
 
-  // Une 401 sur une requête normale signifie presque toujours un access token
-  // périmé : on tente une rotation silencieuse avant de renvoyer l'utilisateur
-  // vers l'écran de connexion. Une seule fois, pour ne pas boucler.
+  // A 401 on a normal request nearly always means an expired access token: a
+  // silent rotation is attempted before sending the user back to the sign-in
+  // screen. Once only, so as not to loop.
   if (response.status === 401 && retry && !path.startsWith('/api/auth/')) {
     if (await refreshSession()) {
       return send<T>(path, options, false);
@@ -104,7 +103,7 @@ export const api = {
 };
 
 // ---------------------------------------------------------------------------
-// Types des réponses de l'API
+// Types of the API responses
 // ---------------------------------------------------------------------------
 
 export interface Paginated<T> {
@@ -117,10 +116,10 @@ export interface CurrentUser {
   username: string;
   email: string;
   role: 'ADMIN' | 'USER';
-  /** Nom de l'instance, réglé dans l'administration. */
+  /** Instance name, set in the administration. */
   panelName: string;
   twoFactorEnabled: boolean;
-  /** L'instance exige un second facteur que ce compte n'a pas encore activé. */
+  /** The instance demands a second factor this account has not turned on yet. */
   mustEnableTwoFactor: boolean;
 }
 

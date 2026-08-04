@@ -256,7 +256,7 @@ function DatabaseCard({
         </div>
       </div>
 
-      {/* Champs en ligne, sur toute la largeur : en colonnes, ils
+      {/* Fields in a row, across the full width: in columns they
           piled up on the left and left half the card empty. */}
       <dl className="mt-3 flex flex-wrap gap-x-8 gap-y-2 text-sm">
         <InlineField

@@ -3,11 +3,11 @@ import { useTranslation } from '../i18n';
 import { cx } from '../lib/cx';
 
 /**
- * Briques d'interface partagées.
+ * Shared interface primitives.
  *
- * Volontairement peu nombreuses et sans bibliothèque de composants : le panel a
- * besoin de six primitives, pas d'un design system. Elles vivront ici tant
- * qu'elles tiennent dans un fichier.
+ * Deliberately few and with no component library: the panel needs six
+ * primitives, not a design system. They live here as long as they fit in one
+ * file.
  */
 
 type ButtonVariant = 'primary' | 'secondary' | 'danger' | 'ghost';
@@ -44,7 +44,7 @@ export function Field({
   children,
 }: {
   label: string;
-  /** Texte, ou contenu riche — une aide comportant du code par exemple. */
+  /** Text, or rich content — a hint containing code, for instance. */
   hint?: ReactNode;
   error?: string;
   children: ReactNode;
@@ -53,8 +53,8 @@ export function Field({
     <label className="block space-y-1.5">
       <span className="text-sm font-medium text-content">{label}</span>
       {children}
-      {/* L'erreur remplace l'aide plutôt que de s'y ajouter : deux lignes de
-          texte sous un champ font perdre laquelle compte. */}
+      {/* The error replaces the hint rather than adding to it: two lines of
+          text under a field make it unclear which one counts. */}
       {error ? (
         <span className="block text-xs text-danger">{error}</span>
       ) : hint ? (
@@ -140,10 +140,10 @@ export function Alert({
 }
 
 /**
- * État vide.
+ * Empty state.
  *
- * Toujours accompagné de l'action qui le résout : une liste vide sans bouton
- * laisse l'utilisateur chercher dans le menu ce qu'il aurait dû faire.
+ * Always paired with the action that resolves it: an empty list with no button
+ * leaves the user hunting through the menu for what they should have done.
  */
 export function EmptyState({
   title,

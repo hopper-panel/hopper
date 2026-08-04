@@ -1,17 +1,17 @@
 import { Fragment } from 'react';
 
 /**
- * Chemin d'un dossier, segment par segment.
+ * A folder's path, segment by segment.
  *
- * Partagé entre la liste et l'éditeur : les deux écrans doivent situer
- * l'utilisateur de la même façon, et deux implémentations finiraient par
- * diverger sur le traitement de la racine.
+ * Shared between the listing and the editor: both screens have to place the
+ * user the same way, and two implementations would end up diverging on how the
+ * root is handled.
  *
- * `/home/container` est le chemin **dans le conteneur**, pas sur l'hôte. Il est
- * affiché parce que c'est celui qu'on retrouve dans les journaux du serveur et
- * dans les fichiers de configuration des plugins : le masquer obligerait à
- * traduire mentalement entre ce que dit le panel et ce que dit Minecraft.
- * `home` n'est pas cliquable — il n'existe rien au-dessus du volume.
+ * `/home/container` is the path **inside the container**, not on the host. It
+ * is displayed because it is the one found in the server's logs and in the
+ * plugins' configuration files: hiding it would force a mental translation
+ * between what the panel says and what Minecraft says. `home` is not
+ * clickable — nothing exists above the volume.
  */
 export function FileBreadcrumb({
   directory,
@@ -20,7 +20,7 @@ export function FileBreadcrumb({
 }: {
   /** Dossier courant, relatif au volume. */
   directory: string;
-  /** Nom du fichier ouvert, ajouté en fin de chemin et non cliquable. */
+  /** Name of the open file, appended to the path and not clickable. */
   file?: string;
   onNavigate: (path: string) => void;
 }) {
@@ -56,8 +56,8 @@ export function FileBreadcrumb({
       {file ? (
         <>
           <Separator />
-          {/* Le fichier ouvert termine le chemin sans être un lien : il désigne
-              l'endroit où l'on est déjà. */}
+          {/* The open file ends the path without being a link: it names the
+              place one is already in. */}
           <span className="font-semibold text-content">{file}</span>
         </>
       ) : null}

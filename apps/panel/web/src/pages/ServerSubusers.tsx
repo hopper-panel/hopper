@@ -18,7 +18,7 @@ interface Subuser {
 }
 
 interface Draft {
-  /** Vide pour une création. */
+  /** Empty when creating. */
   uuid: string;
   email: string;
   permissions: Set<Permission>;
@@ -202,17 +202,17 @@ export function ServerSubusersPage() {
 }
 
 /**
- * Choix des permissions, un panneau par groupe.
+ * Permission picker, one panel per group.
  *
- * Chaque permission est accompagnée de ce qu'elle ouvre réellement. Sans cela,
- * on coche `file.create` en croyant autoriser l'envoi d'un fichier de
- * configuration, alors qu'on autorise le dépôt d'un greffon — donc l'exécution
- * de code arbitraire par le serveur. Une case sans explication se coche par
- * défaut ; une case expliquée se choisit.
+ * Each permission comes with what it actually opens. Without that, one ticks
+ * `file.create` believing it allows uploading a configuration file, when it
+ * allows dropping in a plugin — that is, arbitrary code execution by the
+ * server. A box with no explanation gets ticked by default; an explained box
+ * gets chosen.
  *
- * Seules les permissions que l'on possède soi-même sont proposées : l'API
- * refuse d'accorder plus que ce que l'on a, et afficher des cases qui feraient
- * échouer l'enregistrement serait une invitation à l'erreur.
+ * Only the permissions one holds oneself are offered: the API refuses to grant
+ * more than one has, and showing boxes that would fail the save would be an
+ * invitation to error.
  */
 function PermissionPicker({
   selected,

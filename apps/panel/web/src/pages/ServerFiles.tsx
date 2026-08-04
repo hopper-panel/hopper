@@ -33,7 +33,7 @@ interface UploadProgress {
   total: number;
 }
 
-/** Extensions reconnues comme archives extractibles par le daemon. */
+/** Extensions the daemon recognises as extractable archives. */
 const ARCHIVE = /\.(tar\.gz|tgz)$/i;
 
 /** Extensions the editor happily opens. */
@@ -41,8 +41,8 @@ const EDITABLE = /\.(ya?ml|properties|json|txt|log|toml|conf|cfg|ini|sh|md|xml|c
 
 export function ServerFilesPage() {
   const { uuid = '' } = useParams();
-  // Permissions fournies par `ServerLayout` : les interroger de nouveau ici
-  // repeated the same request on every tab change.
+  // Permissions supplied by `ServerLayout`: querying them again here repeated
+  // the same request on every tab change.
   const { can } = useServerContext();
   const { t } = useTranslation();
   const navigate = useNavigate();

@@ -1,32 +1,32 @@
 /**
- * Graphe d'une mesure de ressource.
+ * Chart of one resource measurement.
  *
- * Écrit en SVG plutôt qu'avec une bibliothèque de graphes : trois courbes sans
- * interaction ni zoom ne valent pas les 200 Kio d'un moteur de rendu complet,
- * qu'il faudrait de surcroît charger sur la page la plus consultée du panel.
+ * Written in SVG rather than with a charting library: three curves with no
+ * interaction and no zoom are not worth the 200 KiB of a full rendering engine,
+ * which would on top of that have to load on the panel's most visited page.
  *
- * Le tracé est fait dans un repère fixe de 100 × 40 déformé par
- * `preserveAspectRatio="none"` : la courbe s'étire à la largeur disponible sans
- * qu'on ait à mesurer le conteneur. `vector-effect` garde alors une épaisseur de
- * trait constante, sinon l'étirement l'écraserait à l'horizontale.
+ * The path is drawn in a fixed 100 × 40 frame distorted by
+ * `preserveAspectRatio="none"`: the curve stretches to the available width with
+ * no need to measure the container. `vector-effect` then keeps the stroke width
+ * constant, otherwise the stretching would flatten it horizontally.
  */
 
-/** Nombre de points affichés : à un relevé par seconde, une minute d'historique. */
+/** Number of points shown: at one sample a second, a minute of history. */
 export const CHART_POINTS = 60;
 
 export interface Series {
   label: string;
   points: number[];
-  /** Couleur CSS du tracé — les variables du thème sont acceptées. */
+  /** CSS colour of the stroke — theme variables are accepted. */
   color: string;
-  /** Remplit l'aire sous la courbe. Réservé à une série seule. */
+  /** Fills the area under the curve. For a lone series only. */
   fill?: boolean;
 }
 
 export function ResourceChart({
   title,
   series,
-  /** Plafond de l'axe vertical. En deçà du maximum observé, celui-ci l'emporte. */
+  /** Ceiling of the vertical axis. Below the observed maximum, that one wins. */
   ceiling = 0,
   format,
 }: {
@@ -35,10 +35,10 @@ export function ResourceChart({
   ceiling?: number;
   format: (value: number) => string;
 }) {
-  // Les séries sont alignées à droite : un point neuf entre par la droite et
-  // pousse les autres, comme un moniteur système. Tant qu'il y a moins d'une
-  // minute d'historique, le début est comblé par des zéros — la courbe part du
-  // plat plutôt que de s'étirer sur toute la largeur puis de se comprimer.
+  // The series are right-aligned: a new point enters from the right and pushes
+  // the others along, like a system monitor. While there is less than a minute
+  // of history, the start is padded with zeros — the curve begins flat rather
+  // than stretching across the full width then compressing.
   const padded = series.map((entry) => ({
     ...entry,
     points: [
@@ -48,8 +48,8 @@ export function ResourceChart({
   }));
 
   const observed = Math.max(0, ...padded.flatMap((entry) => entry.points));
-  // Un maximum nul donnerait une division par zéro, et un graphe sans échelle
-  // lisible : on garde un plafond strictement positif.
+  // A zero maximum would give a division by zero, and a chart with no readable
+  // scale: the ceiling is kept strictly positive.
   const max = Math.max(ceiling, observed, Number.EPSILON);
 
   return (
@@ -77,8 +77,8 @@ export function ResourceChart({
       </div>
 
       <div className="relative mt-3 h-36">
-        {/* Trois graduations suffisent : le graphe sert à voir une tendance et
-            un pic, pas à relever une valeur — celle-ci est dans la carte. */}
+        {/* Three gridlines are enough: the chart is there to show a trend and
+            a spike, not to read a value off — that is in the card. */}
         <div className="absolute inset-y-0 left-0 flex w-16 flex-col justify-between text-right text-[10px] tabular-nums text-content-subtle">
           <span>{format(max)}</span>
           <span>{format(max / 2)}</span>

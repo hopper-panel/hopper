@@ -1,14 +1,13 @@
 /**
- * Copie un texte dans le presse-papiers.
+ * Copies a text into the clipboard.
  *
- * `navigator.clipboard` n'existe **que dans un contexte sécurisé** : HTTPS, ou
- * `localhost`. Un panel servi en HTTP simple — installation interne, ou avant
- * la mise en place du reverse proxy — n'y a donc pas accès du tout, et un
- * bouton « copier » qui s'appuierait dessus ne ferait rien, sans erreur
- * visible.
+ * `navigator.clipboard` exists **only in a secure context**: HTTPS, or
+ * `localhost`. A panel served over plain HTTP — an internal install, or before
+ * the reverse proxy is in place — therefore has no access to it at all, and a
+ * "copy" button relying on it would do nothing, with no visible error.
  *
- * D'où le repli sur `execCommand`, officiellement obsolète mais toujours
- * implémenté partout et le seul disponible hors contexte sécurisé.
+ * Hence the fallback to `execCommand`, officially deprecated but still
+ * implemented everywhere and the only one available outside a secure context.
  */
 export async function copyText(text: string): Promise<boolean> {
   if (navigator.clipboard?.writeText) {
@@ -16,7 +15,7 @@ export async function copyText(text: string): Promise<boolean> {
       await navigator.clipboard.writeText(text);
       return true;
     } catch {
-      // Permission refusée ou document sans focus : on tente le repli.
+      // Permission denied or an unfocused document: try the fallback.
     }
   }
 
@@ -27,8 +26,8 @@ function copyWithSelection(text: string): boolean {
   const holder = document.createElement('textarea');
 
   holder.value = text;
-  // Hors écran plutôt que masqué : un élément en `display: none` ne peut pas
-  // être sélectionné, et la copie échouerait silencieusement.
+  // Off screen rather than hidden: an element in `display: none` cannot be
+  // selected, and the copy would fail silently.
   holder.style.position = 'fixed';
   holder.style.top = '-1000px';
   holder.setAttribute('readonly', '');

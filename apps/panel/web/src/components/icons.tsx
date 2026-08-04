@@ -1,12 +1,12 @@
 import type { SVGProps } from 'react';
 
 /**
- * Jeu d'icônes du panel.
+ * The panel's icon set.
  *
- * Tracées à la main plutôt qu'importées d'une bibliothèque : il en faut sept,
- * et une dépendance d'icônes pèse plus lourd que ce fichier. Toutes suivent la
- * même grille de 24, en trait de 1,5 et en `currentColor`, pour se poser dans
- * n'importe quel bloc sans réglage.
+ * Drawn by hand rather than imported from a library: seven are needed, and an
+ * icon dependency weighs more than this file. They all follow the same grid of
+ * 24, a stroke of 1.5 and `currentColor`, so they drop into any block with no
+ * adjustment.
  */
 
 type IconProps = SVGProps<SVGSVGElement>;

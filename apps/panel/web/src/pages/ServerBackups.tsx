@@ -15,7 +15,7 @@ interface Backup {
   name: string;
   sizeBytes: number;
   checksum: string | null;
-  /** `null` tant que le node n'a pas rendu son verdict. */
+  /** `null` until the node has returned its verdict. */
   successful: boolean | null;
   error: string | null;
   locked: boolean;
@@ -28,13 +28,13 @@ interface BackupList {
   meta: { limit: number; used: number };
 }
 
-/** Exemple montré dans le champ d'exclusions. */
+/** Example shown in the exclusions field. */
 const IGNORE_PLACEHOLDER = ['*.log', 'cache/', '!important.log'].join('\n');
 
 export function ServerBackupsPage() {
   const { uuid = '' } = useParams();
   const queryClient = useQueryClient();
-  // Permissions fournies par `ServerLayout`, comme pour les autres onglets.
+  // Permissions supplied by `ServerLayout`, as for the other tabs.
   const { can } = useServerContext();
   const { t } = useTranslation();
 
@@ -48,10 +48,10 @@ export function ServerBackupsPage() {
   const backups = useQuery({
     queryKey: ['server', uuid, 'backups'],
     queryFn: () => api.get<BackupList>(`/api/servers/${uuid}/backups`),
-    // Une sauvegarde en cours n'a pas d'événement pour signaler sa fin côté
-    // navigateur : le verdict arrive du node au panel, pas jusqu'ici. On
-    // interroge donc tant qu'il en reste une ouverte, et on s'arrête ensuite —
-    // un intervalle permanent ferait battre l'API pour rien.
+    // A running backup has no event to signal its end browser-side: the
+    // verdict travels from the node to the panel, not this far. So it polls
+    // while one is still open, and stops afterwards — a permanent interval
+    // would hammer the API for nothing.
     refetchInterval: (query) =>
       query.state.data?.data.some((backup) => backup.successful === null) ? 3000 : false,
   });
@@ -68,9 +68,9 @@ export function ServerBackupsPage() {
     mutationFn: () =>
       api.post<Backup>(`/api/servers/${uuid}/backups`, {
         name: name.trim() || undefined,
-        // Les lignes vides sont retirées, mais rien d'autre n'est retouché :
-        // le daemon écarte lui-même les commentaires, et normaliser ici ferait
-        // diverger ce que l'utilisateur a écrit de ce qui est appliqué.
+        // Empty lines are dropped, but nothing else is touched: the daemon
+        // strips the comments itself, and normalising here would make what the
+        // user wrote diverge from what is applied.
         ignoredFiles: ignored.split(/\r?\n/).filter((line) => line.trim() !== ''),
         locked,
       }),

@@ -835,4 +835,6 @@ export const ru: Partial<Messages> = {
   'files.sendingProgress': '{done} из {total}',
   'fileEdit.readOnly': 'Только чтение: у вас нет права изменять файлы.',
   'fileEdit.loading': 'Загрузка файла…',
+
+  'fileEdit.backToFiles': 'Вернуться к файлам',
 };

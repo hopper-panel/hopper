@@ -857,4 +857,6 @@ export const fr: Partial<Messages> = {
   'files.sendingProgress': '{done} sur {total}',
   'fileEdit.readOnly': 'Lecture seule : vous n’avez pas la permission de modifier les fichiers.',
   'fileEdit.loading': 'Chargement du fichier…',
+
+  'fileEdit.backToFiles': 'Revenir aux fichiers',
 };

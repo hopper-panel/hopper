@@ -6,10 +6,10 @@ export default defineConfig({
   plugins: [react(), tailwindcss()],
   server: {
     port: 5173,
-    // L'API est appelée en chemin relatif (`/api/...`) : ce proxy fait que le
-    // navigateur voit une seule origine en développement, donc les cookies
-    // httpOnly d'authentification partent avec chaque requête sans configuration
-    // CORS particulière côté client.
+    // The API is called on a relative path (`/api/...`): this proxy makes the
+    // browser see a single origin in development, so the httpOnly
+    // authentication cookies travel with every request without any particular
+    // client-side CORS configuration.
     proxy: {
       '/api': {
         target: 'http://127.0.0.1:8080',
@@ -18,23 +18,23 @@ export default defineConfig({
     },
   },
   build: {
-    // Le build reste dans le paquet qui le produit. Écrire dans le `dist` du
-    // panel exposait à une course : `nest build` efface son répertoire de
-    // sortie, et rien n'ordonne les deux constructions — le front se faisait
-    // supprimer une fois sur deux. Le panel lit ce dossier au démarrage.
+    // The build stays in the package that produces it. Writing into the
+    // panel's `dist` invited a race: `nest build` wipes its output directory,
+    // and nothing orders the two builds — the front got deleted every other
+    // time. The panel reads this folder at startup.
     outDir: 'dist',
     emptyOutDir: true,
     rollupOptions: {
       output: {
         /**
-         * Le terminal pèse à lui seul près de la moitié du paquet, et n'est
-         * utile que sur la console. En un seul fichier, chaque mise à jour du
-         * panel — même une correction d'une ligne dans un écran d'admin —
-         * invalidait le cache du navigateur pour tout, xterm compris.
+         * The terminal alone weighs nearly half the bundle, and is only
+         * useful on the console. In a single file, every panel update — even a
+         * one-line fix in an admin screen — invalidated the browser cache for
+         * everything, xterm included.
          *
-         * Les découpes sont faites par dépendance et non par route : le
-         * découpage par route imposerait des imports différés partout, pour un
-         * gain moindre — c'est le code tiers qui pèse, pas le nôtre.
+         * The splits are made by dependency and not by route: splitting by
+         * route would force lazy imports everywhere, for a smaller gain — it is
+         * the third-party code that weighs, not ours.
          */
         manualChunks: {
           terminal: ['@xterm/xterm', '@xterm/addon-fit'],

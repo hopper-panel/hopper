@@ -1,12 +1,12 @@
 import { cx } from '../lib/cx';
 
 /**
- * Interrupteur à deux états.
+ * Two-state switch.
  *
- * Un vrai `<input type="checkbox">` sous une apparence d'interrupteur, et non
- * un `<div>` avec un `onClick` : la case reste atteignable au clavier,
- * annonçable par un lecteur d'écran et associée à son libellé sans qu'on ait
- * à réimplémenter tout cela.
+ * A real `<input type="checkbox">` under the appearance of a switch, not a
+ * `<div>` with an `onClick`: the box stays reachable by keyboard, announceable
+ * by a screen reader and tied to its label without any of that having to be
+ * reimplemented.
  */
 export function Toggle({
   checked,
@@ -41,7 +41,7 @@ export function Toggle({
         className={cx(
           'mt-0.5 flex h-5 w-9 shrink-0 items-center rounded-full p-0.5 transition-colors',
           checked ? 'bg-accent' : 'bg-surface-hover',
-          // Le contour de focus doit suivre l'apparence, pas la case cachée.
+          // The focus ring has to follow the appearance, not the hidden box.
           'peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-accent',
         )}
       >

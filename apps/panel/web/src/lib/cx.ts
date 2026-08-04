@@ -1,9 +1,8 @@
 /**
- * Concatène des classes CSS en ignorant les valeurs conditionnelles fausses.
+ * Joins CSS classes, ignoring falsy conditional values.
  *
- * Dans son propre module plutôt que dans `components/ui.tsx` : un fichier qui
- * exporte à la fois des composants et des fonctions casse le rafraîchissement à
- * chaud de Vite.
+ * In its own module rather than in `components/ui.tsx`: a file exporting both
+ * components and functions breaks Vite's hot reload.
  */
 export function cx(...classes: (string | false | null | undefined)[]): string {
   return classes.filter(Boolean).join(' ');

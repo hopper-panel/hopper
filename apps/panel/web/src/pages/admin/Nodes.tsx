@@ -26,8 +26,8 @@ export function AdminNodesPage() {
     onSuccess: (result) => {
       void queryClient.invalidateQueries({ queryKey: ['admin', 'nodes'] });
       setCreating(false);
-      // The secret exists only here: it is stored encrypted and the API never
-      // renverra jamais une seconde fois.
+      // The secret exists only here: it is stored encrypted and the API will
+      // never return it a second time.
       setConfiguration(result.configuration);
     },
   });

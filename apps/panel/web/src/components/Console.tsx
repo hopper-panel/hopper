@@ -6,11 +6,10 @@ import { useTranslation } from '../i18n';
 import type { ConsoleController } from '../lib/use-console';
 
 /**
- * Nombre de lignes conservées dans le terminal.
+ * Number of lines kept in the terminal.
  *
- * Un serveur bavard produit plusieurs milliers de lignes par minute au
- * démarrage. Au-delà de cette limite, xterm.js garde tout en mémoire et
- * l'onglet finit par ramer.
+ * A talkative server produces several thousand lines a minute at startup. Past
+ * this limit, xterm.js keeps everything in memory and the tab ends up crawling.
  */
 const SCROLLBACK = 5000;
 
@@ -32,9 +31,9 @@ export function Console({ controller }: { controller: ConsoleController }) {
   const canSendCommand = controller.permissions.includes('control.console');
 
   /**
-   * `getHistory` est stable, mais `controller` change d'identité à chaque rendu.
-   * Le passer par une ref évite de l'ajouter aux dépendances de l'effet de
-   * création, qui détruirait et recréerait le terminal en boucle.
+   * `getHistory` is stable, but `controller` changes identity on every render.
+   * Passing it through a ref avoids adding it to the creation effect's
+   * dependencies, which would destroy and recreate the terminal in a loop.
    */
   const getHistoryRef = useRef(controller.getHistory);
   getHistoryRef.current = controller.getHistory;
@@ -60,24 +59,23 @@ export function Console({ controller }: { controller: ConsoleController }) {
 
     terminalRef.current = terminal;
 
-    // La connexion vit dans la mise en page du serveur et survit aux
-    // changements d'onglet ; ce terminal, lui, est détruit puis recréé. Le
-    // daemon ne rejoue son tampon qu'à l'authentification, qui n'a pas lieu de
-    // nouveau : sans ce rejeu, revenir sur la console après un détour par les
-    // fichiers afficherait un écran vide sur un serveur qui n'a jamais cessé
-    // de parler.
+    // The connection lives in the server layout and survives tab changes; this
+    // terminal is destroyed then recreated. The daemon only replays its buffer
+    // on authentication, which does not happen again: without this replay,
+    // coming back to the console after a detour through the files would show an
+    // empty screen on a server that never stopped talking.
     for (const line of getHistoryRef.current()) {
       terminal.writeln(line);
     }
 
-    // Le terminal doit suivre le redimensionnement de la fenêtre comme celui de
-    // son conteneur : replier la barre latérale change sa largeur sans qu'aucun
-    // événement `resize` ne soit émis.
+    // The terminal has to follow the window being resized as well as its
+    // container: folding the sidebar changes its width without any `resize`
+    // event being emitted.
     //
-    // `fit()` modifie la taille du terminal, donc celle de l'élément observé,
-    // donc redéclenche l'observateur. Sans comparer les dimensions proposées à
-    // celles en vigueur, chaque passage ajoute une ligne et la console grandit
-    // sans fin. On sort donc de la boucle dès que la taille n'a plus à changer.
+    // `fit()` changes the terminal's size, so the observed element's size, so it
+    // retriggers the observer. Without comparing the proposed dimensions to the
+    // current ones, every pass adds a line and the console grows without end. So
+    // the loop exits as soon as the size no longer has to change.
     let frame = 0;
     const observer = new ResizeObserver(() => {
       cancelAnimationFrame(frame);
@@ -96,8 +94,8 @@ export function Console({ controller }: { controller: ConsoleController }) {
 
           terminal.resize(proposed.cols, proposed.rows);
         } catch {
-          // `proposeDimensions` lève si l'élément est masqué (onglet en
-          // arrière-plan, panneau replié).
+          // `proposeDimensions` throws if the element is hidden (background
+          // tab, folded panel).
         }
       });
     });
@@ -131,7 +129,7 @@ export function Console({ controller }: { controller: ConsoleController }) {
     setCommand('');
   }
 
-  /** Flèches haut/bas pour naviguer dans l'historique, comme dans un shell. */
+  /** Up/down arrows to walk the history, as in a shell. */
   function handleKeyDown(event: React.KeyboardEvent<HTMLInputElement>): void {
     if (event.key === 'ArrowUp') {
       event.preventDefault();
@@ -154,13 +152,13 @@ export function Console({ controller }: { controller: ConsoleController }) {
   const canType = canSendCommand && controller.status === 'connected';
 
   return (
-    // Terminal et invite dans un même cadre, comme un vrai terminal : la ligne
-    // de saisie appartient à la console, et non à la page qui l'entoure.
+    // Terminal and prompt in one frame, like a real terminal: the input line
+    // belongs to the console, not to the page around it.
     <div className="overflow-hidden rounded-xl border border-border-subtle bg-[#14161c]">
-      {/* Hauteur explicite, et non `flex-1` : xterm dimensionne son contenu à
-          partir de la boîte qu'on lui donne. Avec une hauteur déduite du
-          contenu, chaque ligne écrite agrandissait la boîte, qui autorisait une
-          ligne de plus — la console s'étendait indéfiniment vers le bas. */}
+      {/* An explicit height, not `flex-1`: xterm sizes its content from the
+          box it is given. With a height derived from the content, every line
+          written grew the box, which allowed one more line — the console
+          extended downwards without end. */}
       <div ref={containerRef} className="h-[58vh] min-h-72 overflow-hidden p-3" />
 
       <form

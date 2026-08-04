@@ -1,11 +1,11 @@
 import type { ReactNode } from 'react';
 
 /**
- * En-tête de page : titre, sous-titre et action principale.
+ * Page header: title, subtitle and primary action.
  *
- * Dans son propre fichier plutôt qu'aux côtés de `Layout` : un module qui
- * exporte plusieurs composants casse le rafraîchissement à chaud de Vite, qui a
- * besoin d'un export par fichier pour savoir quoi remonter.
+ * In its own file rather than alongside `Layout`: a module exporting several
+ * components breaks Vite's hot reload, which needs one export per file to know
+ * what to remount.
  */
 export function PageHeader({
   title,

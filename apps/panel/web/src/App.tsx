@@ -33,9 +33,8 @@ import { AdminUsersPage } from './pages/admin/Users';
 export function App() {
   const { user, isLoading } = useAuth();
 
-  // Tant que la session n'est pas résolue, afficher l'écran de connexion
-  // ferait clignoter l'interface à chaque rechargement d'un utilisateur déjà
-  // authentifié.
+  // Until the session is resolved, showing the sign-in screen would make the
+  // interface flash on every reload for an already-authenticated user.
   if (isLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center">
@@ -47,7 +46,7 @@ export function App() {
   if (!user) {
     return (
       <Routes>
-        {/* Avant la connexion : son visiteur n'a pas encore de mot de passe. */}
+        {/* Before signing in: its visitor has no password yet. */}
         <Route path="/definir-mot-de-passe" element={<PasswordSetupPage />} />
         <Route path="*" element={<LoginPage />} />
       </Routes>
@@ -68,9 +67,9 @@ export function App() {
 
         <Route path="account" element={<AccountPage />} />
 
-        {/* Les écrans d'un serveur sont des routes filles : ils partagent la
-            barre d'onglets, la connexion à la console et les permissions, que
-            `ServerLayout` charge une seule fois. */}
+        {/* A server's screens are child routes: they share the tab bar, the
+            console connection and the permissions, which `ServerLayout` loads
+            once. */}
         <Route path="server/:uuid" element={<ServerLayout />}>
           <Route index element={<ServerDetailPage />} />
           <Route path="files" element={<ServerFilesPage />} />
@@ -86,9 +85,9 @@ export function App() {
           <Route path="activity" element={<ServerActivityPage />} />
         </Route>
 
-        {/* L'administration a sa propre mise en page, avec barre latérale : ses
-            sections portent sur l'instance entière et n'ont rien à voir entre
-            elles, contrairement aux onglets d'un serveur. */}
+        {/* The administration has a layout of its own, with a sidebar: its
+            sections cover the whole instance and have nothing to do with each
+            other, unlike a server's tabs. */}
         <Route path="admin" element={<AdminLayout />}>
           <Route index element={<AdminOverviewPage />} />
           <Route path="nodes" element={<AdminNodesPage />} />

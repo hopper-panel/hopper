@@ -26,17 +26,17 @@ const POWER_PERMISSIONS: Record<PowerAction, Permission> = {
   kill: 'control.stop',
 };
 
-/** Couleurs des courbes, lues dans le thème plutôt que codées en dur. */
+/** Curve colours, read from the theme rather than hard-coded. */
 const PRIMARY_LINE = 'var(--color-accent)';
 const SECONDARY_LINE = 'var(--color-online)';
 
 export function ServerDetailPage() {
-  // Le serveur, ses permissions et la console viennent de `ServerLayout` :
-  // cette page n'est plus qu'un onglet parmi d'autres et ne recharge rien.
+  // The server, its permissions and the console come from `ServerLayout`:
+  // this page is now one tab among others and reloads nothing.
   const { server, controller, can } = useServerContext();
   const { t } = useTranslation();
-  // Abonnement local : les autres onglets ne se rendent plus au rythme des
-  // relevés du daemon.
+  // A local subscription: the other tabs no longer re-render at the rate of
+  // the daemon's samples.
   const history = useUsageHistory(controller, CHART_POINTS);
   const usage = history.at(-1) ?? null;
 
@@ -276,7 +276,7 @@ function Stat({
   icon: ReactNode;
   label: string;
   value: string;
-  /** Plafond de la mesure, affiché en retrait à la suite de la valeur. */
+  /** Ceiling of the measurement, shown muted after the value. */
   limit?: string;
   mono?: boolean;
   /** Rend la carte cliquable : un clic copie la valeur. */

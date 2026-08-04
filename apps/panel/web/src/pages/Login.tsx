@@ -42,7 +42,7 @@ export function LoginPage() {
       });
 
       // The API asks for the second factor only once the password checks out:
-      // on bascule sur le champ de code sans redemander les identifiants.
+      // switch to the code field without asking for the credentials again.
       if (result.status === 'two-factor-required') {
         setNeedsTotp(true);
       }
