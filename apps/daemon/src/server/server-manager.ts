@@ -13,8 +13,17 @@ import { ServerInstance } from './server-instance.js';
  * persistance ici. Au démarrage, la liste est rechargée depuis le panel puis
  * confrontée aux conteneurs réellement présents.
  */
+/**
+ * Délais entre deux tentatives de récupération de la liste des serveurs, en
+ * millisecondes. Le dernier est répété.
+ */
+const RETRY_DELAYS_MS = [5_000, 15_000, 30_000, 60_000];
+
 export class ServerManager {
   private readonly servers = new Map<string, ServerInstance>();
+
+  private retryTimer: NodeJS.Timeout | null = null;
+  private retryAttempt = 0;
 
   constructor(
     private readonly config: LoadedConfig,
@@ -101,14 +110,23 @@ export class ServerManager {
     try {
       const configurations = await this.panel.fetchServers();
       configurations.forEach((configuration) => this.upsert(configuration));
+      this.cancelRetry();
     } catch (error: unknown) {
       // Un panel injoignable au démarrage ne doit pas empêcher le daemon de
       // servir : les conteneurs déjà lancés continuent de tourner, et
       // l'opérateur a besoin que /healthz réponde pour diagnostiquer.
+      //
+      // Mais il ne doit pas non plus rester aveugle pour autant. Les deux
+      // services redémarrent ensemble après une mise à jour, et le daemon est
+      // presque toujours prêt le premier : sans nouvelle tentative, il
+      // répondait « Serveur inconnu de ce node » à toutes les consoles
+      // jusqu'au prochain redémarrage manuel.
       this.logger.error(
         { err: error },
-        'Récupération des serveurs auprès du panel impossible : le daemon démarre sans les connaître',
+        'Récupération des serveurs auprès du panel impossible : nouvelle tentative programmée',
       );
+
+      this.scheduleRetry();
     }
 
     const containers = await this.docker.listManagedContainers();
@@ -125,8 +143,36 @@ export class ServerManager {
     }
   }
 
+  private scheduleRetry(): void {
+    if (this.retryTimer !== null) {
+      return;
+    }
+
+    const delay = RETRY_DELAYS_MS[Math.min(this.retryAttempt, RETRY_DELAYS_MS.length - 1)]!;
+    this.retryAttempt += 1;
+
+    this.retryTimer = setTimeout(() => {
+      this.retryTimer = null;
+      void this.reconcile();
+    }, delay);
+
+    // `unref` : ce minuteur ne doit pas retenir le processus en vie. Sans lui,
+    // un daemon arrêté pendant une attente resterait ouvert jusqu'à l'échéance.
+    this.retryTimer.unref();
+  }
+
+  private cancelRetry(): void {
+    if (this.retryTimer !== null) {
+      clearTimeout(this.retryTimer);
+      this.retryTimer = null;
+    }
+
+    this.retryAttempt = 0;
+  }
+
   /** Détache tous les flux. Les conteneurs continuent de tourner. */
   shutdown(): void {
+    this.cancelRetry();
     this.list().forEach((server) => server.detach());
   }
 }

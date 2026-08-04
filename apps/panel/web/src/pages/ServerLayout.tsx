@@ -1,28 +1,13 @@
-import type { Permission, ServerState } from '@hopper/shared';
+import type { Permission } from '@hopper/shared';
 import { useQuery } from '@tanstack/react-query';
 import { useEffect } from 'react';
 import { Link, NavLink, Outlet, useParams } from 'react-router-dom';
 import { Page } from '../components/Page';
-import { Alert, Badge, Spinner } from '../components/ui';
+import { Alert, Spinner } from '../components/ui';
 import { api, type ServerSummary } from '../lib/api';
 import { cx } from '../lib/cx';
 import type { ServerContext } from '../lib/server-context';
-import { useConsole, type ConnectionStatus } from '../lib/use-console';
-
-const STATE_LABELS: Record<
-  ServerState,
-  { label: string; tone: 'online' | 'offline' | 'warn' | 'danger' }
-> = {
-  offline: { label: 'Hors ligne', tone: 'offline' },
-  starting: { label: 'Démarrage', tone: 'warn' },
-  running: { label: 'En ligne', tone: 'online' },
-  stopping: { label: 'Arrêt', tone: 'warn' },
-  installing: { label: 'Installation', tone: 'warn' },
-  install_failed: { label: 'Installation échouée', tone: 'danger' },
-  restoring_backup: { label: 'Restauration', tone: 'warn' },
-  suspended: { label: 'Suspendu', tone: 'danger' },
-  missing: { label: 'Introuvable', tone: 'danger' },
-};
+import { useConsole } from '../lib/use-console';
 
 interface Tab {
   /** Chemin relatif à `/server/:uuid`. Vide pour la console. */
@@ -118,20 +103,17 @@ export function ServerLayout() {
 
   const permissions = access.data?.permissions ?? [];
   const can = (permission: Permission): boolean => permissions.includes(permission);
-  const status = STATE_LABELS[controller.state];
 
   const context: ServerContext = { server: server.data, permissions, controller, can };
 
   return (
     <>
-      {/* Barre d'onglets seule, collée sous la barre supérieure. Le nom du
-          serveur en occupait auparavant la ligne au-dessus : il est désormais
-          le titre de la page de console, comme dans Pterodactyl, ce qui rend au
-          contenu la hauteur d'un bandeau entier. L'état, lui, reste visible
-          partout — c'est le seul renseignement qu'on cherche depuis n'importe
-          quel onglet. */}
+      {/* Barre d'onglets seule, collée sous la barre supérieure, comme dans
+          Pterodactyl. Le nom du serveur en occupait auparavant la ligne
+          au-dessus : il est désormais le titre de la page de console, ce qui
+          rend au contenu la hauteur d'un bandeau entier. */}
       <div className="border-b border-border-subtle bg-surface-raised">
-        <div className="mx-auto flex max-w-7xl items-center gap-4 px-4">
+        <div className="mx-auto max-w-7xl px-4">
           {/* `-mb-px` fait passer le soulignement de l'onglet actif par-dessus
               la bordure du bandeau, au lieu de le poser juste au-dessus. */}
           <nav className="-mb-px flex gap-1 overflow-x-auto" aria-label="Sections du serveur">
@@ -155,11 +137,6 @@ export function ServerLayout() {
               </NavLink>
             ))}
           </nav>
-
-          <div className="ml-auto flex shrink-0 items-center gap-2">
-            <ConnectionBadge status={controller.status} />
-            <Badge tone={status.tone}>{status.label}</Badge>
-          </div>
         </div>
       </div>
 
@@ -168,23 +145,4 @@ export function ServerLayout() {
       </Page>
     </>
   );
-}
-
-function ConnectionBadge({ status }: { status: ConnectionStatus }) {
-  // Une console connectée est le cas normal : l'annoncer en permanence serait
-  // du bruit. Seuls les états qui expliquent une interface inerte sont montrés.
-  if (status === 'connected') {
-    return null;
-  }
-
-  const map: Record<
-    Exclude<ConnectionStatus, 'connected'>,
-    { label: string; tone: 'offline' | 'warn' | 'danger' }
-  > = {
-    connecting: { label: 'connexion…', tone: 'offline' },
-    reconnecting: { label: 'reconnexion…', tone: 'warn' },
-    failed: { label: 'console injoignable', tone: 'danger' },
-  };
-
-  return <Badge tone={map[status].tone}>{map[status].label}</Badge>;
 }

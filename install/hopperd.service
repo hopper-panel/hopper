@@ -1,7 +1,11 @@
 [Unit]
 Description=Hopper Daemon
 Documentation=https://github.com/hopper-panel/hopper
-After=network-online.target docker.service
+# `hopper-panel.service` n'existe pas sur une machine qui n'héberge qu'un node :
+# un `After=` sur une unité absente est simplement ignoré. Là où les deux
+# cohabitent, il réduit la fenêtre pendant laquelle le daemon démarre avant le
+# panel — le daemon sait de toute façon reprendre tout seul.
+After=network-online.target docker.service hopper-panel.service
 Requires=docker.service
 Wants=network-online.target
 
