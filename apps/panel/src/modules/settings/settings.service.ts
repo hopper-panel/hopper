@@ -112,7 +112,7 @@ export class SettingsService {
     });
 
     if (!server) {
-      throw new NotFoundException('Serveur introuvable.');
+      throw new NotFoundException('Server not found.');
     }
 
     return server;

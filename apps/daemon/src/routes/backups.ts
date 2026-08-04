@@ -65,7 +65,7 @@ export function registerBackupRoutes(
       });
     }
 
-    request.log.error({ err: error }, 'Erreur de sauvegarde');
+    request.log.error({ err: error }, 'Backup error');
 
     return reply.code(500).send({
       error: {
@@ -195,7 +195,7 @@ export function registerBackupRoutes(
       return reply.code(404).send({
         error: {
           code: 'backup_not_found',
-          message: 'Archive introuvable sur ce node.',
+          message: 'Archive not found on this node.',
           requestId: request.id,
         },
       });

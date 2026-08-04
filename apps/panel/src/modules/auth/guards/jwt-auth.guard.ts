@@ -44,12 +44,11 @@ export class JwtAuthGuard implements CanActivate {
     const token = this.extractToken(request);
 
     if (!token) {
-      throw new UnauthorizedException('Authentification requise.');
+      throw new UnauthorizedException('Authentication required.');
     }
 
     // An API key is recognised by its prefix: mistaking it for a session token
-    // would fail signature verification, with a message
-    // trompeur.
+    // would fail signature verification, with a misleading message.
     if (looksLikeApiKey(token)) {
       return this.authenticateApiKey(request, token, context);
     }
@@ -83,7 +82,7 @@ export class JwtAuthGuard implements CanActivate {
     }
 
     if (session.user.suspended) {
-      throw new ForbiddenException('Ce compte est suspendu.');
+      throw new ForbiddenException('This account is suspended.');
     }
 
     request.user = {

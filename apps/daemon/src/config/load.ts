@@ -62,7 +62,7 @@ export async function assertConfigFilePermissions(path: string): Promise<void> {
   if ((mode & 0o077) !== 0) {
     throw new ConfigError(
       `The configuration file ${path} is readable by other users (mode ${mode.toString(8).padStart(4, '0')}).`,
-      `Corrigez avec : chmod 600 ${path}`,
+      `Fix it with: chmod 600 ${path}`,
     );
   }
 }
@@ -95,7 +95,7 @@ export async function loadConfig(explicitPath?: string): Promise<LoadedConfig> {
     await access(sourcePath, fsConstants.R_OK);
   } catch {
     throw new ConfigError(
-      `Fichier de configuration introuvable ou illisible : ${sourcePath}`,
+      `Configuration file missing or unreadable: ${sourcePath}`,
       'Set HOPPER_DAEMON_CONFIG or pass --config, and check that the daemon user can read the file.',
     );
   }
@@ -109,7 +109,7 @@ export async function loadConfig(explicitPath?: string): Promise<LoadedConfig> {
     parsed = parseYaml(raw);
   } catch (error) {
     throw new ConfigError(
-      `YAML invalide dans ${sourcePath} : ${error instanceof Error ? error.message : String(error)}`,
+      `Invalid YAML in ${sourcePath}: ${error instanceof Error ? error.message : String(error)}`,
     );
   }
 

@@ -81,7 +81,7 @@ export class DatabaseHostsController {
       : null;
 
     if (body.nodeUuid && !node) {
-      throw new BadRequestException('Node introuvable.');
+      throw new BadRequestException('Node not found.');
     }
 
     const created = await this.prisma.databaseHost.create({
@@ -125,7 +125,7 @@ export class DatabaseHostsController {
     if (databases > 0) {
       throw new ConflictException(
         `${databases} database(s) live on this server. Delete them from their servers before ` +
-          'retirer le host.',
+          'removing the host.',
       );
     }
 

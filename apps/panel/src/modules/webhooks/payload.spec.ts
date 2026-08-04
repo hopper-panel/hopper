@@ -103,7 +103,7 @@ describe('buildDiscordPayload', () => {
 });
 
 describe('buildPayload', () => {
-  it('choisit le format selon la destination', () => {
+  it('picks the format from the destination', () => {
     expect(
       buildPayload('https://discord.com/api/webhooks/1/x', 'server.started', context).discord,
     ).toBe(true);

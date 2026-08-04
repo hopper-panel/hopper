@@ -59,7 +59,7 @@ export class RemoteNodeGuard implements CanActivate {
       this.logger.warn(`Node authentication refused from ${request.ip}`);
       // The same message in both cases: telling "unknown identifier" from
       // "wrong secret" would allow enumerating the nodes.
-      throw new UnauthorizedException('Jeton de node invalide.');
+      throw new UnauthorizedException('Invalid node token.');
     }
 
     request.node = { id: node.id, uuid: node.uuid, name: node.name };

@@ -127,7 +127,7 @@ describe('calculateMemoryBytes', () => {
     expect(calculateMemoryBytes(stats)).toBe(3 * 1024 ** 3);
   });
 
-  it('retire le cache (cgroup v1)', () => {
+  it('subtracts the cache (cgroup v1)', () => {
     const stats: DockerStats = {
       memory_stats: { usage: 2 * 1024 ** 3, stats: { cache: 512 * 1024 ** 2 } },
     };

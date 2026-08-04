@@ -35,7 +35,7 @@ system:
     bindPort: 2022
 
 docker:
-  # Sous Linux : /var/run/docker.sock
+  # Under Linux: /var/run/docker.sock
   # Under Windows with Docker Desktop: //./pipe/docker_engine
   socket: //./pipe/docker_engine
   network:

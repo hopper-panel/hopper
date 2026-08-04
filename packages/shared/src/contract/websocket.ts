@@ -16,7 +16,7 @@ import { permissionSchema } from '../permissions.js';
  */
 
 // ---------------------------------------------------------------------------
-// Navigateur → daemon
+// Browser → daemon
 // ---------------------------------------------------------------------------
 
 export const clientMessageSchema = z.discriminatedUnion('event', [
@@ -31,7 +31,7 @@ export const clientMessageSchema = z.discriminatedUnion('event', [
 export type ClientMessage = z.infer<typeof clientMessageSchema>;
 
 // ---------------------------------------------------------------------------
-// Daemon → navigateur
+// Daemon → browser
 // ---------------------------------------------------------------------------
 
 export const serverMessageSchema = z.discriminatedUnion('event', [

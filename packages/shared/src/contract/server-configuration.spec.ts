@@ -3,7 +3,7 @@ import { serverConfigurationSchema } from './server-configuration.js';
 
 const MINIMAL = {
   uuid: '3f2504e0-4f89-41d3-9a0c-0305e82c3301',
-  meta: { name: 'Survie' },
+  meta: { name: 'Survival' },
   invocation: 'java -Xmx{{SERVER_MEMORY}}M -jar {{SERVER_JARFILE}}',
   allocations: { default: { ip: '0.0.0.0', port: 25565 } },
   build: {
@@ -40,7 +40,7 @@ describe('serverConfigurationSchema', () => {
     expect(serverConfigurationSchema.safeParse(config).success).toBe(false);
   });
 
-  it.each([0, 65536, -1, 1.5])('refuse le port %s', (port) => {
+  it.each([0, 65536, -1, 1.5])('rejects port %s', (port) => {
     const config = { ...MINIMAL, allocations: { default: { ip: '0.0.0.0', port } } };
     expect(serverConfigurationSchema.safeParse(config).success).toBe(false);
   });
@@ -63,7 +63,7 @@ describe('serverConfigurationSchema', () => {
   });
 
   it('refuses a malformed UUID', () => {
-    expect(serverConfigurationSchema.safeParse({ ...MINIMAL, uuid: 'survie-1' }).success).toBe(
+    expect(serverConfigurationSchema.safeParse({ ...MINIMAL, uuid: 'survival-1' }).success).toBe(
       false,
     );
   });

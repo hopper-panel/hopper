@@ -207,7 +207,7 @@ describe('validateCron', () => {
   it('reports the faulty field', () => {
     expect(() =>
       validateCron({ minute: '0', hour: '99', dayOfMonth: '*', month: '*', dayOfWeek: '*' }),
-    ).toThrow(/heure/);
+    ).toThrow(/hour/);
   });
 });
 

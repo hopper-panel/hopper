@@ -32,7 +32,7 @@ export async function nodeCreate(context: INestApplicationContext, flags: Flags)
 
   if (!parsed.success) {
     const details = parsed.error.issues
-      .map((issue) => `${issue.path.join('.') || 'valeur'} : ${issue.message}`)
+      .map((issue) => `${issue.path.join('.') || 'value'}: ${issue.message}`)
       .join('\n  ');
 
     fatal(`Options invalides.\n  ${details}`);

@@ -158,7 +158,7 @@ export class RemoteController {
         Sauvegarde: backup.name,
         ...(body.successful
           ? { Taille: formatBytes(body.sizeBytes) }
-          : { Erreur: body.error ?? 'cause inconnue' }),
+          : { Error: body.error ?? 'unknown cause' }),
       },
     );
   }

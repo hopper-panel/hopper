@@ -101,14 +101,14 @@ export class SchedulerService implements OnModuleInit, OnModuleDestroy {
     } catch (error: unknown) {
       // A momentarily unreachable database must not stop the loop: the next
       // pass will try again.
-      this.logger.error(`Passage du planificateur interrompu : ${String(error)}`);
+      this.logger.error(`Scheduler pass interrupted: ${String(error)}`);
     } finally {
       this.ticking = false;
     }
   }
 
   private async runIfClaimed(scheduleId: number): Promise<void> {
-    // C'est la base qui arbitre : un seul appelant obtient `count = 1`.
+    // The database arbitrates: a single caller gets `count = 1`.
     const claimed = await this.prisma.schedule.updateMany({
       where: { id: scheduleId, running: false },
       data: { running: true },
@@ -272,7 +272,7 @@ export class SchedulerService implements OnModuleInit, OnModuleDestroy {
         return;
 
       default:
-        throw new Error(`Action inconnue : ${task.action}`);
+        throw new Error(`Unknown action: ${task.action}`);
     }
   }
 }

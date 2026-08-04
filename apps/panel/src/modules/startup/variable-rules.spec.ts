@@ -87,19 +87,19 @@ describe('validateValue', () => {
    * accept `999` where three characters were expected.
    */
   describe('min et max', () => {
-    it('bornent la valeur d’un nombre', () => {
+    it('bound the value of a number', () => {
       expect(accepts('5', 'integer|min:1|max:10')).toBe(true);
       expect(accepts('50', 'integer|min:1|max:10')).toBe(false);
       expect(accepts('0', 'integer|min:1|max:10')).toBe(false);
     });
 
-    it('bornent la longueur d’un texte', () => {
+    it('bound the length of a text', () => {
       expect(accepts('paper', 'string|max:10')).toBe(true);
       expect(accepts('paper-the-longest', 'string|max:10')).toBe(false);
       expect(accepts('ab', 'string|min:3')).toBe(false);
     });
 
-    it('between combine les deux bornes', () => {
+    it('between combines both bounds', () => {
       expect(accepts('5', 'integer|between:1,10')).toBe(true);
       expect(accepts('11', 'integer|between:1,10')).toBe(false);
     });
@@ -124,7 +124,7 @@ describe('validateValue', () => {
       expect(accepts('latest', 'regex:/^\\d+\\.\\d+(\\.\\d+)?$/')).toBe(false);
     });
 
-    it('honore les drapeaux', () => {
+    it('honours the flags', () => {
       expect(accepts('PAPER', 'regex:/^paper$/i')).toBe(true);
     });
 
@@ -176,7 +176,7 @@ describe('validateValue', () => {
 describe('the templates .jar file rule', () => {
   const RULES = String.raw`required|string|max:100|regex:/^[A-Za-z0-9._-]+\.jar$/`;
 
-  it.each(['server.jar', 'proxy.jar', 'paper-1.21.4.jar', 'Mon_Serveur-2.jar'])(
+  it.each(['server.jar', 'proxy.jar', 'paper-1.21.4.jar', 'My_Server-2.jar'])(
     'accepts "%s"',
     (value) => {
       expect(accepts(value, RULES)).toBe(true);
@@ -189,7 +189,7 @@ describe('the templates .jar file rule', () => {
     '/etc/passwd',
     'server.sh',
     'server.jar.txt',
-    'serveur bizarre.jar',
+    'odd server.jar',
     '',
   ])('rejects "%s"', (value) => {
     expect(accepts(value, RULES)).toBe(false);

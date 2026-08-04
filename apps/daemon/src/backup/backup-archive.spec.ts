@@ -24,8 +24,8 @@ const symlinkSupported = ((): boolean => {
   const probe = mkdtempSync(join(tmpdir(), 'hopper-backup-symlink-probe-'));
 
   try {
-    mkdirSync(join(probe, 'cible'));
-    symlinkSync(join(probe, 'cible'), join(probe, 'lien'), 'dir');
+    mkdirSync(join(probe, 'target'));
+    symlinkSync(join(probe, 'target'), join(probe, 'link'), 'dir');
     return true;
   } catch {
     return false;
@@ -57,7 +57,7 @@ function jailFor(root: string): JailedFilesystem {
 async function seedVolume(): Promise<void> {
   await writeFile(join(volume, 'server.properties'), 'motd=Hopper\n');
   await mkdir(join(volume, 'world'), { recursive: true });
-  await writeFile(join(volume, 'world', 'level.dat'), 'donnees-du-monde');
+  await writeFile(join(volume, 'world', 'level.dat'), 'world-data');
   await mkdir(join(volume, 'logs'), { recursive: true });
   await writeFile(join(volume, 'logs', 'latest.log'), 'x'.repeat(4096));
 }
@@ -66,7 +66,7 @@ describe('detectCompression', () => {
   // The format is not fixed: it depends on the Node version. What matters is
   // that it is written into the file name — an archive produced before an
   // upgrade has to stay restorable afterwards.
-  it('retient un format connu', () => {
+  it('keeps a known format', () => {
     expect(['gzip', 'zstd']).toContain(detectCompression());
   });
 });
@@ -80,7 +80,7 @@ describe('compressionOf', () => {
   // Refuse rather than guess: opening an archive with the wrong decompressor
   // produces an unreadable stream error, long after writing into the volume has
   // begun.
-  it('refuse une extension inconnue', () => {
+  it('rejects an unknown extension', () => {
     expect(() => compressionOf('/backups/abc.zip')).toThrow(BackupError);
   });
 });
@@ -107,7 +107,7 @@ describe('createBackupArchive', () => {
     expect(await checksumOf(archivePath)).toBe(result.checksum);
   });
 
-  it('applique la liste d’exclusion', async () => {
+  it('applies the ignore list', async () => {
     await seedVolume();
     const archivePath = join(archives, 'b.tar.gz');
 
@@ -186,7 +186,7 @@ describe('restoreBackupArchive', () => {
     });
 
     expect(restored).toBe(3);
-    expect(await readFile(join(target, 'world', 'level.dat'), 'utf8')).toBe('donnees-du-monde');
+    expect(await readFile(join(target, 'world', 'level.dat'), 'utf8')).toBe('world-data');
   });
 
   // Restoring means going back to the state that was saved. Without a purge, a
@@ -252,7 +252,7 @@ describe('restoreBackupArchive', () => {
   });
 });
 
-describe.runIf(symlinkSupported)('liens symboliques', () => {
+describe.runIf(symlinkSupported)('symbolic links', () => {
   // Following a link would pull host files into the backup — a link to `/etc`
   // would be enough — and a link to a parent would produce an archive that
   // never ends.

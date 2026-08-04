@@ -138,7 +138,7 @@ export const uploadFileQuerySchema = z.object({
  */
 export const chmodFilesRequestSchema = z.object({
   files: z.array(z.string().min(1)).min(1).max(500),
-  mode: z.string().regex(/^[0-7]{3}$/, 'Trois chiffres octaux attendus, par exemple 644.'),
+  mode: z.string().regex(/^[0-7]{3}$/, 'Three octal digits expected, 644 for instance.'),
 });
 
 export type DownloadFileQuery = z.infer<typeof downloadFileQuerySchema>;

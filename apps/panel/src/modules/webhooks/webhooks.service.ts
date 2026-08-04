@@ -248,7 +248,7 @@ export class WebhooksService {
             ? error.message
             : error instanceof Error
               ? error.message
-              : 'Envoi impossible.',
+              : 'Could not send.',
       };
     }
 
@@ -318,7 +318,7 @@ export class WebhooksService {
     // legitimate user on *their* server could manipulate another's notification
     // by knowing its UUID.
     if (!webhook || webhook.server.uuid !== serverUuid) {
-      throw new NotFoundException('Notification introuvable.');
+      throw new NotFoundException('Notification not found.');
     }
 
     return webhook;

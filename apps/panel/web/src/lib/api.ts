@@ -61,7 +61,7 @@ async function parseError(response: Response): Promise<ApiError> {
 
   const message = Array.isArray(body.message)
     ? body.message.join(', ')
-    : (body.message ?? `Erreur ${response.status}`);
+    : (body.message ?? `Error ${response.status}`);
 
   return new ApiError(response.status, message, body.issues);
 }

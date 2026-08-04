@@ -13,7 +13,7 @@ const GIB = 1024 ** 3;
 function makeConfiguration(overrides: Record<string, unknown> = {}): ServerConfiguration {
   return serverConfigurationSchema.parse({
     uuid: '3f2504e0-4f89-41d3-9a0c-0305e82c3301',
-    meta: { name: 'Survie' },
+    meta: { name: 'Survival' },
     invocation: 'java -Xmx{{SERVER_MEMORY}}M -jar {{SERVER_JARFILE}}',
     environment: { SERVER_JARFILE: 'server.jar' },
     allocations: { default: { ip: '0.0.0.0', port: 25565 } },

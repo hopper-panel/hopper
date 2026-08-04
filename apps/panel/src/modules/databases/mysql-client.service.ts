@@ -50,7 +50,7 @@ export class MysqlClientService {
         );
       }
 
-      return { version: String(rows[0]?.version ?? 'inconnue') };
+      return { version: String(rows[0]?.version ?? 'unknown') };
     });
   }
 

@@ -33,7 +33,7 @@ export class RateLimiterService implements OnModuleDestroy {
     if (url) {
       this.redis = new Redis(url, { maxRetriesPerRequest: 2, lazyConnect: false });
       this.redis.on('error', (error) => {
-        this.logger.error(`Redis indisponible : ${error.message}`);
+        this.logger.error(`Redis unavailable: ${error.message}`);
       });
     } else {
       this.redis = null;

@@ -192,7 +192,7 @@ export class StartupService {
     });
 
     if (!server) {
-      throw new NotFoundException('Serveur introuvable.');
+      throw new NotFoundException('Server not found.');
     }
 
     return server;

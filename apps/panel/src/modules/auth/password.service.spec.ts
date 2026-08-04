@@ -18,10 +18,10 @@ describe('PasswordService', () => {
     // A reused salt would let one spot two accounts sharing the same password
     // just by reading the database.
     it('produces a different digest for the same password', async () => {
-      const first = await service.hash('identique');
-      const second = await service.hash('identique');
+      const first = await service.hash('identical');
+      const second = await service.hash('identical');
       expect(first).not.toBe(second);
-      expect(await service.verify(second, 'identique')).toBe(true);
+      expect(await service.verify(second, 'identical')).toBe(true);
     });
 
     it('uses Argon2id with the expected parameters', async () => {
@@ -36,7 +36,7 @@ describe('PasswordService', () => {
     // A corrupt row has to refuse the sign-in, not produce a 500 that
     // would reveal that the account exists.
     it('returns false on an unreadable digest rather than throwing', async () => {
-      expect(await service.verify('pas-une-empreinte', 'peu importe')).toBe(false);
+      expect(await service.verify('not-a-digest', 'whatever')).toBe(false);
       expect(await service.verify('', 'peu importe')).toBe(false);
     });
   });
@@ -62,7 +62,7 @@ describe('PasswordService', () => {
     });
 
     it('demands a re-encode on an unreadable digest', () => {
-      expect(service.needsRehash('pas-une-empreinte')).toBe(true);
+      expect(service.needsRehash('not-a-digest')).toBe(true);
       expect(service.needsRehash('$2y$10$abcdefghijklmnopqrstuv')).toBe(true);
     });
   });

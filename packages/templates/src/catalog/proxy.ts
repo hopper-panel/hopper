@@ -83,7 +83,7 @@ export const velocity: TemplateDefinition = {
     '  | jq -r \'[.[] | select(.channel == "STABLE")] | max_by(.id) | .downloads["server:default"].url\')',
     '',
     'if [ -z "${URL}" ] || [ "${URL}" = "null" ]; then',
-    '  echo "Aucune build stable de Velocity ${VERSION}." >&2',
+    '  echo "No stable Velocity build for ${VERSION}." >&2',
     '  exit 1',
     'fi',
     '',

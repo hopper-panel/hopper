@@ -208,7 +208,7 @@ export class AllocationsService {
     const server = await this.prisma.server.findUnique({ where: { uuid } });
 
     if (!server) {
-      throw new NotFoundException('Serveur introuvable.');
+      throw new NotFoundException('Server not found.');
     }
 
     return server;

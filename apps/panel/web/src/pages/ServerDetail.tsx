@@ -279,7 +279,7 @@ function Stat({
   /** Ceiling of the measurement, shown muted after the value. */
   limit?: string;
   mono?: boolean;
-  /** Rend la carte cliquable : un clic copie la valeur. */
+  /** Makes the card clickable: a click copies the value. */
   copyable?: boolean;
 }) {
   const { t } = useTranslation();

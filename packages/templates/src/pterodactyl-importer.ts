@@ -30,7 +30,7 @@ const eggSchema = z.object({
 
   /** PTDL_v2: object { "Java 21": "image" }. PTDL_v1: array of strings. */
   docker_images: z.union([z.record(z.string(), z.string()), z.array(z.string())]).optional(),
-  /** PTDL_v1 : une seule image. */
+  /** PTDL_v1: a single image. */
   image: z.string().optional(),
 
   startup: z.string().optional(),

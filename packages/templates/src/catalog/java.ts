@@ -182,7 +182,7 @@ export const vanilla: TemplateDefinition = {
     '  | jq -r --arg v "${VERSION}" \'.versions[] | select(.id == $v) | .url\')',
     '',
     'if [ -z "${META}" ]; then',
-    '  echo "Version Minecraft inconnue : ${VERSION}" >&2',
+    '  echo "Unknown Minecraft version: ${VERSION}" >&2',
     '  exit 1',
     'fi',
     '',
@@ -249,7 +249,7 @@ export const fabric: TemplateDefinition = {
       rules: 'required|string|max:20',
     },
     {
-      name: "Version de l'installeur Fabric",
+      name: 'Fabric installer version',
       description: 'Installer version, or "latest".',
       envVariable: 'FABRIC_INSTALLER_VERSION',
       defaultValue: 'latest',

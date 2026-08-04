@@ -518,7 +518,7 @@ export function ServerFilesPage() {
                     <td className="px-4 py-2 text-right" data-row-control>
                       <div className="flex justify-end">
                         <KebabMenu
-                          label={`Actions sur ${entry.name}`}
+                          label={t('files.actionsFor', { name: entry.name })}
                           actions={[
                             {
                               label: t('files.rename'),
@@ -722,7 +722,7 @@ function copyNameFor(name: string): string {
   return dot > 0 ? `${name.slice(0, dot)} copy${name.slice(dot)}` : `${name} copy`;
 }
 
-/** Dernier segment d'un chemin : `plugins/Essentials.jar` → `Essentials.jar`. */
+/** Last segment of a path: `plugins/Essentials.jar` → `Essentials.jar`. */
 function basenameOf(path: string): string {
   return path.split('/').filter(Boolean).pop() ?? path;
 }

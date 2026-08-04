@@ -31,7 +31,7 @@ export class WebController {
     // client expecting JSON turns a URL typo into an incomprehensible
     // failure.
     if (isApiPath(pathname)) {
-      throw new NotFoundException(`Route ${request.method} ${pathname} introuvable.`);
+      throw new NotFoundException(`Route ${request.method} ${pathname} not found.`);
     }
 
     const indexPath = join(this.webRoot, 'index.html');

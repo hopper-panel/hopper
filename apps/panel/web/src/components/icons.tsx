@@ -28,7 +28,7 @@ function Icon({ children, ...props }: IconProps) {
   );
 }
 
-/** Adresse de connexion. */
+/** Connection address. */
 export function AddressIcon(props: IconProps) {
   return (
     <Icon {...props}>
@@ -78,7 +78,7 @@ export function DiskIcon(props: IconProps) {
   );
 }
 
-/** Trafic entrant. */
+/** Inbound traffic. */
 export function DownloadIcon(props: IconProps) {
   return (
     <Icon {...props}>
@@ -88,7 +88,7 @@ export function DownloadIcon(props: IconProps) {
   );
 }
 
-/** Trafic sortant. */
+/** Outbound traffic. */
 export function UploadIcon(props: IconProps) {
   return (
     <Icon {...props}>

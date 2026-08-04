@@ -96,7 +96,7 @@ export class TemplatesService {
     });
 
     if (!template) {
-      throw new NotFoundException('Template introuvable.');
+      throw new NotFoundException('Template not found.');
     }
 
     return this.toView(template);
@@ -110,7 +110,7 @@ export class TemplatesService {
     });
 
     if (!template) {
-      throw new NotFoundException('Template introuvable.');
+      throw new NotFoundException('Template not found.');
     }
 
     return this.toView(template);

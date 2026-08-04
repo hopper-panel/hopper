@@ -30,13 +30,13 @@ describe('parseApiKey', () => {
   it.each([
     '',
     'hpk_',
-    'hpk_trop-court.abc',
+    'hpk_too-short.abc',
     // Without the prefix it would be a node token: the two formats must not be
     // confused, each is checked against a different table.
     'AAAAAAAAAAAAAAAA.BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB',
     'hpk_AAAAAAAAAAAAAAAA_BBBB',
     'hpk_AAAAAAAAAAAAAAAA.with-hyphens-forbidden-in-the-secret-1234',
-  ])('refuse %s', (token) => {
+  ])('rejects %s', (token) => {
     expect(parseApiKey(token)).toBeNull();
   });
 

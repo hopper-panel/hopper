@@ -14,7 +14,7 @@ import { permissionSchema } from '../permissions.js';
 export const consoleTokenPayloadSchema = z.object({
   /** Issuer: the panel's public URL. */
   iss: z.string(),
-  /** Destinataire : l'identifiant du node. */
+  /** Audience: the node identifier. */
   aud: z.string(),
   /** User identifier, for the audit on the daemon side. */
   sub: z.string(),

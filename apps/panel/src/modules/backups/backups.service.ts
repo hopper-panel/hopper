@@ -62,7 +62,7 @@ export class BackupsService {
     });
 
     if (!backup) {
-      throw new NotFoundException('Sauvegarde introuvable.');
+      throw new NotFoundException('Backup not found.');
     }
 
     return toPublicBackup(backup);
@@ -127,7 +127,7 @@ export class BackupsService {
         where: { id: backup.id },
         data: {
           successful: false,
-          errorDetail: 'Le node est injoignable.',
+          errorDetail: 'The node is unreachable.',
           completedAt: new Date(),
         },
       });
@@ -177,7 +177,7 @@ export class BackupsService {
     });
 
     if (!backup) {
-      throw new NotFoundException('Sauvegarde introuvable.');
+      throw new NotFoundException('Backup not found.');
     }
 
     const updated = await this.prisma.backup.update({
@@ -195,7 +195,7 @@ export class BackupsService {
     });
 
     if (!backup) {
-      throw new NotFoundException('Sauvegarde introuvable.');
+      throw new NotFoundException('Backup not found.');
     }
 
     if (backup.locked) {
@@ -236,7 +236,7 @@ export class BackupsService {
     });
 
     if (!backup) {
-      throw new NotFoundException('Sauvegarde introuvable.');
+      throw new NotFoundException('Backup not found.');
     }
 
     if (backup.successful !== true) {
@@ -327,7 +327,7 @@ export class BackupsService {
     });
 
     if (!server) {
-      throw new NotFoundException('Serveur introuvable.');
+      throw new NotFoundException('Server not found.');
     }
 
     return server;
@@ -401,7 +401,7 @@ function unwrapDaemonResponse(response: DaemonResponse): unknown {
     try {
       parsed = JSON.parse(text);
     } catch {
-      // Corps illisible : le statut reste la seule information fiable.
+      // Unreadable body: the status stays the only reliable information.
     }
   }
 

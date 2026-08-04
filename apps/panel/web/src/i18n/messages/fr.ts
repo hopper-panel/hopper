@@ -528,6 +528,7 @@ export const fr: Partial<Messages> = {
   'files.compress': 'Compresser',
   'files.compressing': 'Compression…',
   'files.deleteSelection': 'Supprimer définitivement {count} élément(s) ?',
+  'files.actionsFor': 'Actions sur {name}',
   'files.rename': 'Renommer',
   'files.renamePrompt': 'Nouveau nom',
   'files.repath': 'Déplacer',
@@ -713,6 +714,8 @@ export const fr: Partial<Messages> = {
   'adminOverview.nodeHealth': 'État des nodes',
   'adminOverview.reachable': 'joignable',
   'adminOverview.unreachable': 'injoignable',
+  'adminOverview.containersRunning': '{count} conteneur(s) en marche',
+  'adminOverview.serverCount': '{count} serveur(s)',
   'adminTemplates.title': 'Templates',
   'adminTemplates.subtitle':
     'Ce qu’un serveur installe et exécute : image Docker, script d’installation, variables.',

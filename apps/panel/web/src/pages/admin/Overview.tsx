@@ -111,13 +111,14 @@ export function AdminOverviewPage() {
                     {node.reachable
                       ? `hopperd ${node.version} · ${node.cpuCount} cores · ` +
                         `${formatBytes(node.memoryTotalBytes ?? 0)} · ` +
-                        `${node.runningContainers} conteneur(s) en marche · ${node.latencyMs} ms`
+                        `${t('adminOverview.containersRunning', { count: node.runningContainers ?? 0 })} · ` +
+                        `${node.latencyMs} ms`
                       : node.reason}
                   </p>
                 </div>
 
                 <span className="shrink-0 text-sm text-content-muted">
-                  {node.servers} serveur{node.servers > 1 ? 's' : ''}
+                  {t('adminOverview.serverCount', { count: node.servers })}
                 </span>
               </div>
             </Card>

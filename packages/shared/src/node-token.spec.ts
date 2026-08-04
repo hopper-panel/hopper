@@ -13,12 +13,12 @@ describe('parseNodeToken', () => {
   it.each([
     ['empty string', ''],
     ['no separator', VALID_ID + VALID_SECRET],
-    ['identifiant trop court', `${'a'.repeat(15)}.${VALID_SECRET}`],
-    ['secret trop court', `${VALID_ID}.${'b'.repeat(63)}`],
+    ['identifier too short', `${'a'.repeat(15)}.${VALID_SECRET}`],
+    ['secret too short', `${VALID_ID}.${'b'.repeat(63)}`],
     ['non-alphanumeric characters', `${'a'.repeat(15)}-.${VALID_SECRET}`],
     ['multiple separators', `${VALID_ID}.${VALID_SECRET}.extra`],
     ['espaces en bordure', ` ${VALID_TOKEN} `],
-  ])('refuse un jeton %s', (_label, token) => {
+  ])('rejects a token with %s', (_label, token) => {
     expect(parseNodeToken(token)).toBeNull();
   });
 });
@@ -36,8 +36,8 @@ describe('extractBearerToken', () => {
     ['header absent', undefined],
     ['unknown scheme', `Basic ${VALID_TOKEN}`],
     ['scheme alone', 'Bearer'],
-    ['valeur vide', 'Bearer '],
-  ])('retourne null pour %s', (_label, header) => {
+    ['an empty value', 'Bearer '],
+  ])('returns null for %s', (_label, header) => {
     expect(extractBearerToken(header)).toBeNull();
   });
 });
@@ -50,6 +50,6 @@ describe('redactNodeToken', () => {
   });
 
   it('does not leak a malformed token', () => {
-    expect(redactNodeToken('pas-un-jeton-mais-un-secret')).toBe('<invalid-token>');
+    expect(redactNodeToken('not-a-token-but-a-secret')).toBe('<invalid-token>');
   });
 });

@@ -359,7 +359,7 @@ export function AdminSettingsPage() {
                   <Input
                     value={testAddress}
                     onChange={(event) => setTestAddress(event.target.value)}
-                    placeholder="vous@exemple.fr"
+                    placeholder="you@example.com"
                     className="font-mono"
                   />
                 </Field>

@@ -531,6 +531,7 @@ export const en = {
   'files.compress': 'Compress',
   'files.compressing': 'Compressing…',
   'files.deleteSelection': 'Permanently delete {count} item(s)?',
+  'files.actionsFor': 'Actions on {name}',
   'files.rename': 'Rename',
   'files.renamePrompt': 'New name',
   'files.repath': 'Move',
@@ -706,6 +707,8 @@ export const en = {
   'adminOverview.nodeHealth': 'Node health',
   'adminOverview.reachable': 'reachable',
   'adminOverview.unreachable': 'unreachable',
+  'adminOverview.containersRunning': '{count} container(s) running',
+  'adminOverview.serverCount': '{count} server(s)',
   'adminTemplates.title': 'Templates',
   'adminTemplates.subtitle':
     'What a server installs and runs: Docker image, install script, variables.',

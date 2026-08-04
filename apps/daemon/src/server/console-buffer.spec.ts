@@ -36,8 +36,8 @@ describe('LineAssembler', () => {
 
   it('gives the partial line back on flush', () => {
     const assembler = new LineAssembler();
-    assembler.push('sans fin');
-    expect(assembler.flush()).toEqual(['sans fin']);
+    assembler.push('no ending');
+    expect(assembler.flush()).toEqual(['no ending']);
     expect(assembler.flush()).toEqual([]);
   });
 

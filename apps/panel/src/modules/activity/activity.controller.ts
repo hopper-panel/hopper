@@ -50,7 +50,7 @@ export class ActivityController {
     });
 
     if (!server) {
-      throw new NotFoundException('Serveur introuvable.');
+      throw new NotFoundException('Server not found.');
     }
 
     const where = { serverId: server.id };

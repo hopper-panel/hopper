@@ -41,7 +41,7 @@ export class ServerManager {
     const server = this.servers.get(uuid);
 
     if (!server) {
-      const error = new Error('Serveur inconnu de ce node.') as Error & { statusCode?: number };
+      const error = new Error('Server unknown to this node.') as Error & { statusCode?: number };
       error.statusCode = 404;
       throw error;
     }

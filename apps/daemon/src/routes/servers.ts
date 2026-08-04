@@ -65,7 +65,7 @@ export function registerServerRoutes(app: FastifyInstance, manager: ServerManage
 
     if (!body.success) {
       return reply.code(400).send({
-        error: { code: 'invalid_body', message: 'Action inconnue.', requestId: request.id },
+        error: { code: 'invalid_body', message: 'Unknown action.', requestId: request.id },
       });
     }
 
@@ -116,7 +116,7 @@ export function registerServerRoutes(app: FastifyInstance, manager: ServerManage
 
     if (!configuration.success) {
       return reply.code(400).send({
-        error: { code: 'invalid_body', message: 'Configuration invalide.', requestId: request.id },
+        error: { code: 'invalid_body', message: 'Invalid configuration.', requestId: request.id },
       });
     }
 

@@ -52,7 +52,7 @@ export function validateEnvironment(raw: Record<string, unknown>): Environment {
       .map((issue) => `  • ${issue.path.join('.')} : ${issue.message}`)
       .join('\n');
 
-    throw new Error(`Configuration d'environnement invalide :\n${details}`);
+    throw new Error(`Invalid environment configuration:\n${details}`);
   }
 
   return result.data;

@@ -46,7 +46,7 @@ export function createNodeTokenGuard(config: DaemonConfig) {
       void reply.code(401).send({
         error: {
           code: 'unauthorized',
-          message: 'Jeton de node absent ou invalide.',
+          message: 'Node token missing or invalid.',
           requestId: request.id,
         },
       });

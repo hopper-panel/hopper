@@ -46,10 +46,10 @@ interface FieldRange {
 
 const FIELDS = {
   minute: { min: 0, max: 59, label: 'minute' },
-  hour: { min: 0, max: 23, label: 'heure' },
-  dayOfMonth: { min: 1, max: 31, label: 'jour du mois' },
-  month: { min: 1, max: 12, label: 'mois' },
-  dayOfWeek: { min: 0, max: 6, label: 'jour de la semaine' },
+  hour: { min: 0, max: 23, label: 'hour' },
+  dayOfMonth: { min: 1, max: 31, label: 'day of month' },
+  month: { min: 1, max: 12, label: 'month' },
+  dayOfWeek: { min: 0, max: 6, label: 'day of week' },
 } as const satisfies Record<keyof CronExpression, FieldRange>;
 
 /**
@@ -146,7 +146,7 @@ function toNumber(text: string, range: FieldRange, part: string): number {
   }
 
   // The day-of-week domain accepts 7, folded to 0 above.
-  const max = range.label === 'jour de la semaine' ? 7 : range.max;
+  const max = range === FIELDS.dayOfWeek ? 7 : range.max;
 
   if (value < range.min || value > max) {
     throw new CronError(

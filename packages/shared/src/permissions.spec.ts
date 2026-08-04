@@ -10,11 +10,11 @@ import {
 } from './permissions.js';
 
 describe('permissions', () => {
-  it('expose des valeurs uniques', () => {
+  it('exposes unique values', () => {
     expect(new Set(ALL_PERMISSIONS).size).toBe(ALL_PERMISSIONS.length);
   });
 
-  it('respecte le format <domaine>.<action>', () => {
+  it('follows the <domain>.<action> format', () => {
     for (const permission of ALL_PERMISSIONS) {
       expect(permission).toMatch(/^[a-z]+\.[a-z-]+$/);
     }
@@ -45,7 +45,7 @@ describe('permissions', () => {
 });
 
 describe('sanitizePermissions', () => {
-  it('conserve les permissions connues', () => {
+  it('keeps the known permissions', () => {
     expect(sanitizePermissions([PERMISSIONS.CONTROL_START, PERMISSIONS.FILE_READ])).toEqual([
       PERMISSIONS.CONTROL_START,
       PERMISSIONS.FILE_READ,

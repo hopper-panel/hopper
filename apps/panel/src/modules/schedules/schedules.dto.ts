@@ -27,7 +27,7 @@ export const scheduleTaskSchema = z
     (task) =>
       task.action !== 'POWER' || ['start', 'stop', 'restart', 'kill'].includes(task.payload),
     {
-      message: 'Action de puissance attendue : start, stop, restart ou kill.',
+      message: 'Expected a power action: start, stop, restart or kill.',
       path: ['payload'],
     },
   )
@@ -74,7 +74,7 @@ function checkCron(
   } catch (error: unknown) {
     context.addIssue({
       code: 'custom',
-      message: error instanceof Error ? error.message : 'Expression cron invalide.',
+      message: error instanceof Error ? error.message : 'Invalid cron expression.',
     });
   }
 }

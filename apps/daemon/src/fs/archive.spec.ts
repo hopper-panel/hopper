@@ -65,9 +65,9 @@ describe('archives', () => {
 
   describe('creation', () => {
     it('archives files and folders', async () => {
-      await createArchive(jail, ['server.properties', 'plugins'], 'sauvegarde.tar.gz');
+      await createArchive(jail, ['server.properties', 'plugins'], 'backup.tar.gz');
 
-      const entry = await jail.stat('sauvegarde.tar.gz');
+      const entry = await jail.stat('backup.tar.gz');
       expect(entry.sizeBytes).toBeGreaterThan(0);
     });
 
@@ -83,15 +83,15 @@ describe('archives', () => {
   });
 
   describe('extraction', () => {
-    it('extrait une archive normale', async () => {
+    it('extracts an ordinary archive', async () => {
       await buildArchive(join(volume, 'normale.tar.gz'), [
-        { name: 'plugins/nouveau.yml', content: 'ok: true' },
+        { name: 'plugins/new.yml', content: 'ok: true' },
       ]);
 
       const result = await extractArchive(jail, 'normale.tar.gz', '.');
 
       expect(result.entries).toBe(1);
-      expect(await readFile(join(volume, 'plugins', 'nouveau.yml'), 'utf8')).toBe('ok: true');
+      expect(await readFile(join(volume, 'plugins', 'new.yml'), 'utf8')).toBe('ok: true');
     });
 
     // The "zip slip": many extraction libraries write this entry where its name
@@ -135,7 +135,7 @@ describe('archives', () => {
     it('creates the declared folders', async () => {
       await buildArchive(join(volume, 'dossiers.tar.gz'), [
         { name: 'monde/region', type: 'directory' },
-        { name: 'monde/region/r.0.0.mca', content: 'donnees' },
+        { name: 'world/region/r.0.0.mca', content: 'data' },
       ]);
 
       await extractArchive(jail, 'dossiers.tar.gz', '.');
@@ -143,12 +143,12 @@ describe('archives', () => {
       expect((await jail.stat('monde/region')).directory).toBe(true);
     });
 
-    it('refuse une archive absente', async () => {
+    it('rejects a missing archive', async () => {
       await expect(extractArchive(jail, 'absente.tar.gz', '.')).rejects.toThrow();
     });
   });
 
-  describe('aller-retour', () => {
+  describe('round trip', () => {
     it('restores the content byte for byte', async () => {
       await createArchive(jail, ['plugins'], 'rt.tar.gz');
       await jail.delete(['plugins']);

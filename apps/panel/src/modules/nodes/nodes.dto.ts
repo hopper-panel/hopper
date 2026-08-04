@@ -48,7 +48,7 @@ export const createAllocationsSchema = z.object({
     .regex(/^[0-9a-fA-F.:]+$/, 'Invalid IP.'),
   /** A single port (`25565`) or a range (`25565-25585`). */
   ports: z
-    .array(z.string().regex(/^\d{1,5}(-\d{1,5})?$/, 'Format attendu : 25565 ou 25565-25585.'))
+    .array(z.string().regex(/^\d{1,5}(-\d{1,5})?$/, 'Expected format: 25565 or 25565-25585.'))
     .min(1)
     .max(50),
   alias: z.string().max(255).optional(),

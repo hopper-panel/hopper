@@ -19,7 +19,7 @@ import { registerConsoleGateway } from '../websocket/console-gateway.js';
 import { DAEMON_VERSION } from '../version.js';
 import { createNodeTokenGuard } from './auth.js';
 
-/** Routes accessibles sans jeton de node. */
+/** Routes reachable without a node token. */
 const PUBLIC_ROUTES = new Set(['/healthz']);
 
 /**
@@ -122,7 +122,7 @@ export async function buildHttpServer(
 
   app.setNotFoundHandler((request, reply) =>
     reply.code(404).send({
-      error: { code: 'not_found', message: 'Route inconnue.', requestId: request.id },
+      error: { code: 'not_found', message: 'Unknown route.', requestId: request.id },
     }),
   );
 
@@ -138,13 +138,13 @@ export async function buildHttpServer(
         code: status === 500 ? 'internal_error' : (error.code ?? 'request_error'),
         // A 500 must never return the original message: it sometimes contains
         // a file path or a fragment of configuration.
-        message: status === 500 ? 'Erreur interne du daemon.' : error.message,
+        message: status === 500 ? 'Internal daemon error.' : error.message,
         requestId: request.id,
       },
     });
   });
 
-  logger.debug({ version: DAEMON_VERSION, ssl: config.api.ssl.enabled }, 'Serveur HTTP construit');
+  logger.debug({ version: DAEMON_VERSION, ssl: config.api.ssl.enabled }, 'HTTP server built');
 
   return app;
 }

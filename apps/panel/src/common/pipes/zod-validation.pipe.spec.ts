@@ -13,8 +13,8 @@ describe('ZodValidationPipe', () => {
   const pipe = new ZodValidationPipe(schema);
 
   it('returns the parsed value, defaults applied', () => {
-    expect(pipe.transform({ name: 'Survie', port: 25565 })).toEqual({
-      name: 'Survie',
+    expect(pipe.transform({ name: 'Survival', port: 25565 })).toEqual({
+      name: 'Survival',
       port: 25565,
       description: '',
     });
@@ -23,7 +23,7 @@ describe('ZodValidationPipe', () => {
   // Without this behaviour, a misspelled field would be silently ignored and
   // the operator would believe they had changed a setting.
   it('strips the undeclared properties', () => {
-    const result = pipe.transform({ name: 'Survie', port: 25565, isAdmin: true });
+    const result = pipe.transform({ name: 'Survival', port: 25565, isAdmin: true });
     expect(result).not.toHaveProperty('isAdmin');
   });
 
@@ -43,7 +43,7 @@ describe('ZodValidationPipe', () => {
     }
   });
 
-  it('refuse une valeur non objet', () => {
+  it('rejects a non-object value', () => {
     expect(() => pipe.transform('pas un objet')).toThrow(BadRequestException);
     expect(() => pipe.transform(null)).toThrow(BadRequestException);
   });

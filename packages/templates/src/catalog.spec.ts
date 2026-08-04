@@ -3,7 +3,7 @@ import { TEMPLATE_CATALOG, catalogGroups } from './index.js';
 import { templateDefinitionSchema } from './definition.js';
 
 describe('catalogue de templates', () => {
-  it('contient des templates', () => {
+  it('holds templates', () => {
     expect(TEMPLATE_CATALOG.length).toBeGreaterThan(0);
   });
 
@@ -27,7 +27,7 @@ describe('catalogue de templates', () => {
     }
   });
 
-  describe('chaque template', () => {
+  describe('each template', () => {
     it.each(TEMPLATE_CATALOG.map((template) => [template.name, template] as const))(
       '%s is coherent',
       (_name, template) => {

@@ -48,7 +48,7 @@ export class SftpAuthService {
     const separator = request.username.lastIndexOf('.');
 
     if (separator <= 0) {
-      throw new UnauthorizedException('Identifiants incorrects.');
+      throw new UnauthorizedException('Invalid credentials.');
     }
 
     const username = request.username.slice(0, separator);
@@ -75,7 +75,7 @@ export class SftpAuthService {
         metadata: { channel: 'sftp', username: request.username },
       });
 
-      throw new UnauthorizedException('Identifiants incorrects.');
+      throw new UnauthorizedException('Invalid credentials.');
     }
 
     // The server has to belong to the node asking: a compromised node must not
@@ -92,7 +92,7 @@ export class SftpAuthService {
     });
 
     if (!server) {
-      throw new UnauthorizedException('Identifiants incorrects.');
+      throw new UnauthorizedException('Invalid credentials.');
     }
 
     if (server.status === 'SUSPENDED') {
@@ -105,7 +105,7 @@ export class SftpAuthService {
     if (!isOwner && user.role !== 'ADMIN' && !subuser) {
       // The same message as a wrong password: telling the two apart would allow
       // enumerating the servers by their UUID prefix.
-      throw new UnauthorizedException('Identifiants incorrects.');
+      throw new UnauthorizedException('Invalid credentials.');
     }
 
     const permissions =
@@ -146,7 +146,7 @@ export class SftpAuthService {
         metadata: { channel: 'sftp', reason: 'rate-limited' },
       });
 
-      throw new HttpException('Trop de tentatives SFTP.', HttpStatus.TOO_MANY_REQUESTS);
+      throw new HttpException('Too many SFTP attempts.', HttpStatus.TOO_MANY_REQUESTS);
     }
   }
 }

@@ -70,7 +70,7 @@ export function calculateCpuPercent(stats: DockerStats): number {
  */
 export function calculateMemoryBytes(stats: DockerStats): number {
   const usage = stats.memory_stats?.usage ?? 0;
-  // cgroup v2 expose `inactive_file`, cgroup v1 expose `cache`.
+  // cgroup v2 exposes `inactive_file`, cgroup v1 exposes `cache`.
   const reclaimable =
     stats.memory_stats?.stats?.inactive_file ?? stats.memory_stats?.stats?.cache ?? 0;
 

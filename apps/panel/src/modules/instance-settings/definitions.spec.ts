@@ -21,14 +21,14 @@ describe('updateInstanceSettingsSchema', () => {
     expect(parsed).not.toHaveProperty('mailEnabled');
   });
 
-  it('accepte une modification vide', () => {
+  it('accepts an empty change', () => {
     expect(updateInstanceSettingsSchema.parse({})).toEqual({});
   });
 
-  it('valide ce qu’elle accepte', () => {
+  it('validates what it accepts', () => {
     expect(updateInstanceSettingsSchema.safeParse({ panelName: '' }).success).toBe(false);
     expect(updateInstanceSettingsSchema.safeParse({ mailPort: 70_000 }).success).toBe(false);
-    expect(updateInstanceSettingsSchema.safeParse({ twoFactorRequirement: 'parfois' }).success).toBe(
+    expect(updateInstanceSettingsSchema.safeParse({ twoFactorRequirement: 'sometimes' }).success).toBe(
       false,
     );
     // A one-millisecond timeout would make every node look dead.
@@ -41,7 +41,7 @@ describe('updateInstanceSettingsSchema', () => {
 });
 
 describe('instanceSettingsSchema', () => {
-  it('remplit une instance neuve', () => {
+  it('fills a fresh instance', () => {
     expect(DEFAULT_SETTINGS.panelName).toBe('Hopper');
     expect(DEFAULT_SETTINGS.mailEnabled).toBe(false);
     expect(DEFAULT_SETTINGS.nodeTimeoutMs).toBe(5000);
@@ -69,7 +69,7 @@ describe('serialisation', () => {
   it('returns undefined on an unreadable value', () => {
     // A corrupt row has to be ignored, not fail the reading of every other
     // setting.
-    expect(deserializeSetting('mailPort', 'pas un nombre')).toBeUndefined();
+    expect(deserializeSetting('mailPort', 'not a number')).toBeUndefined();
   });
 });
 

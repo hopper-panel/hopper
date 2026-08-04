@@ -108,7 +108,7 @@ export const deleteServerRequestSchema = z.object({
 export type DeleteServerRequest = z.infer<typeof deleteServerRequestSchema>;
 
 // ---------------------------------------------------------------------------
-// Erreurs
+// Errors
 // ---------------------------------------------------------------------------
 
 /**

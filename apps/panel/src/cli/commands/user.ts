@@ -40,7 +40,7 @@ export async function createUser(context: INestApplicationContext, flags: Flags)
 
   if (!parsed.success) {
     const details = parsed.error.issues
-      .map((issue) => `${issue.path.join('.') || 'valeur'} : ${issue.message}`)
+      .map((issue) => `${issue.path.join('.') || 'value'}: ${issue.message}`)
       .join('\n  ');
 
     fatal(`Options invalides.\n  ${details}`);
@@ -49,12 +49,12 @@ export async function createUser(context: INestApplicationContext, flags: Flags)
   const user = await users.create(parsed.data, null, CLI_CONTEXT);
 
   line(`\n${bold('Account created')}`);
-  line(`  identifiant : ${user.username}`);
+  line(`  username : ${user.username}`);
   line(`  e-mail      : ${user.email}`);
   line(`  role        : ${user.role === 'ADMIN' ? 'administrator' : 'user'}`);
 
   if (generated) {
-    line(`  mot de passe : ${password}`);
+    line(`  password : ${password}`);
     line('\n  This password is not kept in the clear: write it down now.');
   }
 }
@@ -94,6 +94,6 @@ export async function resetPassword(context: INestApplicationContext, flags: Fla
   line(`  sessions closed : ${count}`);
 
   if (generated) {
-    line(`  nouveau mot de passe : ${password}`);
+    line(`  new password : ${password}`);
   }
 }

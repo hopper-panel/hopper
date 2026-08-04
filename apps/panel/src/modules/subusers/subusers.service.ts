@@ -141,7 +141,7 @@ export class SubusersService {
     const server = await this.prisma.server.findUnique({ where: { uuid } });
 
     if (!server) {
-      throw new NotFoundException('Serveur introuvable.');
+      throw new NotFoundException('Server not found.');
     }
 
     return server;
@@ -155,7 +155,7 @@ export class SubusersService {
     });
 
     if (!subuser) {
-      throw new NotFoundException('Sous-utilisateur introuvable.');
+      throw new NotFoundException('Subuser not found.');
     }
 
     return subuser;

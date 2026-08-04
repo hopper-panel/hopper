@@ -47,7 +47,7 @@ export function App() {
     return (
       <Routes>
         {/* Before signing in: its visitor has no password yet. */}
-        <Route path="/definir-mot-de-passe" element={<PasswordSetupPage />} />
+        <Route path="/set-password" element={<PasswordSetupPage />} />
         <Route path="*" element={<LoginPage />} />
       </Routes>
     );

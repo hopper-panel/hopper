@@ -68,7 +68,7 @@ export class MailService {
       });
     } catch (error: unknown) {
       throw new BadRequestException(
-        `Envoi impossible : ${error instanceof Error ? error.message : String(error)}`,
+        `Could not send: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
   }
@@ -103,11 +103,11 @@ export class MailService {
         to: input.to,
         subject: `${settings.panelName} — your account has been created`,
         text: [
-          `Bonjour ${input.username},`,
+          `Hello ${input.username},`,
           '',
           `An account has just been created for you on ${settings.panelName} (${url}).`,
           '',
-          'Choisissez votre mot de passe en suivant ce lien :',
+          'Choose your password by following this link:',
           input.setupUrl,
           '',
           `This link is valid for ${input.expiresInHours} hours and works only once.`,

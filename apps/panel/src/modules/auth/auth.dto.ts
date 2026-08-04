@@ -14,7 +14,7 @@ export const passwordSchema = z
   .max(4096);
 
 export const loginSchema = z.object({
-  /** Adresse e-mail ou nom d'utilisateur. */
+  /** Email address or username. */
   identifier: z.string().min(1).max(191),
   password: z.string().min(1).max(4096),
   /** TOTP code or recovery code, if 2FA is on. */

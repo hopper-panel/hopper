@@ -263,7 +263,7 @@ export function registerFileRoutes(
   );
 
   // -------------------------------------------------------------------------
-  // Transfert
+  // Transfer
   // -------------------------------------------------------------------------
 
   app.get(
@@ -326,7 +326,7 @@ export function registerFileRoutes(
           written += chunk.length;
 
           if (written > MAX_UPLOAD_BYTES) {
-            done(new TooLargeError('Fichier trop volumineux.'));
+            done(new TooLargeError('File too large.'));
             return;
           }
 

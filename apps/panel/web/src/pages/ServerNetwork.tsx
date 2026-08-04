@@ -35,8 +35,8 @@ export function ServerNetworkPage() {
 
   const refresh = (): void => {
     void queryClient.invalidateQueries({ queryKey: ['server', uuid, 'allocations'] });
-    // The primary port shows in the server header: without this it would
-    // afficherait encore l'ancien.
+    // The primary port shows in the server header: without this it would still
+    // show the old one.
     void queryClient.invalidateQueries({ queryKey: ['server', uuid] });
   };
 

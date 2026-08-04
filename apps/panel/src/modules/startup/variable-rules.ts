@@ -91,7 +91,7 @@ export function validateValue(value: string, raw: string): RuleViolation[] {
 
   if (empty) {
     if (rules.some((rule) => rule.name === 'required')) {
-      return [{ rule: 'required', message: 'Cette valeur est obligatoire.' }];
+      return [{ rule: 'required', message: 'This value is required.' }];
     }
 
     // An allowed empty value does not have to satisfy `integer` or `in:`:
@@ -122,22 +122,22 @@ function check(rule: ParsedRule, value: string): RuleViolation | null {
     case 'integer':
       return Number.isInteger(numeric)
         ? null
-        : { rule: 'integer', message: 'Un nombre entier est attendu.' };
+        : { rule: 'integer', message: 'A whole number is expected.' };
 
     case 'numeric':
       return Number.isFinite(numeric)
         ? null
-        : { rule: 'numeric', message: 'Un nombre est attendu.' };
+        : { rule: 'numeric', message: 'A number is expected.' };
 
     case 'boolean':
       return ['0', '1', 'true', 'false'].includes(value.toLowerCase())
         ? null
-        : { rule: 'boolean', message: 'Valeur attendue : true ou false.' };
+        : { rule: 'boolean', message: 'Expected value: true or false.' };
 
     case 'alpha_num':
       return /^[a-zA-Z0-9]+$/.test(value)
         ? null
-        : { rule: 'alpha_num', message: 'Lettres et chiffres uniquement.' };
+        : { rule: 'alpha_num', message: 'Letters and digits only.' };
 
     case 'alpha_dash':
       return /^[a-zA-Z0-9_-]+$/.test(value)
@@ -204,8 +204,8 @@ function compare(
     return null;
   }
 
-  const subject = isNumber ? 'La valeur' : 'La longueur';
-  const limit = kind === 'min' ? 'au moins' : 'au plus';
+  const subject = isNumber ? 'The value' : 'The length';
+  const limit = kind === 'min' ? 'at least' : 'at most';
 
   return { rule: kind, message: `${subject} has to be ${limit} ${bound}.` };
 }

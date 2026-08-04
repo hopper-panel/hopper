@@ -206,6 +206,6 @@ async function removeIfExists(docker: DockerClient, name: string): Promise<void>
   try {
     await docker.api.getContainer(name).remove({ force: true });
   } catch {
-    // Absent : c'est le cas normal.
+    // Absent: that is the normal case.
   }
 }

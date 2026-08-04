@@ -53,7 +53,7 @@ export class ServerPermissionGuard implements CanActivate {
     // 404 and not 403: answering "forbidden" on an existing server would allow
     // enumerating other users' servers by trial and error.
     if (!access) {
-      throw new NotFoundException('Serveur introuvable.');
+      throw new NotFoundException('Server not found.');
     }
 
     const missing = required.filter((permission) => !access.permissions.includes(permission));

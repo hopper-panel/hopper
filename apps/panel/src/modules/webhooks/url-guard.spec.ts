@@ -20,7 +20,7 @@ describe('isBlockedAddress', () => {
   });
 
   it.each(['1.1.1.1', '8.8.8.8', '51.38.34.244', '172.32.0.1', '192.169.0.1', '99.255.255.255'])(
-    'laisse passer %s',
+    'lets %s through',
     (address) => {
       expect(isBlockedAddress(address)).toBe(false);
     },
@@ -38,7 +38,7 @@ describe('isBlockedAddress', () => {
   });
 
   it('refuses what is not an address', () => {
-    expect(isBlockedAddress('pas-une-adresse')).toBe(true);
+    expect(isBlockedAddress('not-an-address')).toBe(true);
     expect(isBlockedAddress('')).toBe(true);
   });
 
@@ -117,8 +117,8 @@ describe('assertSafeWebhookUrl', () => {
     // that points inside.
     await expect(
       assertSafeWebhookUrl(
-        'https://interne.exemple/',
-        resolver({ 'interne.exemple': ['10.0.0.5'] }),
+        'https://internal.example/',
+        resolver({ 'internal.example': ['10.0.0.5'] }),
       ),
     ).rejects.toThrow(/internal network/);
   });

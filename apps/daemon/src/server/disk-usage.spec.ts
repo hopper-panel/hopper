@@ -14,8 +14,8 @@ const symlinkSupported = ((): boolean => {
   const probe = mkdtempSync(join(tmpdir(), 'hopper-symlink-probe-'));
 
   try {
-    mkdirSync(join(probe, 'cible'));
-    symlinkSync(join(probe, 'cible'), join(probe, 'lien'), 'dir');
+    mkdirSync(join(probe, 'target'));
+    symlinkSync(join(probe, 'target'), join(probe, 'link'), 'dir');
     return true;
   } catch {
     return false;
@@ -52,7 +52,7 @@ describe('directorySize', () => {
     expect(await directorySize(join(sandbox, 'never-created'))).toBe(0);
   });
 
-  it.runIf(symlinkSupported)('ne compte pas la cible d’un lien symbolique', async () => {
+  it.runIf(symlinkSupported)('does not count the target of a symbolic link', async () => {
     const dehors = join(sandbox, 'dehors');
     await mkdir(dehors);
     await writeFile(join(dehors, 'gros'), 'x'.repeat(10_000));
@@ -74,7 +74,7 @@ describe('directorySize', () => {
       const volume = join(sandbox, 'volume');
       await mkdir(join(volume, 'plugins'), { recursive: true });
       await writeFile(join(volume, 'plugins', 'essentials.jar'), 'x'.repeat(64));
-      await symlink(volume, join(volume, 'plugins', 'retour'), 'dir');
+      await symlink(volume, join(volume, 'plugins', 'back'), 'dir');
 
       expect(await directorySize(volume)).toBe(64);
     },

@@ -21,7 +21,7 @@
  * guess their neighbour's.
  */
 
-/** Longueur maximale d'un nom de base MySQL. */
+/** Maximum length of a MySQL database name. */
 const MAX_DATABASE_NAME = 64;
 
 /**
@@ -51,7 +51,7 @@ export function assertSafeName(name: string): string {
   const trimmed = name.trim();
 
   if (trimmed === '') {
-    throw new IdentifierError('Le nom de la base est obligatoire.');
+    throw new IdentifierError('The database name is required.');
   }
 
   if (trimmed.length > 32) {
@@ -83,7 +83,7 @@ export function quoteIdentifier(identifier: string): string {
   return `\`${identifier.replace(/`/g, '``')}\``;
 }
 
-/** Nom complet d'une base : `s<serveur>_<nom>`. */
+/** Full name of a database: `s<server>_<name>`. */
 export function databaseNameFor(serverId: number, name: string): string {
   const full = `s${serverId}_${assertSafeName(name)}`;
 
@@ -109,7 +109,7 @@ export function userNameFor(serverId: number, random: string): string {
   }
 
   if (!SAFE_IDENTIFIER.test(full)) {
-    throw new IdentifierError("Nom d'utilisateur invalide.");
+    throw new IdentifierError('Invalid username.');
   }
 
   return full;
@@ -131,7 +131,7 @@ export function assertSafeHostPattern(remote: string): string {
   }
 
   if (trimmed.length > 60) {
-    throw new IdentifierError('Le motif de connexion est trop long.');
+    throw new IdentifierError('The connection pattern is too long.');
   }
 
   // Letters, digits, dot, hyphen, underscore, colon (IPv6) and MySQL's `%` and

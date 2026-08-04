@@ -38,7 +38,7 @@ services:
       retries: 5
 
   # Local S3 bucket, to exercise the backup driver without an external account.
-  # Console web sur http://localhost:9001 (hopperadmin / hopperadmin).
+  # Web console at http://localhost:9001 (hopperadmin / hopperadmin).
   minio:
     image: minio/minio:latest
     container_name: hopper-dev-minio

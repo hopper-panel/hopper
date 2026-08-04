@@ -519,6 +519,7 @@ export const ru: Partial<Messages> = {
   'files.compress': 'Сжать',
   'files.compressing': 'Сжатие…',
   'files.deleteSelection': 'Безвозвратно удалить выбранное ({count})?',
+  'files.actionsFor': 'Действия с {name}',
   'files.rename': 'Переименовать',
   'files.renamePrompt': 'Новое имя',
   'files.repath': 'Переместить',
@@ -693,6 +694,8 @@ export const ru: Partial<Messages> = {
   'adminOverview.nodeHealth': 'Состояние нод',
   'adminOverview.reachable': 'доступна',
   'adminOverview.unreachable': 'недоступна',
+  'adminOverview.containersRunning': 'контейнеров запущено: {count}',
+  'adminOverview.serverCount': 'серверов: {count}',
   'adminTemplates.title': 'Шаблоны',
   'adminTemplates.subtitle':
     'Что сервер устанавливает и запускает: образ Docker, скрипт установки, переменные.',

@@ -12,9 +12,9 @@ export function PageHeader({
   description,
   action,
 }: {
-  /** Texte, ou contenu riche — un fil d'Ariane par exemple. */
+  /** Text, or rich content — a breadcrumb for instance. */
   title: ReactNode;
-  /** Texte, ou contenu riche — un fil d'Ariane cliquable par exemple. */
+  /** Text, or rich content — a clickable breadcrumb for instance. */
   description?: ReactNode;
   action?: ReactNode;
 }) {

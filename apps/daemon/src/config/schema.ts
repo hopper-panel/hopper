@@ -24,7 +24,7 @@ const apiSchema = z.object({
   host: z.string().default('0.0.0.0'),
   port: z.number().int().min(1).max(65535).default(8443),
   ssl: sslSchema.prefault({}),
-  /** Taille maximale d'un envoi de fichier, en octets. */
+  /** Maximum size of a file upload, in bytes. */
   uploadLimitBytes: z
     .number()
     .int()
@@ -38,7 +38,7 @@ const apiSchema = z.object({
 });
 
 const panelSchema = z.object({
-  /** URL publique du panel, ex. `https://panel.example.com`. */
+  /** Public URL of the panel, e.g. `https://panel.example.com`. */
   url: z.url(),
   /**
    * Secret shared with the panel, used to verify the signature of console JWTs

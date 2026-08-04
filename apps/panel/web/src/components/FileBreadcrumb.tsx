@@ -27,7 +27,7 @@ export function FileBreadcrumb({
   const segments = directory.split('/').filter(Boolean);
 
   return (
-    <nav aria-label="Chemin" className="flex flex-wrap items-center gap-1.5 font-mono text-sm">
+    <nav aria-label="Path" className="flex flex-wrap items-center gap-1.5 font-mono text-sm">
       <Separator />
       <span className="text-content-subtle">home</span>
       <Separator />

@@ -85,7 +85,7 @@ export class DatabasesService {
     if (!host) {
       throw new ConflictException(
         'No database server is declared for this node. ' +
-          'Un administrateur doit en ajouter un.',
+          'An administrator has to add one.',
       );
     }
 
@@ -145,7 +145,7 @@ export class DatabasesService {
       // The database exists on the SQL server but not in the panel: without
       // this removal it would become invisible and nobody could use or delete
       // it any more.
-      this.logger.error(`Enregistrement de ${database} impossible, retrait : ${String(error)}`);
+      this.logger.error(`Could not record ${database}, removing it: ${String(error)}`);
 
       await this.mysql
         .dropDatabase(this.credentialsOf(host), { database, username, remote })
@@ -253,7 +253,7 @@ export class DatabasesService {
     const server = await this.prisma.server.findUnique({ where: { uuid } });
 
     if (!server) {
-      throw new NotFoundException('Serveur introuvable.');
+      throw new NotFoundException('Server not found.');
     }
 
     return server;

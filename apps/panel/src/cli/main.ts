@@ -57,14 +57,14 @@ const COMMANDS: Command[] = [
   {
     name: 'node:token',
     summary: 'Renews a node token and returns its daemon.yml.',
-    usage: 'hopper node:token --node <uuid ou nom> [--output /etc/hopper/daemon.yml]',
+    usage: 'hopper node:token --node <uuid or name> [--output /etc/hopper/daemon.yml]',
     run: (context, flags) => nodeToken(context, flags),
   },
 ];
 
 function usage(): void {
   line(`Hopper ${PANEL_VERSION}\n`);
-  line('Usage : hopper <commande> [options]\n');
+  line('Usage: hopper <command> [options]\n');
 
   for (const command of COMMANDS) {
     line(`  ${command.name.padEnd(16)} ${command.summary}`);
@@ -74,8 +74,8 @@ function usage(): void {
     }
   }
 
-  line('\n  version          Affiche la version du panel.');
-  line('  help             Affiche ce message.\n');
+  line('\n  version          Prints the panel version.');
+  line('  help             Prints this message.\n');
 }
 
 async function main(): Promise<void> {
@@ -95,7 +95,7 @@ async function main(): Promise<void> {
 
   if (!command) {
     usage();
-    fatal(`Commande inconnue : ${name}`);
+    fatal(`Unknown command: ${name}`);
   }
 
   // The context loads the configuration, so `.env`: running the command from

@@ -233,7 +233,7 @@ export function ApiKeysCard() {
                   {key.lastUsedAt === null
                     ? t('apiKeys.neverUsed')
                     : t('apiKeys.lastUsed', { date: formatDate(key.lastUsedAt, locale) })}
-                  {key.allowedIps.length > 0 ? ` · depuis ${key.allowedIps.join(', ')}` : null}
+                  {key.allowedIps.length > 0 ? ` · from ${key.allowedIps.join(', ')}` : null}
                   {key.expiresAt === null ? null : ` · expire le ${formatDate(key.expiresAt)}`}
                 </p>
               </div>

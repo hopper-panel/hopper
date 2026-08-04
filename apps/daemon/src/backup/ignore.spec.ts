@@ -10,7 +10,7 @@ describe('IgnoreList', () => {
   });
 
   it('ignores comments and empty lines', () => {
-    const list = new IgnoreList(['# les journaux', '', '   ', '*.log']);
+    const list = new IgnoreList(['# the logs', '', '   ', '*.log']);
 
     expect(list.ignores('latest.log')).toBe(true);
     expect(list.ignores('server.properties')).toBe(false);

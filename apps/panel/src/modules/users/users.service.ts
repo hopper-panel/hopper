@@ -93,7 +93,7 @@ export class UsersService {
     const user = await this.prisma.user.findUnique({ where: { uuid } });
 
     if (!user) {
-      throw new NotFoundException('Utilisateur introuvable.');
+      throw new NotFoundException('User not found.');
     }
 
     return toUserView(user);
@@ -161,7 +161,7 @@ export class UsersService {
     await this.mail.sendWelcome({
       to: user.email,
       username: user.username,
-      setupUrl: `${this.appUrl}/definir-mot-de-passe?token=${encodeURIComponent(token)}`,
+      setupUrl: `${this.appUrl}/set-password?token=${encodeURIComponent(token)}`,
       expiresInHours: INVITATION_TTL_HOURS,
     });
 
@@ -176,7 +176,7 @@ export class UsersService {
     });
 
     if (!user) {
-      throw new NotFoundException('Utilisateur introuvable.');
+      throw new NotFoundException('User not found.');
     }
 
     return { sent: await this.sendInvitation(user) };
@@ -191,7 +191,7 @@ export class UsersService {
     const existing = await this.prisma.user.findUnique({ where: { uuid } });
 
     if (!existing) {
-      throw new NotFoundException('Utilisateur introuvable.');
+      throw new NotFoundException('User not found.');
     }
 
     if (dto.role === 'USER' && existing.role === 'ADMIN') {
@@ -199,7 +199,7 @@ export class UsersService {
     }
 
     if (dto.suspended === true && existing.role === 'ADMIN') {
-      await this.assertNotLastAdmin(existing.id, 'suspendre');
+      await this.assertNotLastAdmin(existing.id, 'suspend');
     }
 
     await this.assertAvailable(dto.email, dto.username, existing.id);
@@ -245,7 +245,7 @@ export class UsersService {
     });
 
     if (!user) {
-      throw new NotFoundException('Utilisateur introuvable.');
+      throw new NotFoundException('User not found.');
     }
 
     // The schema already protects the relation (`onDelete: Restrict`), but the
@@ -257,7 +257,7 @@ export class UsersService {
     }
 
     if (user.role === 'ADMIN') {
-      await this.assertNotLastAdmin(user.id, 'supprimer');
+      await this.assertNotLastAdmin(user.id, 'delete');
     }
 
     await this.prisma.user.delete({ where: { id: user.id } });
