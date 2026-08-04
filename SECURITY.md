@@ -1,71 +1,70 @@
-# Politique de sécurité
+# Security policy
 
-Hopper exécute du code arbitraire (les serveurs Minecraft et leurs plugins), expose un système de
-fichiers via HTTP et SFTP, et pilote le démon Docker de la machine hôte. Une faille ici ne se limite
-pas à un serveur de jeu : elle peut donner un accès root à l'hôte.
+Hopper runs arbitrary code (Minecraft servers and their plugins), exposes a filesystem over HTTP and
+SFTP, and drives the host machine's Docker daemon. A flaw here is not limited to one game server: it
+can give root access to the host.
 
-## Signaler une vulnérabilité
+## Reporting a vulnerability
 
-**N'ouvrez pas d'issue publique.**
+**Do not open a public issue.**
 
-Utilisez l'onglet **Security → Report a vulnerability** du dépôt GitHub (GitHub Security Advisories),
-ou écrivez à `security@hopperpanel.io`.
+Use the repository's **Security → Report a vulnerability** tab (GitHub Security Advisories), or write
+to `security@hopperpanel.io`.
 
-Merci d'inclure :
+Please include:
 
-- une description de la faille et de son impact ;
-- les étapes de reproduction, ou un proof of concept ;
-- la version de Hopper, l'OS et la version de Docker concernés.
+- a description of the flaw and its impact;
+- the steps to reproduce it, or a proof of concept;
+- the Hopper version, the OS and the Docker version concerned.
 
-Engagements :
+Our commitments:
 
-|                                    |                                            |
-| ---------------------------------- | ------------------------------------------ |
-| Accusé de réception                | sous 48 h                                  |
-| Première évaluation                | sous 7 jours                               |
-| Correctif pour une faille critique | sous 14 jours                              |
-| Divulgation                        | coordonnée, après publication du correctif |
+|                             |                                       |
+| --------------------------- | ------------------------------------- |
+| Acknowledgement             | within 48 hours                       |
+| First assessment            | within 7 days                         |
+| Fix for a critical flaw     | within 14 days                        |
+| Disclosure                  | coordinated, after the fix is released |
 
-Les personnes qui signalent une faille sont créditées dans l'avis de sécurité, sauf demande contraire.
+Whoever reports a flaw is credited in the security advisory, unless they ask otherwise.
 
-## Périmètre
+## Scope
 
-Sont dans le périmètre :
+In scope:
 
-- **Évasion de chemin** dans le gestionnaire de fichiers ou le SFTP (traversée, symlinks, zip-slip) ;
-- **Évasion de conteneur** ou élévation de privilèges vers l'hôte ;
-- **Contournement d'authentification** ou d'autorisation, y compris entre sous-utilisateurs ;
-- **Injection de commandes** via les variables de démarrage ou les templates ;
-- **Forge de jeton** : jetons de node, JWT de console, URL de téléchargement signées ;
-- **SSRF** depuis le panel vers un daemon ou une adresse interne ;
-- Exposition de secrets dans les logs, les réponses d'API ou l'interface.
+- **Path escape** in the file manager or over SFTP (traversal, symlinks, zip slip);
+- **Container escape** or privilege escalation towards the host;
+- **Authentication or authorisation bypass**, including between subusers;
+- **Command injection** through startup variables or templates;
+- **Token forgery**: node tokens, console JWTs, signed download URLs;
+- **SSRF** from the panel towards a daemon or an internal address;
+- Exposure of secrets in the logs, the API responses or the interface.
 
-Sont hors périmètre :
+Out of scope:
 
-- les problèmes qui exigent un accès administrateur déjà légitime au panel ;
-- l'auto-DoS par un opérateur sur sa propre instance ;
-- les vulnérabilités des serveurs Minecraft ou des plugins eux-mêmes ;
-- les mauvaises configurations documentées comme telles (ex. exposer le daemon en HTTP nu).
+- issues that require administrator access to the panel one already legitimately holds;
+- an operator denying service to their own instance;
+- vulnerabilities in the Minecraft servers or the plugins themselves;
+- misconfigurations documented as such (for instance exposing the daemon over plain HTTP).
 
-## Modèle de menace
+## Threat model
 
-Hopper part du principe que **l'utilisateur d'un serveur est hostile**. Un opérateur de serveur peut
-uploader n'importe quel plugin, exécuter n'importe quelle commande dans sa console et écrire
-n'importe quel fichier dans son volume. Les garde-fous suivants ne sont donc pas négociables :
+Hopper assumes **a server's user is hostile**. A server operator can upload any plugin, run any
+command in their console and write any file into their volume. The following guardrails are
+therefore not negotiable:
 
-1. **Jail de chemins.** Toute opération sur les fichiers passe par une abstraction unique qui résout
-   le chemin réel et refuse tout ce qui sort du volume du serveur, symlinks compris.
-2. **Durcissement des conteneurs.** Jamais de `--privileged`, capabilities droppées,
-   `no-new-privileges`, limite de PID, et le socket Docker n'est jamais monté dans un conteneur de
-   serveur.
-3. **Jetons en deux parties.** Les jetons de node et les clés d'API sont stockés hashés ; seul
-   l'identifiant public est en clair, et ils sont révocables.
-4. **JWT de console de courte durée**, portant les permissions, vérifié par le daemon à chaque
-   connexion.
-5. **Pas de shell.** Les commandes de démarrage sont des gabarits à variables validées, jamais une
-   concaténation de chaînes passée à un interpréteur.
+1. **Path jail.** Every file operation goes through a single abstraction that resolves the real path
+   and refuses anything leaving the server's volume, symlinks included.
+2. **Container hardening.** Never `--privileged`, capabilities dropped, `no-new-privileges`, a PID
+   limit, and the Docker socket is never mounted into a server container.
+3. **Two-part tokens.** Node tokens and API keys are stored hashed; only the public identifier is in
+   the clear, and they are revocable.
+4. **Short-lived console JWTs**, carrying the permissions, verified by the daemon on every
+   connection.
+5. **No shell.** Startup commands are templates with validated variables, never a concatenation of
+   strings handed to an interpreter.
 
-## Versions supportées
+## Supported versions
 
-Le projet étant en pré-alpha, seule la branche `main` reçoit des correctifs de sécurité. Cette
-section sera mise à jour à la sortie de la 1.0.
+While the project is pre-alpha, only the `main` branch receives security fixes. This section will be
+updated when 1.0 ships.

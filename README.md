@@ -2,10 +2,10 @@
 
 # 🪣 Hopper Panel
 
-**Un panel open-source pour héberger vos serveurs Minecraft, chez vous.**
+**An open-source panel for hosting your Minecraft servers, on your own machine.**
 
-Console live, gestionnaire de fichiers, SFTP, backups, tâches planifiées — chaque serveur isolé
-dans son propre conteneur Docker.
+Live console, file manager, SFTP, backups, scheduled tasks — every server isolated in its own
+Docker container.
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](./LICENSE)
 [![Node](https://img.shields.io/badge/node-%3E%3D22-brightgreen.svg)](https://nodejs.org)
@@ -14,8 +14,8 @@ dans son propre conteneur Docker.
 
 ---
 
-> ⚠️ **Statut : en développement actif, pré-alpha.** Rien n'est encore utilisable en production.
-> Suivez la [feuille de route](#feuille-de-route) pour savoir où en est le projet.
+> ⚠️ **Status: under active development, pre-alpha.** Nothing here is ready for production yet.
+> Follow the [roadmap](#roadmap) to see where the project stands.
 
 ## Installation
 
@@ -25,143 +25,145 @@ cd hopper
 sudo bash install/install.sh
 ```
 
-Debian 12+, Ubuntu 22.04+, Rocky ou Alma 9+. Le script pose quatre questions — domaine, nginx ou
-apache, certificat, compte administrateur — puis installe tout le reste et déclare le node local.
-Voir la [documentation d'installation](./docs/installation.md).
+Debian 12+, Ubuntu 22.04+, Rocky or Alma 9+. The script asks four questions — domain, nginx or
+apache, certificate, administrator account — then installs everything else and declares the local
+node. See the [installation documentation](./docs/installation.md).
 
-## Pourquoi Hopper ?
+## Why Hopper?
 
-Les panels existants forcent un compromis désagréable :
+The existing panels force an unpleasant trade-off:
 
-- **Pterodactyl** est excellent mais fragmenté — PHP/Laravel côté panel, Go côté daemon, trois dépôts,
-  une installation manuelle longue et une pile de dépendances système.
-- **PufferPanel** est simple à installer mais lance les serveurs en processus nus : pas de vraie
-  isolation, pas de limites de ressources fiables, pas de backups sérieux.
+- **Pterodactyl** is excellent but fragmented — PHP/Laravel for the panel, Go for the daemon, three
+  repositories, a long manual installation and a pile of system dependencies.
+- **PufferPanel** is simple to install but runs servers as bare processes: no real isolation, no
+  reliable resource limits, no serious backups.
 
-Hopper vise le milieu :
+Hopper aims for the middle:
 
-- **Un seul langage.** TypeScript du daemon jusqu'au front. Un `git clone`, un `pnpm install`.
-- **Un installeur qui fait le travail.** Il vous demande nginx ou apache, votre domaine, et il pose
-  le vhost, le certificat, les services systemd et la base de données.
-- **Une isolation réelle.** Un conteneur Docker par serveur, limites CPU/RAM/disque appliquées par le
-  noyau, capabilities droppées, jamais de `--privileged`.
+- **One language.** TypeScript from the daemon to the front end. One `git clone`, one `pnpm install`.
+- **An installer that does the work.** It asks for nginx or apache and your domain, then lays down
+  the vhost, the certificate, the systemd services and the database.
+- **Real isolation.** One Docker container per server, CPU/RAM/disk limits enforced by the kernel,
+  capabilities dropped, never `--privileged`.
 
-## Fonctionnalités
+## Features
 
-|                                 |                                                                     |
-| ------------------------------- | ------------------------------------------------------------------- |
-| 🖥️ **Console live**             | WebSocket direct vers le daemon, historique, envoi de commandes     |
-| 📊 **Ressources**               | CPU, RAM, disque et réseau en temps réel                            |
-| 📦 **Installation en un clic**  | Paper, Purpur, Vanilla, Fabric, NeoForge, Velocity, BungeeCord      |
-| 🥚 **Import d'eggs**            | Réutilisez les centaines d'eggs Pterodactyl existants               |
-| 📁 **Gestionnaire de fichiers** | Édition en ligne, upload, archives — avec un jail de chemins strict |
-| 🔌 **SFTP intégré**             | Connexion avec vos identifiants du panel, permissions respectées    |
-| 💾 **Backups**                  | Locaux ou S3 (MinIO, Backblaze, Wasabi), restauration en un clic    |
-| ⏰ **Planificateur**            | Restart quotidien, backup nocturne, commandes programmées           |
-| 👥 **Sous-utilisateurs**        | Partagez un serveur avec votre staff, permission par permission     |
-| 🔔 **Notifications**            | Discord ou webhook signé : serveur tombé, sauvegarde terminée       |
-| 🔑 **Clés d'API**               | Pilotez vos serveurs depuis un script, avec des portées             |
-| 🖧 **Multi-machines**            | Un panel, autant de nodes que nécessaire                            |
+|                              |                                                                    |
+| ---------------------------- | ------------------------------------------------------------------ |
+| 🖥️ **Live console**          | WebSocket straight to the daemon, history, command input           |
+| 📊 **Resources**             | CPU, RAM, disk and network in real time                            |
+| 📦 **One-click install**     | Paper, Purpur, Vanilla, Fabric, NeoForge, Velocity, BungeeCord     |
+| 🥚 **Egg import**            | Reuse the hundreds of existing Pterodactyl eggs                    |
+| 📁 **File manager**          | In-browser editing, upload, archives — behind a strict path jail   |
+| 🔌 **Built-in SFTP**         | Sign in with your panel credentials, permissions honoured          |
+| 💾 **Backups**               | Local or S3 (MinIO, Backblaze, Wasabi), one-click restore          |
+| ⏰ **Scheduler**             | Daily restart, nightly backup, scheduled commands                  |
+| 👥 **Subusers**              | Share a server with your staff, permission by permission           |
+| 🔔 **Notifications**         | Discord or a signed webhook: server down, backup finished          |
+| 🔑 **API keys**              | Drive your servers from a script, with scopes                      |
+| 🌍 **Five languages**        | English, French, Spanish, German, Russian                          |
+| 🖧 **Multi-machine**          | One panel, as many nodes as you need                               |
 
 ## Architecture
 
 ```
- Navigateur
+ Browser
    │  HTTPS (REST)                    ┌──────────────────────────────┐
    ├─────────────────────────────────▶│  PANEL (NestJS + React)      │
    │                                  │  :8080  PostgreSQL + Redis   │
    │  WSS console/stats               └──────────────┬───────────────┘
-   │  (JWT court signé par le panel)                 │ REST (token de node)
+   │  (short JWT signed by the panel)                │ REST (node token)
    │                                                 ▼
    └────────────────────────────────▶┌──────────────────────────────┐
                                      │  HOPPERD (Node/TS)  :8443    │
                                      │  SFTP :2022                  │
-                                     │  dockerode ──▶ conteneurs    │
+                                     │  dockerode ──▶ containers    │
                                      └──────────────────────────────┘
                                             /var/lib/hopper/volumes/<uuid>
 ```
 
-Deux processus, deux rôles nets :
+Two processes, two clear roles:
 
-- **Le panel** détient la base de données, l'authentification et l'interface web.
-- **Le daemon (`hopperd`)** tourne sur chaque machine hôte, pilote Docker et sert les fichiers.
-  Il n'a aucun accès à la base : il reçoit une configuration de serveur en JSON et rappelle le panel
-  sur `/api/remote/*`.
+- **The panel** holds the database, the authentication and the web interface.
+- **The daemon (`hopperd`)** runs on each host machine, drives Docker and serves the files. It has
+  no access to the database: it receives a server configuration as JSON and calls the panel back on
+  `/api/remote/*`.
 
-La console **ne transite pas par le panel** : le navigateur ouvre un WebSocket directement vers le
-daemon avec un JWT de courte durée signé par le panel. Le panel ne devient jamais un goulot
-d'étranglement, même avec cinquante consoles ouvertes.
+The console **does not travel through the panel**: the browser opens a WebSocket straight to the
+daemon with a short-lived JWT signed by the panel. The panel never becomes a bottleneck, even with
+fifty consoles open.
 
-## Structure du dépôt
+## Repository layout
 
 ```
 hopper/
 ├── apps/
-│   ├── panel/            # API NestJS + front React (apps/panel/web)
-│   └── daemon/           # hopperd — agent Docker sur chaque machine
+│   ├── panel/            # NestJS API + React front (apps/panel/web)
+│   └── daemon/           # hopperd — the Docker agent on each machine
 ├── packages/
-│   ├── shared/           # contrat Zod panel↔daemon, permissions
-│   ├── templates/        # templates de serveurs + import d'eggs Pterodactyl
-│   └── config/           # ESLint / TypeScript partagés
-├── docker/               # images Java, compose de dev
-├── install/              # install.sh, units systemd, vhosts nginx & apache
-└── docs/                 # installation, mise à jour, CLI, templates, sécurité
+│   ├── shared/           # Zod panel↔daemon contract, permissions
+│   ├── templates/        # server templates + Pterodactyl egg import
+│   └── config/           # shared ESLint / TypeScript
+├── docker/               # Java images, dev compose
+├── install/              # install.sh, systemd units, nginx & apache vhosts
+└── docs/                 # installation, updating, CLI, templates, security
 ```
 
-## Développement
+## Development
 
-Prérequis : **Node 22+**, **pnpm 10+**, **Docker**.
+Requirements: **Node 22+**, **pnpm 10+**, **Docker**.
 
 ```bash
 git clone https://github.com/hopper-panel/hopper.git
 cd hopper
 pnpm install
 
-# Postgres + Redis en local
+# Postgres + Redis locally
 pnpm dev:services
 
 cp apps/panel/.env.example apps/panel/.env
-# Remplacez APP_SECRET par une valeur aléatoire : openssl rand -base64 48
+# Replace APP_SECRET with a random value: openssl rand -base64 48
 
 pnpm --filter @hopper/panel db:migrate
-pnpm --filter @hopper/panel db:seed   # affiche le mot de passe admin généré
+pnpm --filter @hopper/panel db:seed   # prints the generated admin password
 
 pnpm dev
 ```
 
-| Service          | Adresse                                           |
+| Service          | Address                                           |
 | ---------------- | ------------------------------------------------- |
 | Interface (Vite) | <http://localhost:5173>                           |
-| API du panel     | <http://localhost:8080>                           |
+| Panel API        | <http://localhost:8080>                           |
 | Daemon           | <http://localhost:8443>                           |
-| Console MinIO    | <http://localhost:9001> (hopperadmin/hopperadmin) |
+| MinIO console    | <http://localhost:9001> (hopperadmin/hopperadmin) |
 
-L'interface appelle l'API en chemin relatif : Vite fait suivre `/api` vers le panel, ce qui évite
-toute configuration CORS côté client en développement.
+The interface calls the API on a relative path: Vite forwards `/api` to the panel, which avoids any
+client-side CORS configuration in development.
 
-La ligne de commande d'administration s'obtient avec `pnpm --filter @hopper/panel cli <commande>`
-en développement, et `hopper <commande>` sur une machine installée — voir [docs/cli.md](./docs/cli.md).
+The administration command line is available as `pnpm --filter @hopper/panel cli <command>` in
+development, and `hopper <command>` on an installed machine — see [docs/cli.md](./docs/cli.md).
 
-Voir [CONTRIBUTING.md](./CONTRIBUTING.md) pour les conventions de commit, les tests et le processus
-de revue.
+See [CONTRIBUTING.md](./CONTRIBUTING.md) for the commit conventions, the tests and the review
+process.
 
-## Feuille de route
+## Roadmap
 
-- [x] **Phase 0** — Fondations du monorepo, contrat partagé, squelettes panel & daemon
-- [x] **Phase 1** — Schéma de données, authentification, 2FA, RBAC, shell de l'interface
-- [x] **Phase 2** — Runtime Docker, console live, statistiques _(le jalon qui valide tout)_
-- [x] **Phase 3** — Templates de serveurs et installation automatique
-- [x] **Phase 4** — Gestionnaire de fichiers et SFTP
-- [x] **Phase 5** — Backups, planificateur, sous-utilisateurs
-- [x] **Phase 6** — Installeur système (nginx/apache), CLI `hopper`, documentation
-- [ ] **Phase 7** — Bases MySQL par serveur _(faites)_, transfert entre nodes, passkeys, i18n
+- [x] **Phase 0** — Monorepo foundations, shared contract, panel & daemon skeletons
+- [x] **Phase 1** — Data schema, authentication, 2FA, RBAC, interface shell
+- [x] **Phase 2** — Docker runtime, live console, statistics _(the milestone that validates it all)_
+- [x] **Phase 3** — Server templates and automatic installation
+- [x] **Phase 4** — File manager and SFTP
+- [x] **Phase 5** — Backups, scheduler, subusers
+- [x] **Phase 6** — System installer (nginx/apache), `hopper` CLI, documentation
+- [ ] **Phase 7** — Per-server MySQL databases _(done)_, interface in five languages _(done)_,
+      server transfer between nodes, disk quotas, passkeys, plugin installer
 
-## Sécurité
+## Security
 
-Hopper exécute du code arbitraire et manipule des systèmes de fichiers utilisateur. Merci de **ne pas
-ouvrir d'issue publique** pour une vulnérabilité — voir [SECURITY.md](./SECURITY.md).
+Hopper runs arbitrary code and handles user filesystems. Please **do not open a public issue** for a
+vulnerability — see [SECURITY.md](./SECURITY.md).
 
 ## Licence
 
-[GNU AGPL v3](./LICENSE) — vous pouvez utiliser, modifier et héberger Hopper librement, mais si vous
-proposez une version modifiée comme service, vous devez en publier le code source.
+[GNU AGPL v3](./LICENSE) — you may use, modify and host Hopper freely, but if you offer a modified
+version as a service, you have to publish its source code.
