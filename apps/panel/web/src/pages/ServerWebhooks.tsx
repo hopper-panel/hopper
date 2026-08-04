@@ -7,46 +7,51 @@ import { PageHeader } from '../components/PageHeader';
 import { Alert, Badge, Button, Card, EmptyState, Field, Input, Spinner } from '../components/ui';
 import { ApiError, api } from '../lib/api';
 import { formatDate } from '../lib/format';
+import { useTranslation, type MessageKey } from '../i18n';
 import { useServerContext } from '../lib/server-context';
 
 /**
- * Événements souscriptibles.
+ * Subscribable events.
  *
- * Recopiés côté interface plutôt que lus depuis l'API : leurs libellés doivent
- * être traduits, et une liste rendue par le serveur obligerait à faire voyager
- * du texte d'interface dans une réponse JSON.
+ * Kept on the interface side rather than read from the API: their labels have
+ * to be translated, and a list rendered by the server would ship interface text
+ * inside a JSON response.
  */
-const EVENTS: { value: string; label: string; description: string }[] = [
+const EVENTS: { value: string; label: MessageKey; description: MessageKey }[] = [
   {
     value: 'server.started',
-    label: 'Serveur démarré',
-    description: 'Le serveur accepte les joueurs.',
+    label: 'webhooks.eventServerStarted',
+    description: 'webhooks.eventServerStartedHint',
   },
   {
     value: 'server.stopped',
-    label: 'Serveur arrêté',
-    description: 'Arrêt demandé depuis le panel ou la console.',
+    label: 'webhooks.eventServerStopped',
+    description: 'webhooks.eventServerStoppedHint',
   },
   {
     value: 'server.crashed',
-    label: 'Serveur arrêté seul',
-    description: 'Plantage, ou arrêt par le noyau faute de mémoire.',
+    label: 'webhooks.eventServerCrashed',
+    description: 'webhooks.eventServerCrashedHint',
   },
-  { value: 'backup.completed', label: 'Sauvegarde terminée', description: 'L’archive est prête.' },
+  {
+    value: 'backup.completed',
+    label: 'webhooks.eventBackupCompleted',
+    description: 'webhooks.eventBackupCompletedHint',
+  },
   {
     value: 'backup.failed',
-    label: 'Sauvegarde échouée',
-    description: 'L’archive n’a pas pu être écrite.',
+    label: 'webhooks.eventBackupFailed',
+    description: 'webhooks.eventBackupFailedHint',
   },
   {
     value: 'install.completed',
-    label: 'Installation terminée',
-    description: 'Le serveur est prêt à démarrer.',
+    label: 'webhooks.eventInstallCompleted',
+    description: 'webhooks.eventInstallCompletedHint',
   },
   {
     value: 'install.failed',
-    label: 'Installation échouée',
-    description: 'Le script d’installation a échoué.',
+    label: 'webhooks.eventInstallFailed',
+    description: 'webhooks.eventInstallFailedHint',
   },
 ];
 
@@ -67,6 +72,7 @@ const EMPTY = { url: '', description: '', events: ['server.crashed'] as string[]
 
 export function ServerWebhooksPage() {
   const { server, can } = useServerContext();
+  const { t, locale } = useTranslation();
   const queryClient = useQueryClient();
 
   const [draft, setDraft] = useState<typeof EMPTY | null>(null);
@@ -85,7 +91,7 @@ export function ServerWebhooksPage() {
 
   const fail = (error: unknown): void => {
     setNotice(null);
-    setFailure(error instanceof ApiError ? error.message : 'Opération impossible.');
+    setFailure(error instanceof ApiError ? error.message : t('common.operationFailed'));
   };
 
   const create = useMutation({
@@ -98,7 +104,7 @@ export function ServerWebhooksPage() {
     onSuccess: () => {
       setDraft(null);
       setFailure(null);
-      setNotice('Notification enregistrée. Envoyez un message de test pour la vérifier.');
+      setNotice(t('webhooks.saved'));
       refresh();
     },
     onError: fail,
@@ -120,8 +126,8 @@ export function ServerWebhooksPage() {
         `/api/servers/${server.uuid}/webhooks/${uuid}/test`,
       ),
     onSuccess: (result) => {
-      setFailure(result.delivered ? null : (result.error ?? 'Le destinataire n’a pas répondu.'));
-      setNotice(result.delivered ? 'Message de test remis au destinataire.' : null);
+      setFailure(result.delivered ? null : (result.error ?? t('webhooks.testFailed')));
+      setNotice(result.delivered ? t('webhooks.tested') : null);
       refresh();
     },
     onError: fail,
@@ -147,7 +153,7 @@ export function ServerWebhooksPage() {
   });
 
   if (webhooks.isLoading) {
-    return <Spinner label="Chargement des notifications…" />;
+    return <Spinner label={t('common.loading')} />;
   }
 
   const list = webhooks.data?.data ?? [];
@@ -155,12 +161,12 @@ export function ServerWebhooksPage() {
   return (
     <>
       <PageHeader
-        title="Notifications"
-        description="Adresses prévenues des événements de ce serveur. Une adresse Discord reçoit un message mis en forme."
+        title={t('webhooks.title')}
+        description={t('webhooks.subtitle')}
         action={
           can(PERMISSIONS.WEBHOOK_CREATE) ? (
             <Button variant="primary" onClick={() => setDraft({ ...EMPTY })}>
-              Ajouter une adresse
+              {t('webhooks.add')}
             </Button>
           ) : null
         }
@@ -179,10 +185,7 @@ export function ServerWebhooksPage() {
       ) : null}
 
       {list.length === 0 ? (
-        <EmptyState
-          title="Aucune notification"
-          description="Collez l’adresse d’un webhook Discord pour être prévenu quand ce serveur s’arrête tout seul."
-        />
+        <EmptyState title={t('webhooks.empty')} description={t('webhooks.emptyHint')} />
       ) : (
         <div className="flex flex-col gap-2">
           {list.map((webhook) => (
@@ -194,9 +197,9 @@ export function ServerWebhooksPage() {
                       {redact(webhook.url)}
                     </span>
                     {webhook.active ? (
-                      <Badge tone="online">active</Badge>
+                      <Badge tone="online">{t('webhooks.active')}</Badge>
                     ) : (
-                      <Badge tone="danger">en pause</Badge>
+                      <Badge tone="danger">{t('webhooks.paused')}</Badge>
                     )}
                   </div>
 
@@ -210,12 +213,14 @@ export function ServerWebhooksPage() {
 
                   <p className="mt-1 text-xs text-content-subtle">
                     {webhook.lastAttemptAt === null
-                      ? 'jamais appelée'
+                      ? t('webhooks.neverCalled')
                       : webhook.lastError
-                        ? `dernier envoi en échec — ${webhook.lastError}`
-                        : `dernier envoi réussi le ${formatDate(webhook.lastSuccessAt)}`}
+                        ? t('webhooks.lastFailed', { error: webhook.lastError })
+                        : t('webhooks.lastSucceeded', {
+                            date: formatDate(webhook.lastSuccessAt, locale),
+                          })}
                     {webhook.failureCount > 0
-                      ? ` · ${webhook.failureCount} échec(s) d’affilée`
+                      ? ` · ${t('webhooks.failureStreak', { count: webhook.failureCount })}`
                       : null}
                   </p>
 
@@ -231,13 +236,13 @@ export function ServerWebhooksPage() {
                   {can(PERMISSIONS.WEBHOOK_UPDATE) ? (
                     <>
                       <Button onClick={() => test.mutate(webhook.uuid)} disabled={test.isPending}>
-                        Tester
+                        {t('webhooks.test')}
                       </Button>
                       <Button
                         onClick={() => reveal.mutate(webhook.uuid)}
                         disabled={reveal.isPending}
                       >
-                        Secret
+                        {t('webhooks.secret')}
                       </Button>
                       <Button
                         onClick={() =>
@@ -245,7 +250,7 @@ export function ServerWebhooksPage() {
                         }
                         disabled={toggle.isPending}
                       >
-                        {webhook.active ? 'Mettre en pause' : 'Réactiver'}
+                        {t(webhook.active ? 'webhooks.pause' : 'webhooks.resume')}
                       </Button>
                     </>
                   ) : null}
@@ -255,12 +260,12 @@ export function ServerWebhooksPage() {
                       variant="danger"
                       disabled={remove.isPending}
                       onClick={() => {
-                        if (window.confirm('Supprimer cette notification ?')) {
+                        if (window.confirm(t('webhooks.deleteConfirm'))) {
                           remove.mutate(webhook.uuid);
                         }
                       }}
                     >
-                      Supprimer
+                      {t('common.delete')}
                     </Button>
                   ) : null}
                 </div>
@@ -272,7 +277,7 @@ export function ServerWebhooksPage() {
 
       <Modal
         open={draft !== null}
-        title="Ajouter une notification"
+        title={t('webhooks.addTitle')}
         onClose={() => setDraft(null)}
         footer={
           <>
@@ -284,35 +289,32 @@ export function ServerWebhooksPage() {
               disabled={create.isPending || !draft?.url.trim() || draft.events.length === 0}
               onClick={() => draft && create.mutate(draft)}
             >
-              {create.isPending ? 'Vérification…' : 'Ajouter'}
+              {create.isPending ? t('webhooks.adding') : t('common.create')}
             </Button>
           </>
         }
       >
         {draft ? (
           <div className="flex flex-col gap-5">
-            <Field
-              label="Adresse"
-              hint="Le webhook d’un salon Discord, ou n’importe quelle adresse qui accepte une requête POST."
-            >
+            <Field label={t('webhooks.url')} hint={t('webhooks.urlHint')}>
               <Input
                 value={draft.url}
                 onChange={(event) => setDraft({ ...draft, url: event.target.value })}
-                placeholder="https://discord.com/api/webhooks/…"
+                placeholder={t('webhooks.urlPlaceholder')}
                 className="font-mono"
               />
             </Field>
 
-            <Field label="Description" hint="Pour vous y retrouver quand il y en aura plusieurs.">
+            <Field label={t('webhooks.description')} hint={t('webhooks.descriptionHint')}>
               <Input
                 value={draft.description}
                 onChange={(event) => setDraft({ ...draft, description: event.target.value })}
-                placeholder="Salon #alertes du staff"
+                placeholder={t('webhooks.descriptionPlaceholder')}
               />
             </Field>
 
             <div>
-              <p className="mb-2 text-sm font-medium text-content">Événements</p>
+              <p className="mb-2 text-sm font-medium text-content">{t('webhooks.events')}</p>
 
               <div className="flex flex-col gap-1">
                 {EVENTS.map((event) => {
@@ -337,9 +339,9 @@ export function ServerWebhooksPage() {
                         }
                       />
                       <span className="min-w-0">
-                        <span className="block text-sm text-content">{event.label}</span>
+                        <span className="block text-sm text-content">{t(event.label)}</span>
                         <span className="block text-xs text-content-muted">
-                          {event.description}
+                          {t(event.description)}
                         </span>
                       </span>
                     </label>
@@ -348,13 +350,9 @@ export function ServerWebhooksPage() {
               </div>
             </div>
 
-            {/* Le panel émettra une requête vers cette adresse : le dire
-                explicitement, parce que c'est ce qui justifie le refus des
-                adresses internes. */}
-            <Alert tone="info">
-              L’adresse est vérifiée avant enregistrement : le panel refuse celles qui mènent à un
-              réseau interne. Chaque envoi est signé, et le secret de signature se consulte ensuite.
-            </Alert>
+            {/* The panel will send a request to this address: saying so is what
+                justifies refusing internal ones. */}
+            <Alert tone="info">{t('webhooks.notice')}</Alert>
           </div>
         ) : null}
       </Modal>
@@ -367,11 +365,11 @@ function labelOf(value: string): string {
 }
 
 /**
- * Masque la partie secrète d'une adresse de webhook.
+ * Masks the secret part of a webhook address.
  *
- * L'URL d'un webhook Discord **est** son mot de passe : quiconque la lit peut
- * écrire dans le salon. L'afficher en entier dans une page qu'on montre
- * volontiers à son staff la donnerait à qui regarde par-dessus l'épaule.
+ * A Discord webhook URL **is** its password: whoever reads it can post in the
+ * channel. Showing it whole on a page one gladly shows to staff would hand it
+ * to anyone looking over the shoulder.
  */
 function redact(url: string): string {
   try {
