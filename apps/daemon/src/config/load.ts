@@ -19,11 +19,11 @@ export class ConfigError extends Error {
 }
 
 /**
- * Chemins résolus une fois pour toutes, pour éviter de les recalculer partout.
+ * Paths resolved once and for all, to avoid recomputing them everywhere.
  *
- * Déclaré en alias de type et non en `interface` : seuls les alias reçoivent une
- * signature d'index implicite, ce dont `Object.values` a besoin pour inférer
- * `string[]` au lieu de `any[]`.
+ * Declared as a type alias and not an `interface`: only aliases receive an
+ * implicit index signature, which `Object.values` needs in order to infer
+ * `string[]` rather than `any[]`.
  */
 export type ResolvedPaths = {
   root: string;
@@ -44,12 +44,12 @@ export function resolveConfigPath(explicit?: string): string {
 }
 
 /**
- * Refuse de démarrer si le fichier de configuration est lisible par d'autres
- * utilisateurs. Il contient le secret du node et la clé de signature des JWT :
- * un fichier en 0644 sur un hôte partagé donne le contrôle de tous les serveurs.
+ * Refuses to start if the configuration file is readable by other users. It
+ * holds the node secret and the JWT signing key: a file in 0644 on a shared
+ * host hands over control of every server.
  *
- * Le contrôle est ignoré sous Windows, où les bits POSIX rapportés par Node ne
- * reflètent pas les ACL réelles. Le daemon n'y tourne qu'en développement.
+ * The check is skipped on Windows, where the POSIX bits Node reports do not
+ * reflect the real ACLs. The daemon only runs there in development.
  */
 export async function assertConfigFilePermissions(path: string): Promise<void> {
   if (process.platform === 'win32') {
@@ -61,7 +61,7 @@ export async function assertConfigFilePermissions(path: string): Promise<void> {
 
   if ((mode & 0o077) !== 0) {
     throw new ConfigError(
-      `Le fichier de configuration ${path} est accessible aux autres utilisateurs (mode ${mode.toString(8).padStart(4, '0')}).`,
+      `The configuration file ${path} is readable by other users (mode ${mode.toString(8).padStart(4, '0')}).`,
       `Corrigez avec : chmod 600 ${path}`,
     );
   }
@@ -96,7 +96,7 @@ export async function loadConfig(explicitPath?: string): Promise<LoadedConfig> {
   } catch {
     throw new ConfigError(
       `Fichier de configuration introuvable ou illisible : ${sourcePath}`,
-      "Définissez HOPPER_DAEMON_CONFIG ou passez --config, et vérifiez que l'utilisateur du daemon peut lire le fichier.",
+      'Set HOPPER_DAEMON_CONFIG or pass --config, and check that the daemon user can read the file.',
     );
   }
 

@@ -84,7 +84,7 @@ describe('ConsoleBuffer', () => {
     buffer.push('a');
 
     const snapshot = buffer.snapshot();
-    snapshot.push('injecté');
+    snapshot.push('injected');
 
     expect(buffer.snapshot()).toEqual(['a']);
   });

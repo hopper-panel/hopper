@@ -1,11 +1,11 @@
 import { pino, type Logger } from 'pino';
 
 /**
- * Chemins masqués dans les journaux.
+ * Paths redacted from the logs.
  *
- * Un daemon qui journalise un jeton de node donne le contrôle de tous les
- * serveurs de la machine à quiconque lit `journalctl`. Cette liste doit grandir
- * en même temps que le contrat : toute nouvelle donnée sensible s'y ajoute.
+ * A daemon that logs a node token hands control of every server on the machine
+ * to whoever reads `journalctl`. This list has to grow alongside the contract:
+ * every new piece of sensitive data joins it.
  */
 const REDACTED_PATHS = [
   'tokenSecret',
@@ -23,8 +23,8 @@ export function createLogger(debug: boolean): Logger {
   return pino({
     level: debug ? 'debug' : 'info',
     redact: { paths: REDACTED_PATHS, censor: '[redacted]' },
-    // pino-pretty n'est une dépendance que de développement : en production les
-    // journaux sortent en JSON, lus par journald.
+    // pino-pretty is a development dependency only: in production the logs come
+    // out as JSON, read by journald.
     transport:
       process.env.NODE_ENV !== 'production'
         ? { target: 'pino-pretty', options: { translateTime: 'HH:MM:ss', ignore: 'pid,hostname' } }

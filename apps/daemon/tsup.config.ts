@@ -8,8 +8,8 @@ export default defineConfig({
   sourcemap: true,
   clean: true,
   dts: false,
-  // Le daemon est déployé comme un dossier avec ses node_modules : on ne bundle
-  // pas les dépendances natives (dockerode, ssh2) qui arrivent aux phases 2 et 4.
+  // The daemon ships as a folder with its node_modules: the native
+  // dependencies (dockerode, ssh2) are not bundled.
   bundle: true,
   skipNodeModulesBundle: true,
   outExtension: () => ({ js: '.js' }),

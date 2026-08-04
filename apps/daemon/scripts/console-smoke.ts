@@ -1,16 +1,16 @@
 /**
- * Vérification manuelle de bout en bout de la console.
+ * Manual end-to-end check of the console.
  *
- * Signe un jeton de console comme le ferait le panel, ouvre le WebSocket du
- * daemon, démarre le serveur, attend qu'il soit en ligne, lui envoie une
- * commande, puis l'arrête proprement.
+ * Signs a console token as the panel would, opens the daemon's WebSocket,
+ * starts the server, waits for it to come online, sends it a command, then
+ * stops it cleanly.
  *
- * Usage :
- *   pnpm exec tsx scripts/console-smoke.ts <uuid-du-serveur>
+ * Usage:
+ *   pnpm exec tsx scripts/console-smoke.ts <server-uuid>
  *
- * Ce script n'est pas un test automatisé : il exige un daemon lancé, Docker, et
- * un volume déjà peuplé. Il sert à valider le chemin complet navigateur →
- * daemon → conteneur sans ouvrir un navigateur.
+ * This script is not an automated test: it needs a running daemon, Docker, and
+ * an already-populated volume. It validates the full browser → daemon →
+ * container path without opening a browser.
  */
 import { randomUUID } from 'node:crypto';
 import {
@@ -30,7 +30,7 @@ const DAEMON_URL = 'ws://127.0.0.1:8443';
 const serverUuid = process.argv[2];
 
 if (!serverUuid) {
-  process.stderr.write('Usage : tsx scripts/console-smoke.ts <uuid-du-serveur>\n');
+  process.stderr.write('Usage: tsx scripts/console-smoke.ts <server-uuid>\n');
   process.exit(2);
 }
 
@@ -61,19 +61,19 @@ async function main(): Promise<void> {
   let stopSent = false;
 
   const send = (message: ClientMessage): void => {
-    // Validé avant envoi : le script sert aussi à vérifier que le contrat
-    // partagé décrit bien ce que le daemon accepte.
+    // Validated before sending: the script also serves to check that the shared
+    // contract really describes what the daemon accepts.
     socket.send(JSON.stringify(clientMessageSchema.parse(message)));
   };
 
   const timeout = setTimeout(() => {
-    log('✖', "Délai dépassé : le serveur n'a pas atteint l'état attendu.");
+    log('✖', 'Timed out: the server did not reach the expected state.');
     socket.close();
     process.exit(1);
   }, 300_000);
 
   socket.on('open', () => {
-    log('→', 'Connexion ouverte, authentification…');
+    log('→', 'Connection open, authenticating…');
     send({ event: 'auth', token });
   });
 
@@ -81,7 +81,7 @@ async function main(): Promise<void> {
     const parsed = serverMessageSchema.safeParse(JSON.parse(raw.toString('utf8')));
 
     if (!parsed.success) {
-      log('✖', `Message hors contrat : ${raw.toString('utf8').slice(0, 200)}`);
+      log('✖', `Message outside the contract: ${raw.toString('utf8').slice(0, 200)}`);
       return;
     }
 
@@ -89,33 +89,33 @@ async function main(): Promise<void> {
 
     switch (message.event) {
       case 'auth_success':
-        log('✓', `Authentifié, ${message.permissions.length} permissions`);
+        log('✓', `Authenticated, ${message.permissions.length} permissions`);
         break;
 
       case 'status':
-        log('●', `État : ${message.state}`);
+        log('●', `State: ${message.state}`);
 
         if (message.state === 'offline' && !startSent) {
           startSent = true;
-          log('→', 'Démarrage…');
+          log('→', 'Starting…');
           send({ event: 'set_state', action: 'start' });
         }
 
         if (message.state === 'running' && !commandSent) {
           commandSent = true;
-          log('→', 'Envoi de « say Bonjour depuis Hopper »');
-          send({ event: 'send_command', command: 'say Bonjour depuis Hopper' });
+          log('→', 'Sending "say Hello from Hopper"');
+          send({ event: 'send_command', command: 'say Hello from Hopper' });
 
           setTimeout(() => {
             stopSent = true;
-            log('→', 'Arrêt propre…');
+            log('→', 'Stopping cleanly…');
             send({ event: 'set_state', action: 'stop' });
           }, 3000);
         }
 
         if (message.state === 'offline' && stopSent) {
           clearTimeout(timeout);
-          log('✓', 'Cycle complet réussi.');
+          log('✓', 'Full cycle succeeded.');
           socket.close();
           process.exit(0);
         }
@@ -128,12 +128,12 @@ async function main(): Promise<void> {
       case 'stats':
         log(
           '▪',
-          `CPU ${message.usage.cpuPercent}% · RAM ${Math.round(message.usage.memoryBytes / 1024 / 1024)} Mio`,
+          `CPU ${message.usage.cpuPercent}% · RAM ${Math.round(message.usage.memoryBytes / 1024 / 1024)} MiB`,
         );
         break;
 
       case 'error':
-        log('✖', `${message.code} : ${message.message}`);
+        log('✖', `${message.code}: ${message.message}`);
         break;
 
       default:
@@ -142,11 +142,11 @@ async function main(): Promise<void> {
   });
 
   socket.on('error', (error: Error) => {
-    log('✖', `WebSocket : ${error.message}`);
+    log('✖', `WebSocket: ${error.message}`);
     process.exit(1);
   });
 
-  socket.on('close', (code: number) => log('←', `Connexion fermée (${code})`));
+  socket.on('close', (code: number) => log('←', `Connection closed (${code})`));
 }
 
 void main();

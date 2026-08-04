@@ -17,7 +17,7 @@ const sslSchema = z
     keyPath: z.string().optional(),
   })
   .refine((ssl) => !ssl.enabled || (ssl.certificatePath && ssl.keyPath), {
-    message: 'certificatePath et keyPath sont requis lorsque ssl.enabled vaut true',
+    message: 'certificatePath and keyPath are required when ssl.enabled is true',
   });
 
 const apiSchema = z.object({
@@ -51,7 +51,7 @@ const panelSchema = z.object({
 const systemSchema = z.object({
   /** Root of the daemon's data. Everything else derives from it by default. */
   rootDirectory: z.string().default('/var/lib/hopper'),
-  /** Volumes des serveurs, un sous-dossier par UUID. */
+  /** Server volumes, one subfolder per UUID. */
   dataDirectory: z.string().optional(),
   backupDirectory: z.string().optional(),
   /**

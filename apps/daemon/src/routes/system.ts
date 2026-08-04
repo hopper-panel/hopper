@@ -6,8 +6,8 @@ import type { ServerManager } from '../server/server-manager.js';
 import { DAEMON_VERSION } from '../version.js';
 
 /**
- * Informations sur l'hôte, consultées par le panel pour afficher l'état d'un
- * node et vérifier la compatibilité des versions.
+ * Information about the host, read by the panel to display a node's state and
+ * check version compatibility.
  */
 export function registerSystemRoutes(
   app: FastifyInstance,
@@ -15,9 +15,9 @@ export function registerSystemRoutes(
   manager: ServerManager,
 ): void {
   app.get('/api/system', async (_request, reply) => {
-    // Docker peut être arrêté sans que le daemon le soit : dans ce cas le node
-    // reste joignable et doit le dire, plutôt que de renvoyer une 500 qui
-    // afficherait « node hors ligne » et masquerait la vraie cause.
+    // Docker can be stopped without the daemon being stopped: in that case the
+    // node stays reachable and has to say so, rather than return a 500 that
+    // would show "node offline" and hide the real cause.
     const dockerInfo = await docker
       .info()
       .catch(() => ({ version: '', storageDriver: '', cgroupVersion: '', runningContainers: 0 }));
@@ -35,7 +35,7 @@ export function registerSystemRoutes(
     return reply.header('x-hopper-contract', CONTRACT_VERSION).send(info);
   });
 
-  /** Serveurs connus de ce node et leur état. Utile au diagnostic. */
+  /** Servers this node knows and their state. Useful for diagnosis. */
   app.get('/api/servers', (_request, reply) =>
     reply.send({
       data: manager.list().map((server) => ({

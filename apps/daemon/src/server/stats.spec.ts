@@ -8,10 +8,10 @@ import {
 } from './stats.js';
 
 /**
- * Les relevés Docker sont des compteurs cumulés depuis le démarrage : les
- * valeurs de référence ci-dessous sont donc volontairement non nulles. Un zéro
- * en `precpu_stats.system_cpu_usage` signale au contraire l'absence de relevé
- * précédent, ce que le calcul traite à part.
+ * Docker's samples are counters cumulative since boot: the reference values
+ * below are therefore deliberately non-zero. A zero in
+ * `precpu_stats.system_cpu_usage`, in contrast, signals the absence of a
+ * previous sample, which the computation handles separately.
  */
 function sample(overrides: {
   cpu: number;
@@ -34,7 +34,7 @@ function sample(overrides: {
 }
 
 describe('calculateCpuPercent', () => {
-  it('exprime 100 % pour un cœur entièrement consommé', () => {
+  it('reads 100% for one fully consumed core', () => {
     // 1 ms de CPU conteneur sur 8 ms de CPU machine, 8 cœurs : un cœur plein.
     const stats = sample({
       cpu: 2_000_000,
@@ -47,9 +47,9 @@ describe('calculateCpuPercent', () => {
     expect(calculateCpuPercent(stats)).toBe(100);
   });
 
-  // Sur une machine à 16 cœurs, un serveur qui en occupe deux doit afficher
-  // 200, pas 12,5 : c'est ce que l'opérateur compare à sa limite CPU.
-  it('dépasse 100 % au-delà d’un cœur', () => {
+  // On a 16-core machine, a server occupying two has to show 200, not 12.5:
+  // that is what the operator compares to its CPU limit.
+  it('goes past 100% beyond one core', () => {
     const stats = sample({
       cpu: 3_000_000,
       previousCpu: 1_000_000,
@@ -61,11 +61,11 @@ describe('calculateCpuPercent', () => {
     expect(calculateCpuPercent(stats)).toBe(200);
   });
 
-  // Le premier relevé n'a pas de précédent : Docker envoie des `precpu_stats`
-  // à zéro. Sans ce cas particulier, on comparerait le temps CPU du conteneur
-  // depuis son lancement au temps CPU de la machine depuis son démarrage, ce
-  // qui ressemble à un pourcentage sans en être un.
-  it('retourne 0 au premier relevé, faute de précédent', () => {
+  // The first sample has no predecessor: Docker sends `precpu_stats` at zero.
+  // Without this special case, the container's CPU time since launch would be
+  // compared to the machine's CPU time since boot, which looks like a
+  // percentage without being one.
+  it('returns 0 on the first sample, for want of a predecessor', () => {
     const stats: DockerStats = {
       cpu_stats: { cpu_usage: { total_usage: 1_000_000 }, system_cpu_usage: 8_000_000 },
       precpu_stats: {},
@@ -74,7 +74,7 @@ describe('calculateCpuPercent', () => {
     expect(calculateCpuPercent(stats)).toBe(0);
   });
 
-  it('retourne 0 quand Docker envoie un précédent à zéro', () => {
+  it('returns 0 when Docker sends a zeroed predecessor', () => {
     const stats = sample({
       cpu: 1_000_000,
       previousCpu: 0,
@@ -86,7 +86,7 @@ describe('calculateCpuPercent', () => {
     expect(calculateCpuPercent(stats)).toBe(0);
   });
 
-  it('retourne 0 sur des relevés identiques', () => {
+  it('returns 0 on identical samples', () => {
     const stats = sample({
       cpu: 500,
       previousCpu: 500,
@@ -98,11 +98,11 @@ describe('calculateCpuPercent', () => {
     expect(calculateCpuPercent(stats)).toBe(0);
   });
 
-  it('ne plante pas sur une réponse incomplète', () => {
+  it('does not crash on an incomplete response', () => {
     expect(calculateCpuPercent({})).toBe(0);
   });
 
-  it('déduit le nombre de cœurs de percpu_usage à défaut', () => {
+  it('infers the core count from percpu_usage as a fallback', () => {
     const stats: DockerStats = {
       cpu_stats: {
         cpu_usage: { total_usage: 2_000_000, percpu_usage: [1, 2, 3, 4] },
@@ -116,9 +116,10 @@ describe('calculateCpuPercent', () => {
 });
 
 describe('calculateMemoryBytes', () => {
-  // Sans cette soustraction, un serveur affiche « 100 % de RAM » dès qu'il a lu
-  // sa map, alors que le noyau libérerait ce cache à la moindre pression.
-  it('retire le cache de pages réclamable (cgroup v2)', () => {
+  // Without this subtraction, a server shows "100% of RAM" as soon as it has
+  // read its map, when the kernel would release that cache at the slightest
+  // pressure.
+  it('subtracts the reclaimable page cache (cgroup v2)', () => {
     const stats: DockerStats = {
       memory_stats: { usage: 4 * 1024 ** 3, stats: { inactive_file: 1024 ** 3 } },
     };
@@ -134,22 +135,22 @@ describe('calculateMemoryBytes', () => {
     expect(calculateMemoryBytes(stats)).toBe(2 * 1024 ** 3 - 512 * 1024 ** 2);
   });
 
-  it('retourne l’usage brut sans détail de cache', () => {
+  it('returns the raw usage with no cache detail', () => {
     expect(calculateMemoryBytes({ memory_stats: { usage: 1000 } })).toBe(1000);
   });
 
-  it('ne descend jamais sous zéro', () => {
+  it('never goes below zero', () => {
     const stats: DockerStats = { memory_stats: { usage: 100, stats: { cache: 500 } } };
     expect(calculateMemoryBytes(stats)).toBe(0);
   });
 
-  it('ne plante pas sur une réponse vide', () => {
+  it('does not crash on an empty response', () => {
     expect(calculateMemoryBytes({})).toBe(0);
   });
 });
 
 describe('calculateNetwork', () => {
-  it('additionne toutes les interfaces', () => {
+  it('adds every interface together', () => {
     const stats: DockerStats = {
       networks: {
         eth0: { rx_bytes: 100, tx_bytes: 200 },
@@ -160,13 +161,13 @@ describe('calculateNetwork', () => {
     expect(calculateNetwork(stats)).toEqual({ rx: 150, tx: 225 });
   });
 
-  it('retourne zéro sans interface', () => {
+  it('returns zero with no interface', () => {
     expect(calculateNetwork({})).toEqual({ rx: 0, tx: 0 });
   });
 });
 
 describe('emptyUsage', () => {
-  it('rapporte un relevé nul porteur de l’état', () => {
+  it('reports an empty sample carrying the state', () => {
     const usage = emptyUsage('offline');
 
     expect(usage.state).toBe('offline');

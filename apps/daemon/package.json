@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "license": "AGPL-3.0-or-later",
-  "description": "hopperd — agent Hopper installé sur chaque machine hôte",
+  "description": "hopperd — the Hopper agent installed on each host machine",
   "bin": {
     "hopperd": "./dist/index.js"
   },

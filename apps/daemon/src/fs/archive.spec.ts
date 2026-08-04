@@ -10,11 +10,11 @@ import { createArchive, extractArchive } from './archive.js';
 import { JailedFilesystem, PathEscapeError } from './jailed-filesystem.js';
 
 /**
- * Fabrique une archive `.tar.gz` avec des noms d'entrées arbitraires.
+ * Builds a `.tar.gz` archive with arbitrary entry names.
  *
- * C'est le point : une archive hostile n'est pas produite par un outil normal.
- * Il faut donc en construire une à la main pour vérifier que l'extraction
- * refuse ce qu'aucun `tar` ordinaire ne produirait.
+ * That is the point: a hostile archive is not produced by a normal tool. One
+ * has to be built by hand to check that extraction refuses what no ordinary
+ * `tar` would produce.
  */
 async function buildArchive(
   destination: string,
@@ -63,19 +63,19 @@ describe('archives', () => {
     await rm(sandbox, { recursive: true, force: true });
   });
 
-  describe('création', () => {
-    it('archive des fichiers et des dossiers', async () => {
+  describe('creation', () => {
+    it('archives files and folders', async () => {
       await createArchive(jail, ['server.properties', 'plugins'], 'sauvegarde.tar.gz');
 
       const entry = await jail.stat('sauvegarde.tar.gz');
       expect(entry.sizeBytes).toBeGreaterThan(0);
     });
 
-    it('refuse une source hors du volume', async () => {
+    it('refuses a source outside the volume', async () => {
       await expect(createArchive(jail, ['../secret'], 'x.tar.gz')).rejects.toThrow(PathEscapeError);
     });
 
-    it('refuse une destination hors du volume', async () => {
+    it('refuses a destination outside the volume', async () => {
       await expect(createArchive(jail, ['server.properties'], '../evasion.tar.gz')).rejects.toThrow(
         PathEscapeError,
       );
@@ -94,9 +94,9 @@ describe('archives', () => {
       expect(await readFile(join(volume, 'plugins', 'nouveau.yml'), 'utf8')).toBe('ok: true');
     });
 
-    // Le « zip-slip » : beaucoup de bibliothèques d'extraction écrivent cette
-    // entrée là où son nom l'indique, c'est-à-dire hors du volume.
-    it('refuse une entrée qui remonte hors du volume', async () => {
+    // The "zip slip": many extraction libraries write this entry where its name
+    // says, that is, outside the volume.
+    it('refuses an entry that climbs out of the volume', async () => {
       await buildArchive(join(volume, 'hostile.tar.gz'), [
         { name: '../../secret/backdoor.sh', content: 'rm -rf /' },
       ]);
@@ -106,20 +106,20 @@ describe('archives', () => {
       await expect(readFile(join(outside, 'backdoor.sh'), 'utf8')).rejects.toThrow();
     });
 
-    it('refuse une entrée qui sort de la destination demandée', async () => {
+    it('refuses an entry that leaves the requested destination', async () => {
       await buildArchive(join(volume, 'hostile2.tar.gz'), [
         { name: '../server.properties', content: 'server-port=1337' },
       ]);
 
       await expect(extractArchive(jail, 'hostile2.tar.gz', 'plugins')).rejects.toThrow();
 
-      // Le fichier d'origine n'a pas été écrasé.
+      // The original file was not overwritten.
       expect(await readFile(join(volume, 'server.properties'), 'utf8')).toBe('server-port=25565');
     });
 
-    // Recréer un lien vers /etc donnerait, au prochain accès, une lecture hors
-    // du volume — le jail refuserait, mais autant ne pas créer le lien.
-    it('ignore les liens symboliques contenus dans une archive', async () => {
+    // Recreating a link to /etc would give, on the next access, a read outside
+    // the volume — the jail would refuse, but better not to create the link.
+    it('ignores the symlinks held in an archive', async () => {
       await buildArchive(join(volume, 'liens.tar.gz'), [
         { name: 'evasion', type: 'symlink' },
         { name: 'normal.txt', content: 'ok' },
@@ -132,7 +132,7 @@ describe('archives', () => {
       expect(names).not.toContain('evasion');
     });
 
-    it('crée les dossiers déclarés', async () => {
+    it('creates the declared folders', async () => {
       await buildArchive(join(volume, 'dossiers.tar.gz'), [
         { name: 'monde/region', type: 'directory' },
         { name: 'monde/region/r.0.0.mca', content: 'donnees' },
@@ -149,7 +149,7 @@ describe('archives', () => {
   });
 
   describe('aller-retour', () => {
-    it('restitue le contenu à l’identique', async () => {
+    it('restores the content byte for byte', async () => {
       await createArchive(jail, ['plugins'], 'rt.tar.gz');
       await jail.delete(['plugins']);
       await extractArchive(jail, 'rt.tar.gz', '.');

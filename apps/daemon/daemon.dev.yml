@@ -1,10 +1,10 @@
 # ┌──────────────────────────────────────────────────────────────────────────┐
-# │  CONFIGURATION DE DÉVELOPPEMENT                                          │
+# │  DEVELOPMENT CONFIGURATION                                               │
 # │                                                                          │
-# │  Les secrets ci-dessous sont publics : ils sont dans le dépôt Git pour    │
-# │  que `pnpm dev` fonctionne sans étape préalable. Ne JAMAIS déployer ce    │
-# │  fichier. Le modèle de production est dans install/daemon.example.yml et  │
-# │  l'installeur y génère des secrets aléatoires.                            │
+# │  The secrets below are public: they are in the Git repository so that    │
+# │  `pnpm dev` works with no prior step. NEVER deploy this file. The        │
+# │  production template is install/daemon.example.yml, where the installer  │
+# │  generates random secrets.                                               │
 # └──────────────────────────────────────────────────────────────────────────┘
 
 debug: true
@@ -27,7 +27,7 @@ panel:
   jwtSecret: dev-jwt-secret-not-for-production-0000000
 
 system:
-  # Volumes des serveurs, relatifs au dépôt en développement.
+  # Server volumes, relative to the repository in development.
   rootDirectory: ./.hopper-dev
   sftp:
     enabled: true

@@ -37,13 +37,13 @@ describe('createNodeTokenGuard', () => {
   });
 
   it.each([
-    ['en-tête absent', undefined],
-    ['schéma Basic', `Basic ${TOKEN_ID}.${TOKEN_SECRET}`],
+    ['header absent', undefined],
+    ['Basic scheme', `Basic ${TOKEN_ID}.${TOKEN_SECRET}`],
     ['jeton vide', 'Bearer '],
-    ['jeton mal formé', 'Bearer pas-un-jeton'],
+    ['malformed token', 'Bearer not-a-token'],
     ['identifiant inconnu', `Bearer ${'q'.repeat(16)}.${TOKEN_SECRET}`],
-    ['secret erroné', `Bearer ${TOKEN_ID}.${'y'.repeat(64)}`],
-    ['secret tronqué', `Bearer ${TOKEN_ID}.${'z'.repeat(63)}`],
+    ['wrong secret', `Bearer ${TOKEN_ID}.${'y'.repeat(64)}`],
+    ['truncated secret', `Bearer ${TOKEN_ID}.${'z'.repeat(63)}`],
     ['identifiant et secret intervertis', `Bearer ${TOKEN_SECRET}.${TOKEN_ID}`],
   ])('refuse : %s', (_label, authorization) => {
     const { reply } = makeReply();
@@ -51,9 +51,9 @@ describe('createNodeTokenGuard', () => {
     expect(reply.code).toHaveBeenCalledWith(401);
   });
 
-  // Un message différent selon la cause permettrait d'énumérer les identifiants
-  // de node valides avant de s'attaquer au secret.
-  it('renvoie le même message quelle que soit la cause du refus', () => {
+  // A different message per cause would allow enumerating valid node
+  // identifiers before attacking the secret.
+  it('returns the same message whatever the cause of the refusal', () => {
     const messages = [
       'Bearer pas-un-jeton',
       `Bearer ${'q'.repeat(16)}.${TOKEN_SECRET}`,
@@ -68,7 +68,7 @@ describe('createNodeTokenGuard', () => {
     expect(new Set(messages.map((m) => m.code)).size).toBe(1);
   });
 
-  it('ne renvoie jamais le secret attendu dans la réponse', () => {
+  it('never returns the expected secret in the response', () => {
     const { reply, send } = makeReply();
     guard(makeRequest('Bearer wrong'), reply);
     expect(JSON.stringify(send.mock.calls[0]?.[0])).not.toContain(TOKEN_SECRET);

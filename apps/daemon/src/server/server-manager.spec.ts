@@ -7,13 +7,13 @@ import type { PanelClient } from '../panel/panel-client.js';
 import { ServerManager } from './server-manager.js';
 
 /**
- * Ces tests portent sur un point précis : **le daemon ne doit pas rester
- * aveugle** quand le panel n'est pas encore prêt.
+ * These tests cover one precise point: **the daemon must not stay blind** when
+ * the panel is not ready yet.
  *
- * Les deux services redémarrent ensemble après une mise à jour, et le daemon
- * est presque toujours debout le premier. Sans reprise, il répondait « Serveur
- * inconnu de ce node » à toutes les consoles jusqu'au prochain redémarrage
- * manuel — le symptôme est spectaculaire et la cause invisible.
+ * Both services restart together after an update, and the daemon is nearly
+ * always up first. Without a retry it answered "Server unknown to this node" to
+ * every console until the next manual restart — the symptom is spectacular and
+ * the cause invisible.
  */
 
 const CONFIGURATION = {
@@ -36,7 +36,7 @@ const config = {
   },
 } as unknown as LoadedConfig;
 
-/** Docker simulé : aucun conteneur sur l'hôte, donc aucun orphelin. */
+/** Simulated Docker: no container on the host, so no orphan. */
 const docker = {
   listManagedContainers: () => Promise.resolve(new Map<string, unknown>()),
 } as unknown as DockerClient;
@@ -54,7 +54,7 @@ describe('ServerManager.reconcile', () => {
     vi.useRealTimers();
   });
 
-  it('enregistre les serveurs rendus par le panel', async () => {
+  it('registers the servers the panel returns', async () => {
     const manager = managerWith(() => Promise.resolve([CONFIGURATION]));
 
     await manager.reconcile();
@@ -63,7 +63,7 @@ describe('ServerManager.reconcile', () => {
     expect(manager.get(CONFIGURATION.uuid)).toBeDefined();
   });
 
-  it('réessaie quand le panel n’est pas joignable', async () => {
+  it('retries when the panel is unreachable', async () => {
     const fetchServers = vi
       .fn<() => Promise<ServerConfiguration[]>>()
       .mockRejectedValueOnce(new Error('ECONNREFUSED'))
@@ -81,7 +81,7 @@ describe('ServerManager.reconcile', () => {
     expect(manager.list()).toHaveLength(1);
   });
 
-  it('espace ses tentatives tant que le panel reste muet', async () => {
+  it('spaces its attempts out while the panel stays silent', async () => {
     const fetchServers = vi
       .fn<() => Promise<ServerConfiguration[]>>()
       .mockRejectedValue(new Error('ECONNREFUSED'));
@@ -92,8 +92,8 @@ describe('ServerManager.reconcile', () => {
     await vi.advanceTimersByTimeAsync(5_000);
     expect(fetchServers).toHaveBeenCalledTimes(2);
 
-    // La tentative suivante est plus lointaine : à cinq secondes fixes, un
-    // panel arrêté pour la nuit produirait dix-sept mille requêtes.
+    // The next attempt is further off: at a fixed five seconds, a panel down
+    // for the night would produce seventeen thousand requests.
     await vi.advanceTimersByTimeAsync(5_000);
     expect(fetchServers).toHaveBeenCalledTimes(2);
 
@@ -103,7 +103,7 @@ describe('ServerManager.reconcile', () => {
     manager.shutdown();
   });
 
-  it('n’empile pas les minuteurs quand la reprise est déjà programmée', async () => {
+  it('does not stack timers when a retry is already scheduled', async () => {
     const fetchServers = vi
       .fn<() => Promise<ServerConfiguration[]>>()
       .mockRejectedValue(new Error('ECONNREFUSED'));
@@ -116,13 +116,13 @@ describe('ServerManager.reconcile', () => {
 
     expect(fetchServers).toHaveBeenCalledTimes(3);
 
-    // Trois échecs, mais une seule reprise : sinon chaque appel manuel
-    // ajouterait sa propre boucle, et leur nombre doublerait à chaque tour.
+    // Three failures but a single retry: otherwise each manual call would add
+    // its own loop, and their number would double every round.
     await vi.advanceTimersByTimeAsync(5_000);
     expect(fetchServers).toHaveBeenCalledTimes(4);
   });
 
-  it('arrête de réessayer à l’extinction', async () => {
+  it('stops retrying on shutdown', async () => {
     const fetchServers = vi
       .fn<() => Promise<ServerConfiguration[]>>()
       .mockRejectedValue(new Error('ECONNREFUSED'));

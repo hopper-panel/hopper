@@ -6,9 +6,9 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { directorySize } from './disk-usage.js';
 
 /**
- * Sonde synchrone au niveau du module : `it.runIf` est évalué à la collecte des
- * tests, avant tout `beforeAll`. Windows refuse les liens symboliques sans
- * élévation ; l'intégration continue, sous Linux, les exécute.
+ * Synchronous probe at module level: `it.runIf` is evaluated when the tests are
+ * collected, before any `beforeAll`. Windows refuses symlinks without
+ * elevation; continuous integration, on Linux, runs them.
  */
 const symlinkSupported = ((): boolean => {
   const probe = mkdtempSync(join(tmpdir(), 'hopper-symlink-probe-'));
@@ -35,7 +35,7 @@ describe('directorySize', () => {
     await rm(sandbox, { recursive: true, force: true });
   });
 
-  it('additionne les fichiers de toute l’arborescence', async () => {
+  it('adds up the files of the whole tree', async () => {
     await writeFile(join(sandbox, 'server.jar'), 'x'.repeat(500));
     await mkdir(join(sandbox, 'world', 'region'), { recursive: true });
     await writeFile(join(sandbox, 'world', 'level.dat'), 'y'.repeat(120));
@@ -44,12 +44,12 @@ describe('directorySize', () => {
     expect(await directorySize(sandbox)).toBe(4716);
   });
 
-  it('rend zéro pour un volume vide', async () => {
+  it('returns zero for an empty volume', async () => {
     expect(await directorySize(sandbox)).toBe(0);
   });
 
-  it('rend zéro plutôt que d’échouer sur un volume absent', async () => {
-    expect(await directorySize(join(sandbox, 'jamais-créé'))).toBe(0);
+  it('returns zero rather than fail on a missing volume', async () => {
+    expect(await directorySize(join(sandbox, 'never-created'))).toBe(0);
   });
 
   it.runIf(symlinkSupported)('ne compte pas la cible d’un lien symbolique', async () => {
@@ -62,14 +62,14 @@ describe('directorySize', () => {
     await writeFile(join(volume, 'server.properties'), 'x'.repeat(100));
     await symlink(join(dehors, 'gros'), join(volume, 'lien'));
 
-    // Le fichier visé pèse cent fois le contenu réel du volume : le suivre
-    // ferait passer le serveur pour saturé, et un joueur pourrait fabriquer ce
-    // lien lui-même par SFTP.
+    // The target file weighs a hundred times the volume's real content:
+    // following it would make the server look full, and a player could craft
+    // that link themselves over SFTP.
     expect(await directorySize(volume)).toBe(100);
   });
 
   it.runIf(symlinkSupported)(
-    'ne boucle pas sur un lien de répertoire pointant vers son parent',
+    'does not loop on a directory link pointing at its parent',
     async () => {
       const volume = join(sandbox, 'volume');
       await mkdir(join(volume, 'plugins'), { recursive: true });

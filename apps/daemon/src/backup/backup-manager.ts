@@ -32,7 +32,7 @@ export interface BackupManagerOptions {
   backupDirectory: string;
   /** Container user: the restored files have to belong to them. */
   ownership: { uid: number; gid: number };
-  /** Format retenu pour les **nouvelles** archives. */
+  /** Format chosen for **new** archives. */
   compression: BackupCompression;
   panel: PanelClient;
   logger: Logger;
@@ -63,11 +63,11 @@ export class BackupManager {
 
     options.logger.info(
       { compression: this.compression },
-      'Compression retenue pour les nouvelles sauvegardes',
+      'Compression chosen for new backups',
     );
   }
 
-  /** Chemin de l'archive d'une sauvegarde, quelle que soit sa compression. */
+  /** Path of a backup's archive, whatever its compression. */
   archivePathFor(backupUuid: string, compression = this.compression): string {
     return join(this.options.backupDirectory, `${backupUuid}${BACKUP_EXTENSIONS[compression]}`);
   }
@@ -205,7 +205,7 @@ export class BackupManager {
     const archive = await this.findArchive(input.backupUuid);
 
     if (!archive) {
-      throw new BackupError("L'archive de cette sauvegarde est introuvable sur ce node.");
+      throw new BackupError('This backup\'s archive cannot be found on this node.');
     }
 
     const restoredFiles = await restoreBackupArchive({
@@ -221,7 +221,7 @@ export class BackupManager {
     return { restoredFiles };
   }
 
-  /** Supprime l'archive. Silencieux si elle n'existe pas : la suppression est idempotente. */
+  /** Deletes the archive. Silent if it does not exist: deletion is idempotent. */
   async delete(backupUuid: string): Promise<boolean> {
     const archive = await this.findArchive(backupUuid);
 

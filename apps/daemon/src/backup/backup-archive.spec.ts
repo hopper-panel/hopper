@@ -192,7 +192,7 @@ describe('restoreBackupArchive', () => {
   // Restoring means going back to the state that was saved. Without a purge, a
   // file created after the backup would survive, and the resulting state would
   // be that of no real moment.
-  it('vide le volume quand on le lui demande', async () => {
+  it('empties the volume when asked to', async () => {
     await seedVolume();
     const archivePath = await archiveVolume('f.tar.gz');
 
@@ -204,7 +204,7 @@ describe('restoreBackupArchive', () => {
     expect(await readFile(join(volume, 'server.properties'), 'utf8')).toBe('motd=Hopper\n');
   });
 
-  it('superpose sans purger quand truncate est faux', async () => {
+  it('overlays without purging when truncate is false', async () => {
     await seedVolume();
     const archivePath = await archiveVolume('g.tar.gz');
 
@@ -218,7 +218,7 @@ describe('restoreBackupArchive', () => {
   // The case that matters: a corrupt archive must not start writing. Detecting
   // the corruption mid-extraction would leave a half-overwritten volume — a
   // server destroyed by the operation meant to save it.
-  it('refuse une archive dont l’empreinte ne correspond pas', async () => {
+  it('refuses an archive whose digest does not match', async () => {
     await seedVolume();
     const archivePath = await archiveVolume('h.tar.gz');
 
@@ -236,7 +236,7 @@ describe('restoreBackupArchive', () => {
     expect(await readFile(join(volume, 'server.properties'), 'utf8')).toBe('motd=Hopper\n');
   });
 
-  it('accepte une archive dont l’empreinte correspond', async () => {
+  it('accepts an archive whose digest matches', async () => {
     await seedVolume();
     const archivePath = await archiveVolume('i.tar.gz');
     const checksum = await checksumOf(archivePath);
@@ -256,7 +256,7 @@ describe.runIf(symlinkSupported)('liens symboliques', () => {
   // Following a link would pull host files into the backup — a link to `/etc`
   // would be enough — and a link to a parent would produce an archive that
   // never ends.
-  it('archive le lien, sans suivre sa cible', async () => {
+  it('archives the link, without following its target', async () => {
     await writeFile(join(volume, 'reel.txt'), 'contenu');
     await symlink(join(volume, 'reel.txt'), join(volume, 'lien.txt'));
 

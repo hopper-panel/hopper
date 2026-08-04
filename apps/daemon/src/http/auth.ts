@@ -4,20 +4,20 @@ import type { FastifyReply, FastifyRequest } from 'fastify';
 import type { DaemonConfig } from '../config/schema.js';
 
 /**
- * Compare deux chaînes en temps constant.
+ * Compares two strings in constant time.
  *
- * Une comparaison naïve (`a === b`) sort au premier caractère différent : en
- * mesurant le temps de réponse, un attaquant peut deviner le secret octet par
- * octet. La longueur est comparée d'abord, puis on force des tampons de même
- * taille pour que `timingSafeEqual` ne lève pas.
+ * A naive comparison (`a === b`) exits at the first differing character: by
+ * measuring the response time, an attacker can guess the secret byte by byte.
+ * The length is compared first, then buffers of equal size are forced so that
+ * `timingSafeEqual` does not throw.
  */
 function secureCompare(a: string, b: string): boolean {
   const bufferA = Buffer.from(a, 'utf8');
   const bufferB = Buffer.from(b, 'utf8');
 
   if (bufferA.length !== bufferB.length) {
-    // On effectue quand même une comparaison pour ne pas révéler la longueur
-    // attendue par une réponse plus rapide.
+    // A comparison is performed anyway, so as not to reveal the expected length
+    // through a faster response.
     timingSafeEqual(bufferA, bufferA);
     return false;
   }
@@ -26,10 +26,10 @@ function secureCompare(a: string, b: string): boolean {
 }
 
 /**
- * Vérifie l'en-tête `Authorization` d'une requête venant du panel.
+ * Checks the `Authorization` header of a request coming from the panel.
  *
- * Toutes les causes d'échec renvoient la même réponse : un jeton mal formé, un
- * identifiant inconnu et un secret erroné sont indiscernables de l'extérieur.
+ * Every cause of failure returns the same response: a malformed token, an
+ * unknown identifier and a wrong secret are indistinguishable from outside.
  */
 export function createNodeTokenGuard(config: DaemonConfig) {
   return function authenticateNode(request: FastifyRequest, reply: FastifyReply): boolean {
@@ -42,7 +42,7 @@ export function createNodeTokenGuard(config: DaemonConfig) {
       secureCompare(parsed.secret, config.tokenSecret);
 
     if (!authenticated) {
-      request.log.warn({ ip: request.ip, url: request.url }, 'Authentification de node refusée');
+      request.log.warn({ ip: request.ip, url: request.url }, 'Node authentication refused');
       void reply.code(401).send({
         error: {
           code: 'unauthorized',
