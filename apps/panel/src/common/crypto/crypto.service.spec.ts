@@ -12,98 +12,98 @@ function makeService(secret = 'un-secret-de-test-suffisamment-long-1234'): Crypt
 }
 
 describe('CryptoService', () => {
-  describe('chiffrement', () => {
+  describe('encryption', () => {
     const crypto = makeService();
 
-    it('restitue la valeur chiffrée', () => {
+    it('gives the encrypted value back', () => {
       const secret = 'JBSWY3DPEHPK3PXP';
       expect(crypto.decrypt(crypto.encrypt(secret))).toBe(secret);
     });
 
-    it('gère les caractères non ASCII', () => {
-      const value = 'mot de passe très spécial — 日本語 🔐';
+    it('handles non-ASCII characters', () => {
+      const value = 'a very special password — 日本語 🔐';
       expect(crypto.decrypt(crypto.encrypt(value))).toBe(value);
     });
 
-    // Un IV réutilisé en GCM permet de retrouver le clair : deux chiffrements
-    // de la même valeur ne doivent jamais produire le même résultat.
-    it('produit un chiffré différent à chaque appel', () => {
+    // A reused IV in GCM allows recovering the plaintext: two encryptions of
+    // the same value must never produce the same result.
+    it('produces a different ciphertext on every call', () => {
       const first = crypto.encrypt('identique');
       const second = crypto.encrypt('identique');
       expect(first).not.toBe(second);
       expect(crypto.decrypt(first)).toBe(crypto.decrypt(second));
     });
 
-    it("n'expose jamais le clair dans le chiffré", () => {
+    it('never exposes the plaintext inside the ciphertext', () => {
       expect(crypto.encrypt('SECRET-VISIBLE')).not.toContain('SECRET-VISIBLE');
     });
 
-    it('rejette un chiffré altéré', () => {
+    it('rejects a tampered ciphertext', () => {
       const encrypted = crypto.encrypt('valeur');
       const parts = encrypted.split('.');
       const tampered = [parts[0], parts[1], parts[2], 'YWJjZGVmZ2g'].join('.');
       expect(() => crypto.decrypt(tampered)).toThrow();
     });
 
-    it('rejette un format inconnu', () => {
-      expect(() => crypto.decrypt('pas-un-chiffre')).toThrow(/format inattendu/);
-      expect(() => crypto.decrypt('v2.a.b.c')).toThrow(/format inattendu/);
+    it('rejects an unknown format', () => {
+      expect(() => crypto.decrypt('pas-un-chiffre')).toThrow(/unexpected format/);
+      expect(() => crypto.decrypt('v2.a.b.c')).toThrow(/unexpected format/);
     });
 
-    // Sans cela, changer APP_SECRET rendrait les secrets illisibles en silence
-    // au lieu de lever une erreur explicite.
-    it('refuse de déchiffrer avec une autre clé', () => {
+    // Without this, changing APP_SECRET would make the secrets silently
+    // unreadable instead of raising an explicit error.
+    it('refuses to decrypt with a different key', () => {
       const encrypted = makeService('premier-secret-de-test-de-32-caracteres').encrypt('valeur');
       const other = makeService('second-secret-de-test-de-32-caracteres!');
       expect(() => other.decrypt(encrypted)).toThrow();
     });
 
-    it('redonne la même clé pour un même APP_SECRET', () => {
+    it('yields the same key for the same APP_SECRET', () => {
       const encrypted = makeService().encrypt('persistant');
       expect(makeService().decrypt(encrypted)).toBe('persistant');
     });
   });
 
-  describe('empreintes de jetons', () => {
+  describe('token digests', () => {
     const crypto = makeService();
 
-    it('valide le bon jeton', () => {
+    it('validates the right token', () => {
       const token = crypto.randomString(64);
       expect(crypto.verifyTokenHash(token, crypto.hashToken(token))).toBe(true);
     });
 
-    it('refuse un jeton différent', () => {
+    it('refuses a different token', () => {
       const hash = crypto.hashToken(crypto.randomString(64));
       expect(crypto.verifyTokenHash(crypto.randomString(64), hash)).toBe(false);
     });
 
-    it('refuse une empreinte de longueur différente', () => {
+    it('refuses a digest of a different length', () => {
       expect(crypto.verifyTokenHash('jeton', 'trop-court')).toBe(false);
     });
 
-    it("n'est pas réversible", () => {
+    it('is not reversible', () => {
       expect(crypto.hashToken('mon-jeton')).not.toContain('mon-jeton');
     });
   });
 
-  describe('aléa', () => {
+  describe('randomness', () => {
     const crypto = makeService();
 
-    it('respecte la longueur demandée', () => {
+    it('honours the requested length', () => {
       expect(crypto.randomString(64)).toHaveLength(64);
     });
 
-    it('ne se répète pas', () => {
+    it('does not repeat itself', () => {
       const values = new Set(Array.from({ length: 200 }, () => crypto.randomString(32)));
       expect(values.size).toBe(200);
     });
 
-    it('génère des codes de récupération lisibles', () => {
+    it('generates readable recovery codes', () => {
       const code = crypto.randomRecoveryCode();
       expect(code).toMatch(
         /^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{5}-[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{5}$/,
       );
-      // Les caractères qu'on confond à la lecture sont exclus de l'alphabet.
+      // The characters one misreads are excluded from the alphabet.
       expect(code).not.toMatch(/[0O1lI]/);
     });
   });

@@ -11,7 +11,7 @@ import { CryptoService } from '../../common/crypto/crypto.service.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import type { AuthenticatedRequest } from '../auth/request-user.js';
 
-/** Node authentifié, attaché à la requête pour les contrôleurs `/api/remote/*`. */
+/** Authenticated node, attached to the request for the `/api/remote/*` controllers. */
 export interface RequestNode {
   id: number;
   uuid: string;
@@ -23,12 +23,11 @@ export interface RemoteRequest extends AuthenticatedRequest {
 }
 
 /**
- * Authentifie un daemon qui rappelle le panel.
+ * Authenticates a daemon calling the panel back.
  *
- * Les routes `/api/remote/*` ne sont jamais appelées par un navigateur : elles
- * exigent un jeton de node, jamais un cookie de session. Un utilisateur
- * connecté qui tenterait de les atteindre reçoit une 401 comme n'importe qui,
- * puisque seul le jeton compte ici.
+ * The `/api/remote/*` routes are never called by a browser: they require a node
+ * token, never a session cookie. A signed-in user trying to reach them receives
+ * a 401 like anybody else, since only the token counts here.
  */
 @Injectable()
 export class RemoteNodeGuard implements CanActivate {
@@ -46,20 +45,20 @@ export class RemoteNodeGuard implements CanActivate {
     const parsed = token ? parseNodeToken(token) : null;
 
     if (!parsed) {
-      throw new UnauthorizedException('Jeton de node absent ou mal formé.');
+      throw new UnauthorizedException('Node token absent or malformed.');
     }
 
-    // L'identifiant est public : il sert uniquement à retrouver la ligne sans
-    // avoir à comparer le secret à toute la table.
+    // The identifier is public: it only serves to find the row without having
+    // to compare the secret against the whole table.
     const node = await this.prisma.node.findUnique({
       where: { daemonTokenId: parsed.id },
       select: { id: true, uuid: true, name: true, daemonTokenEncrypted: true },
     });
 
     if (!node || !this.secretMatches(node.daemonTokenEncrypted, parsed.secret)) {
-      this.logger.warn(`Authentification de node refusée depuis ${request.ip}`);
-      // Message identique dans les deux cas : distinguer « identifiant inconnu »
-      // de « secret erroné » permettrait d'énumérer les nodes.
+      this.logger.warn(`Node authentication refused from ${request.ip}`);
+      // The same message in both cases: telling "unknown identifier" from
+      // "wrong secret" would allow enumerating the nodes.
       throw new UnauthorizedException('Jeton de node invalide.');
     }
 
@@ -73,11 +72,11 @@ export class RemoteNodeGuard implements CanActivate {
     try {
       expected = this.crypto.decrypt(encrypted);
     } catch (error: unknown) {
-      // Arrive quand APP_SECRET a changé : les secrets stockés deviennent
-      // illisibles. Le node doit alors être régénéré, et le dire clairement
-      // vaut mieux qu'un refus silencieux.
+      // Happens when APP_SECRET changed: the stored secrets become unreadable.
+      // The node then has to be regenerated, and saying so plainly beats a
+      // silent refusal.
       this.logger.error(
-        `Secret de node indéchiffrable — APP_SECRET a-t-il changé ? ${String(error)}`,
+        `Node secret cannot be decrypted — did APP_SECRET change? ${String(error)}`,
       );
       return false;
     }

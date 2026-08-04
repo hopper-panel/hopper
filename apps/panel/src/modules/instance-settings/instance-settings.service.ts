@@ -13,18 +13,17 @@ import {
 } from './definitions.js';
 
 /**
- * Paramètres de l'instance.
+ * Instance settings.
  *
- * Lus à chaque fois qu'ils servent — un envoi de courriel, une requête vers un
- * node — et donc mis en cache : sans cela, chaque appel à un daemon ferait une
- * lecture en base pour connaître son délai d'attente. Le cache est invalidé à
- * l'écriture, qui passe toujours par ici.
+ * Read every time they are needed — sending an email, making a request to a
+ * node — and therefore cached: without that, every call to a daemon would mean
+ * a database read to learn its timeout. The cache is invalidated on write,
+ * which always goes through here.
  *
- * Les valeurs secrètes sont chiffrées au repos avec la même clé que les jetons
- * de node et les mots de passe SQL. Elles ne ressortent jamais de l'API : le
- * formulaire affiche un champ vide, et une chaîne vide envoyée signifie « ne
- * touche pas », faute de quoi ouvrir l'écran puis l'enregistrer effacerait le
- * mot de passe SMTP.
+ * Secret values are encrypted at rest with the same key as node tokens and SQL
+ * passwords. They never leave through the API: the form shows an empty field,
+ * and an empty string sent back means "do not touch", failing which opening the
+ * screen and saving it would wipe the SMTP password.
  */
 @Injectable()
 export class InstanceSettingsService {
@@ -36,7 +35,7 @@ export class InstanceSettingsService {
     private readonly crypto: CryptoService,
   ) {}
 
-  /** Tous les paramètres, valeurs par défaut comprises. */
+  /** Every setting, defaults included. */
   async all(): Promise<InstanceSettings> {
     if (this.cache) {
       return this.cache;
@@ -47,8 +46,8 @@ export class InstanceSettingsService {
 
     for (const row of rows) {
       if (!(row.key in DEFAULT_SETTINGS)) {
-        // Un paramètre retiré du code dans une version ultérieure ne doit pas
-        // faire échouer la lecture de tous les autres.
+        // A setting removed from the code in a later version must not fail the
+        // reading of all the others.
         continue;
       }
 
@@ -60,10 +59,10 @@ export class InstanceSettingsService {
         try {
           raw = this.crypto.decrypt(row.value);
         } catch {
-          // APP_SECRET a changé : le secret est illisible. On le traite comme
-          // absent plutôt que de faire échouer toute la configuration.
+          // APP_SECRET changed: the secret is unreadable. It is treated as
+          // absent rather than failing the whole configuration.
           this.logger.error(
-            `Paramètre « ${key} » indéchiffrable : APP_SECRET a-t-il changé ? Il faut le ressaisir.`,
+            `Setting "${key}" cannot be decrypted: did APP_SECRET change? It has to be entered again.`,
           );
           continue;
         }
@@ -81,14 +80,14 @@ export class InstanceSettingsService {
 
     if (!parsed.success) {
       this.logger.error(
-        `Paramètres d'instance invalides en base, valeurs par défaut appliquées : ${parsed.error.message}`,
+        `Invalid instance settings in the database, defaults applied: ${parsed.error.message}`,
       );
     }
 
     return this.cache;
   }
 
-  /** Les paramètres tels que l'API les rend : secrets remplacés par un drapeau. */
+  /** The settings as the API returns them: secrets replaced by a flag. */
   async forApi(): Promise<Record<string, unknown>> {
     const settings = await this.all();
     const exposed: Record<string, unknown> = { ...settings };
@@ -112,11 +111,11 @@ export class InstanceSettingsService {
       let stored: string;
 
       if (isSecretKey(key)) {
-        // Un secret vide veut dire « inchangé » : le formulaire ne peut pas
-        // réafficher la valeur en place, et l'enregistrer telle quelle
-        // l'effacerait à chaque passage sur l'écran. Le type est resserré au
-        // passage — `Object.entries` ne sait pas que ces clés portent des
-        // chaînes, et une conversion aveugle écrirait « [object Object] ».
+        // An empty secret means "unchanged": the form cannot redisplay the
+        // value in place, and saving it as is would wipe it on every visit to
+        // the screen. The type is narrowed on the way — `Object.entries` does
+        // not know these keys carry strings, and a blind conversion would write
+        // "[object Object]".
         if (typeof value !== 'string' || value === '') {
           continue;
         }
@@ -138,7 +137,7 @@ export class InstanceSettingsService {
     return this.all();
   }
 
-  /** Efface un secret — l'interface propose de le retirer, pas seulement de le changer. */
+  /** Clears a secret — the interface offers to remove it, not only change it. */
   async clearSecret(key: (typeof SECRET_KEYS)[number]): Promise<void> {
     await this.prisma.setting.deleteMany({ where: { key } });
     this.cache = null;

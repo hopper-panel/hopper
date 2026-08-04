@@ -1,16 +1,15 @@
 import { z } from 'zod';
 
 /**
- * Variables d'environnement du panel.
+ * The panel's environment variables.
  *
- * La validation est faite au démarrage, avant que Nest ne construise le moindre
- * module : un secret manquant doit faire échouer le lancement immédiatement, pas
- * à la première connexion d'un utilisateur.
+ * Validation happens at startup, before Nest builds a single module: a missing
+ * secret has to fail the launch immediately, not at a user's first sign-in.
  */
 export const environmentSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
 
-  /** URL publique du panel. Sert d'émetteur des JWT et d'origine autorisée. */
+  /** The panel's public URL. Serves as JWT issuer and allowed origin. */
   APP_URL: z.url().default('http://localhost:8080'),
   HOST: z.string().default('0.0.0.0'),
   PORT: z.coerce.number().int().min(1).max(65535).default(8080),
@@ -19,24 +18,25 @@ export const environmentSchema = z.object({
   REDIS_URL: z.string().min(1).optional(),
 
   /**
-   * Emplacement de l'interface construite, servie par le panel en production.
+   * Location of the built interface, served by the panel in production.
    *
-   * Le défaut suppose que le processus est lancé depuis `apps/panel`, ce que
-   * fait l'unité systemd. Un déploiement qui range le front ailleurs surcharge
-   * cette variable plutôt que de reposer sur la position du code compilé.
+   * The default assumes the process is launched from `apps/panel`, which is
+   * what the systemd unit does. A deployment that puts the front elsewhere
+   * overrides this variable rather than relying on where the compiled code
+   * sits.
    */
   WEB_ROOT: z.string().min(1).default('web/dist'),
 
   /**
-   * Secret de signature des sessions et des jetons de console.
-   * 32 caractères minimum : en dessous, une clé HMAC-SHA256 est plus courte que
-   * sa propre sortie et perd l'essentiel de sa résistance.
+   * Signing secret for the sessions and the console tokens.
+   * 32 characters minimum: below that, an HMAC-SHA256 key is shorter than its
+   * own output and loses most of its strength.
    */
   APP_SECRET: z.string().min(32),
 
   /**
-   * Connexion vers un daemon de développement, en attendant que les nodes soient
-   * stockés en base (phase 1). Absente, la sonde de node reste inactive.
+   * Connection to a development daemon, kept for local work. When absent, the
+   * node probe stays inactive.
    */
   DEV_NODE_URL: z.url().optional(),
   DEV_NODE_TOKEN: z.string().optional(),

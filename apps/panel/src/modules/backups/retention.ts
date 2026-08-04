@@ -1,10 +1,10 @@
 /**
- * Politique de rétention des sauvegardes.
+ * Backup retention policy.
  *
- * Isolée du service pour être vérifiable : c'est la seule partie du module qui
- * **détruit des données**, et une erreur ici efface la sauvegarde que
- * l'utilisateur croyait garder. Elle ne touche ni à la base ni au réseau, elle
- * décide seulement — ce qui la rend testable exhaustivement.
+ * Kept apart from the service so it can be checked: it is the only part of the
+ * module that **destroys data**, and a mistake here erases the backup the user
+ * believed they were keeping. It touches neither the database nor the network,
+ * it only decides — which makes it exhaustively testable.
  */
 
 export interface RetainableBackup {
@@ -18,23 +18,22 @@ export type RetentionPlan =
   | { kind: 'blocked'; lockedCount: number; limit: number };
 
 /**
- * Décide quelles sauvegardes retirer pour faire place à une nouvelle.
+ * Decides which backups to remove to make room for a new one.
  *
- * Le verrouillage prime sur l'ancienneté : c'est toute sa raison d'être. Mais
- * une sauvegarde verrouillée occupe bien un emplacement — un serveur dont tous
- * les emplacements sont verrouillés ne peut plus en créer, et il vaut mieux le
- * dire que d'effacer un verrou en silence.
+ * A lock beats age: that is its whole reason for existing. But a locked backup
+ * does occupy a slot — a server whose slots are all locked can create no more,
+ * and saying so beats erasing a lock in silence.
  *
- * @param existing sauvegardes déjà enregistrées, ordre indifférent.
- * @param limit nombre d'emplacements ; 0 ou moins désactive les sauvegardes.
+ * @param existing backups already recorded, order irrelevant.
+ * @param limit number of slots; 0 or less disables backups.
  */
 export function planRetention(existing: readonly RetainableBackup[], limit: number): RetentionPlan {
   if (limit <= 0) {
     return { kind: 'blocked', lockedCount: 0, limit };
   }
 
-  // Il faut de la place pour **une de plus** : avec 3 emplacements et 3
-  // sauvegardes, il faut en retirer une, pas zéro.
+  // Room is needed for **one more**: with 3 slots and 3 backups, one has to go,
+  // not zero.
   const surplus = existing.length - limit + 1;
 
   if (surplus <= 0) {

@@ -19,13 +19,13 @@ import { createDatabaseHostSchema, type CreateDatabaseHostDto } from './database
 import { MysqlClientService } from './mysql-client.service.js';
 
 /**
- * Serveurs MySQL sur lesquels le panel peut créer des bases.
+ * MySQL servers the panel can create databases on.
  *
- * Réservé aux administrateurs, et ce n'est pas une précaution de forme :
- * déclarer un host revient à confier au panel un compte qui a **tous les
- * droits** sur ce serveur SQL. Le mot de passe n'est jamais renvoyé par ces
- * routes — il est stocké chiffré parce que le panel doit le présenter à chaque
- * connexion, mais rien ne justifie de le réafficher.
+ * Administrators only, and that is not a formality: declaring a host means
+ * handing the panel an account with **every right** on that SQL server. The
+ * password is never returned by these routes — it is stored encrypted because
+ * the panel has to present it on every connection, but nothing justifies
+ * displaying it again.
  */
 @Controller('api/admin/database-hosts')
 @AdminOnly()
@@ -63,9 +63,9 @@ export class DatabaseHostsController {
 
   @Post()
   async create(@Body(new ZodValidationPipe(createDatabaseHostSchema)) body: CreateDatabaseHostDto) {
-    // La connexion est éprouvée **avant** l'enregistrement : un host qui ne
-    // répond pas resterait sinon dans la liste, et l'erreur n'apparaîtrait qu'à
-    // la première création de base, loin de sa cause.
+    // The connection is tested **before** saving: a host that does not answer
+    // would otherwise stay in the list, and the error would only appear at the
+    // first database creation, far from its cause.
     await this.mysql.testConnection({
       host: body.host,
       port: body.port,
@@ -119,12 +119,12 @@ export class DatabaseHostsController {
 
     const databases = await this.prisma.database.count({ where: { hostId: host.id } });
 
-    // Retirer un host dont dépendent des bases les rendrait inaccessibles sans
-    // les supprimer : elles continueraient d'exister sur le serveur SQL, sans
-    // que le panel sache encore les nommer.
+    // Removing a host that databases depend on would make them unreachable
+    // without deleting them: they would go on existing on the SQL server, with
+    // the panel no longer able to name them.
     if (databases > 0) {
       throw new ConflictException(
-        `${databases} base(s) vivent sur ce serveur. Supprimez-les depuis leurs serveurs avant de ` +
+        `${databases} database(s) live on this server. Delete them from their servers before ` +
           'retirer le host.',
       );
     }
@@ -136,7 +136,7 @@ export class DatabaseHostsController {
     const host = await this.prisma.databaseHost.findUnique({ where: { uuid } });
 
     if (!host) {
-      throw new NotFoundException('Serveur de bases de données introuvable.');
+      throw new NotFoundException('Database server not found.');
     }
 
     return host;

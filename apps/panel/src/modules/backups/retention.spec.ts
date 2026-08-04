@@ -6,23 +6,23 @@ function backup(uuid: string, day: number, locked = false): RetainableBackup {
 }
 
 describe('planRetention', () => {
-  it('ne retire rien tant qu’il reste un emplacement', () => {
+  it('removes nothing while a slot remains', () => {
     const plan = planRetention([backup('a', 1), backup('b', 2)], 3);
 
     expect(plan).toEqual({ kind: 'ok', remove: [] });
   });
 
-  // Le cas courant, et le plus facile à écrire de travers : avec 3 emplacements
-  // et 3 sauvegardes, il faut en retirer **une**, pas zéro. Un `>` au lieu d'un
-  // `>=` ferait dépasser la limite d'une unité à chaque cycle.
-  it('libère un emplacement quand la limite est atteinte', () => {
+  // The common case, and the easiest to get wrong: with 3 slots and 3 backups,
+  // **one** has to go, not zero. A `>` instead of a `>=` would overshoot the
+  // limit by one on every cycle.
+  it('frees a slot when the limit is reached', () => {
     const plan = planRetention([backup('a', 1), backup('b', 2), backup('c', 3)], 3);
 
     expect(plan.kind).toBe('ok');
     expect(plan.kind === 'ok' && plan.remove.map((entry) => entry.uuid)).toEqual(['a']);
   });
 
-  it('retire la plus ancienne, quel que soit l’ordre reçu', () => {
+  it('removes the oldest, whatever order it was given', () => {
     const plan = planRetention([backup('recent', 9), backup('ancien', 1), backup('milieu', 5)], 2);
 
     expect(plan.kind === 'ok' && plan.remove.map((entry) => entry.uuid)).toEqual([
@@ -31,54 +31,54 @@ describe('planRetention', () => {
     ]);
   });
 
-  it('rattrape un dépassement laissé par une baisse de la limite', () => {
+  it('catches up an overshoot left by a lowered limit', () => {
     const existing = [backup('a', 1), backup('b', 2), backup('c', 3), backup('d', 4)];
 
     const plan = planRetention(existing, 2);
 
-    // Quatre présentes, deux emplacements, une à venir : il faut en retirer trois.
+    // Four present, two slots, one to come: three have to go.
     expect(plan.kind === 'ok' && plan.remove.map((entry) => entry.uuid)).toEqual(['a', 'b', 'c']);
   });
 
-  // Toute la raison d'être du verrou : il tient face à la rétention.
-  describe('verrouillage', () => {
-    it('épargne une sauvegarde verrouillée et prend la suivante', () => {
+  // The lock's whole reason for being: it holds against retention.
+  describe('locking', () => {
+    it('spares a locked backup and takes the next one', () => {
       const plan = planRetention([backup('a', 1, true), backup('b', 2), backup('c', 3)], 3);
 
       expect(plan.kind === 'ok' && plan.remove.map((entry) => entry.uuid)).toEqual(['b']);
     });
 
-    // Un verrou ne libère pas d'emplacement : plutôt que d'effacer en silence
-    // ce que l'utilisateur a explicitement protégé, on refuse et on le dit.
-    it('refuse quand tous les emplacements sont verrouillés', () => {
+    // A lock frees no slot: rather than silently erase what the user
+    // explicitly protected, it refuses and says so.
+    it('refuses when every slot is locked', () => {
       const plan = planRetention([backup('a', 1, true), backup('b', 2, true)], 2);
 
       expect(plan).toEqual({ kind: 'blocked', lockedCount: 2, limit: 2 });
     });
 
-    it('refuse aussi quand les non verrouillées ne suffisent pas', () => {
+    it('also refuses when the unlocked ones are not enough', () => {
       const existing = [backup('a', 1, true), backup('b', 2, true), backup('c', 3)];
 
       const plan = planRetention(existing, 2);
 
-      // Trois présentes, deux emplacements : il faudrait en retirer deux, or
-      // une seule est libre.
+      // Three present, two slots: two would have to go, but only one is
+      // free.
       expect(plan.kind).toBe('blocked');
     });
   });
 
-  it('traite une limite nulle comme des sauvegardes désactivées', () => {
+  it('treats a zero limit as backups disabled', () => {
     expect(planRetention([], 0).kind).toBe('blocked');
     expect(planRetention([], -1).kind).toBe('blocked');
   });
 
-  it('accepte un serveur sans aucune sauvegarde', () => {
+  it('accepts a server with no backup at all', () => {
     expect(planRetention([], 1)).toEqual({ kind: 'ok', remove: [] });
   });
 
-  // Une limite de 1 signifie « garder seulement la dernière » : chaque nouvelle
-  // sauvegarde remplace la précédente.
-  it('remplace la précédente avec une limite de 1', () => {
+  // A limit of 1 means "keep only the latest": every new backup replaces the
+  // previous one.
+  it('replaces the previous one with a limit of 1', () => {
     const plan = planRetention([backup('a', 1)], 1);
 
     expect(plan.kind === 'ok' && plan.remove.map((entry) => entry.uuid)).toEqual(['a']);

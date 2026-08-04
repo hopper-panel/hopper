@@ -2,9 +2,9 @@ import { z } from 'zod';
 import { validateCron } from './cron.js';
 
 /**
- * Un décalage se compte en secondes et sert à laisser aux joueurs le temps de
- * se déconnecter après une annonce. Au-delà d'une heure, ce n'est plus un
- * décalage mais une seconde tâche planifiée.
+ * An offset counts in seconds and serves to give players time to disconnect
+ * after an announcement. Beyond an hour it is no longer an offset but a second
+ * scheduled task.
  */
 const MAX_OFFSET_SECONDS = 3600;
 
@@ -15,12 +15,12 @@ export const scheduleTaskSchema = z
   .object({
     action: taskActionSchema,
     /**
-     * Sens selon l'action : la commande à envoyer, l'action de puissance, ou
-     * les motifs d'exclusion d'une sauvegarde — un par ligne.
+     * Meaning depends on the action: the command to send, the power action, or
+     * a backup's exclusion patterns — one per line.
      */
     payload: z.string().max(2000).default(''),
     offsetSeconds: z.number().int().min(0).max(MAX_OFFSET_SECONDS).default(0),
-    /** Poursuivre la séquence même si cette étape échoue. */
+    /** Carry on with the sequence even if this step fails. */
     continueOnFailure: z.boolean().default(false),
   })
   .refine(
@@ -32,7 +32,7 @@ export const scheduleTaskSchema = z
     },
   )
   .refine((task) => task.action !== 'COMMAND' || task.payload.trim() !== '', {
-    message: 'Une commande vide ne serait envoyée à personne.',
+    message: 'An empty command would be sent to nobody.',
     path: ['payload'],
   });
 
@@ -47,11 +47,11 @@ const cronFields = {
 };
 
 /**
- * Vérifie l'expression cron à l'entrée.
+ * Checks the cron expression on the way in.
  *
- * Une expression invalide acceptée ici resterait silencieuse : la tâche
- * apparaîtrait dans la liste et ne se déclencherait jamais, sans que rien ne
- * l'indique. Autant refuser au moment où l'utilisateur peut corriger.
+ * An invalid expression accepted here would stay silent: the task would appear
+ * in the list and never fire, with nothing to say so. Better to refuse at the
+ * moment the user can fix it.
  */
 function checkCron(
   value: {
@@ -84,7 +84,7 @@ export const createScheduleSchema = z
     name: z.string().trim().min(1).max(120),
     ...cronFields,
     active: z.boolean().default(true),
-    /** Ne rien faire si le serveur est arrêté, plutôt que de le démarrer. */
+    /** Do nothing if the server is stopped, rather than start it. */
     onlyWhenOnline: z.boolean().default(false),
     tasks: z.array(scheduleTaskSchema).min(1).max(20),
   })
@@ -98,7 +98,7 @@ export const updateScheduleSchema = z
     ...cronFields,
     active: z.boolean().optional(),
     onlyWhenOnline: z.boolean().optional(),
-    /** Absent, les tâches existantes sont conservées telles quelles. */
+    /** When absent, the existing steps are kept as they are. */
     tasks: z.array(scheduleTaskSchema).min(1).max(20).optional(),
   })
   .superRefine(checkCron);

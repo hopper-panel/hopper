@@ -10,16 +10,15 @@ export interface SyncOutcome {
 }
 
 /**
- * Installe et met à jour les templates livrés avec Hopper.
+ * Installs and updates the templates shipped with Hopper.
  *
- * La clé du template sert d'identité : renommer « Paper » n'en crée pas un
- * second, et un serveur existant continue de pointer sur le même.
+ * The template's key serves as its identity: renaming "Paper" does not create a
+ * second one, and an existing server keeps pointing at the same template.
  *
- * Un template **modifié par un administrateur n'est jamais écrasé**. C'est le
- * point délicat : sans cette règle, une mise à jour de Hopper effacerait
- * silencieusement l'image Docker personnalisée ou la commande de démarrage
- * ajustée d'un opérateur, et ses serveurs cesseraient de fonctionner sans que
- * rien n'explique pourquoi.
+ * A template **edited by an administrator is never overwritten**. That is the
+ * delicate point: without this rule, a Hopper update would silently erase an
+ * operator's customised Docker image or adjusted startup command, and their
+ * servers would stop working with nothing to explain why.
  */
 @Injectable()
 export class TemplateSyncService {
@@ -27,7 +26,7 @@ export class TemplateSyncService {
 
   constructor(private readonly prisma: PrismaService) {}
 
-  /** Installe le catalogue embarqué. Appelé par le seed et à la mise à jour. */
+  /** Installs the bundled catalogue. Called by the seed and on update. */
   async syncCatalog(): Promise<SyncOutcome> {
     const outcome: SyncOutcome = { created: 0, updated: 0, skipped: 0 };
 
@@ -37,16 +36,17 @@ export class TemplateSyncService {
     }
 
     this.logger.log(
-      `Catalogue synchronisé : ${outcome.created} créé(s), ${outcome.updated} mis à jour, ${outcome.skipped} conservé(s) tel(s) quel(s).`,
+      `Catalogue synchronised: ${outcome.created} created, ${outcome.updated} updated, ${outcome.skipped} kept as they are.`,
     );
 
     return outcome;
   }
 
   /**
-   * Insère ou met à jour un template.
+   * Inserts or updates a template.
    *
-   * @returns `created`, `updated`, ou `skipped` si l'administrateur l'a modifié.
+   * @returns `created`, `updated`, or `skipped` if the administrator edited
+   *   it.
    */
   async upsert(definition: TemplateDefinition): Promise<'created' | 'updated' | 'skipped'> {
     const group = await this.prisma.templateGroup.upsert({
@@ -76,16 +76,16 @@ export class TemplateSyncService {
 
     if (existing.modifiedByAdmin) {
       this.logger.debug(
-        `Template « ${definition.name} » conservé : il a été modifié depuis le panel.`,
+        `Template "${definition.name}" kept: it was edited from the panel.`,
       );
       return 'skipped';
     }
 
     await this.prisma.$transaction([
       this.prisma.template.update({ where: { id: existing.id }, data }),
-      // Les variables sont remplacées en bloc : suivre les ajouts, retraits et
-      // renommages une à une pour un template que personne n'a touché
-      // coûterait plus de code qu'il n'en vaut la peine.
+      // The variables are replaced wholesale: tracking additions, removals and
+      // renames one by one for a template nobody has touched would cost more
+      // code than it is worth.
       this.prisma.templateVariable.deleteMany({ where: { templateId: existing.id } }),
       this.prisma.templateVariable.createMany({
         data: definition.variables.map((variable) => ({

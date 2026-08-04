@@ -4,13 +4,12 @@ import { CronError, formatCron, nextOccurrence } from './cron.js';
 import type { CreateScheduleDto, UpdateScheduleDto } from './schedules.dto.js';
 
 /**
- * Tâches planifiées, côté registre.
+ * Scheduled tasks, the registry side.
  *
- * L'exécution vit dans `SchedulerService` ; ici on ne fait que tenir la liste
- * et calculer la prochaine échéance. La séparation compte : le calcul de
- * `nextRunAt` doit être refait à chaque modification de l'expression cron, et
- * l'oublier donnerait une tâche qui continue de se déclencher selon l'ancien
- * horaire.
+ * Running them lives in `SchedulerService`; here we only keep the list and
+ * compute the next due time. The separation matters: `nextRunAt` has to be
+ * recomputed on every change to the cron expression, and forgetting that would
+ * give a task that keeps firing on the old schedule.
  */
 @Injectable()
 export class SchedulesService {
@@ -47,8 +46,8 @@ export class SchedulesService {
         cronDayOfWeek: input.cronDayOfWeek,
         active: input.active,
         onlyWhenOnline: input.onlyWhenOnline,
-        // Nulle si la tâche est inactive : une échéance sur une tâche éteinte
-        // laisserait croire qu'elle va se déclencher.
+        // Null when the task is inactive: a due time on a disabled task would
+        // suggest it is about to fire.
         nextRunAt: input.active ? nextRunAt : null,
         tasks: {
           create: input.tasks.map((task, index) => ({
@@ -86,14 +85,14 @@ export class SchedulesService {
         name: input.name ?? existing.name,
         active,
         onlyWhenOnline: input.onlyWhenOnline ?? existing.onlyWhenOnline,
-        // Recalculée systématiquement : sans cela, changer l'horaire laisserait
-        // la tâche se déclencher selon l'ancien.
+        // Recomputed every time: without that, changing the schedule would
+        // leave the task firing on the old one.
         nextRunAt: active ? this.computeNextRun(merged) : null,
         ...(input.tasks
           ? {
-              // Remplacement complet plutôt que rapprochement ligne à ligne :
-              // les étapes n'ont pas d'identité stable côté interface, où on
-              // les réordonne et on les supprime librement.
+              // A full replacement rather than a row-by-row reconciliation:
+              // the steps have no stable identity in the interface, where they
+              // are freely reordered and deleted.
               tasks: {
                 deleteMany: {},
                 create: input.tasks.map((task, index) => ({
@@ -119,7 +118,7 @@ export class SchedulesService {
     await this.prisma.schedule.delete({ where: { id: existing.id } });
   }
 
-  /** Force le déclenchement immédiat, sans toucher à l'horaire. */
+  /** Forces an immediate run, without touching the schedule. */
   async triggerNow(serverUuid: string, scheduleUuid: string): Promise<void> {
     const existing = await this.requireSchedule(serverUuid, scheduleUuid);
 
@@ -175,7 +174,7 @@ export class SchedulesService {
     });
 
     if (!schedule) {
-      throw new NotFoundException('Tâche planifiée introuvable.');
+      throw new NotFoundException('Scheduled task not found.');
     }
 
     return schedule;

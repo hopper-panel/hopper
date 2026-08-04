@@ -3,11 +3,12 @@ import { powerActionSchema, resourceUsageSchema, serverStateSchema } from '../se
 import { serverConfigurationSchema } from './server-configuration.js';
 
 /**
- * Contrat des appels **panel → daemon**.
+ * Contract of the **panel → daemon** calls.
  *
- * Toutes ces routes exigent l'en-tête `Authorization: Bearer <tokenId>.<tokenSecret>`
- * correspondant au node. Le daemon compare le secret à son fichier de configuration ;
- * il n'interroge jamais le panel pour s'authentifier lui-même.
+ * Every one of these routes requires the header
+ * `Authorization: Bearer <tokenId>.<tokenSecret>` matching the node. The daemon
+ * compares the secret to its configuration file; it never queries the panel to
+ * authenticate anybody.
  */
 
 export const DAEMON_ROUTES = {
@@ -36,7 +37,7 @@ export const systemInformationSchema = z.object({
     version: z.string(),
     storageDriver: z.string(),
     cgroupVersion: z.string(),
-    /** Nombre de conteneurs gérés par Hopper actuellement en cours d'exécution. */
+    /** Number of Hopper-managed containers currently running. */
     runningContainers: z.number().int().nonnegative(),
   }),
 });
@@ -49,7 +50,7 @@ export type SystemInformation = z.infer<typeof systemInformationSchema>;
 
 export const createServerRequestSchema = z.object({
   configuration: serverConfigurationSchema,
-  /** Lancer l'installation immédiatement, puis démarrer le serveur une fois terminée. */
+  /** Start the installation at once, then start the server when it finishes. */
   startOnCompletion: z.boolean().default(false),
 });
 
@@ -63,7 +64,7 @@ export const serverStatusResponseSchema = z.object({
   uuid: z.uuid(),
   state: serverStateSchema,
   usage: resourceUsageSchema.nullable(),
-  /** Le conteneur existe sur l'hôte. Faux juste après une création ou un rebuild. */
+  /** The container exists on the host. False right after a creation or a rebuild. */
   containerExists: z.boolean(),
 });
 
@@ -76,9 +77,9 @@ export type ServerStatusResponse = z.infer<typeof serverStatusResponseSchema>;
 export const powerRequestSchema = z.object({
   action: powerActionSchema,
   /**
-   * Attendre la fin de l'action avant de répondre. Par défaut le daemon accuse
-   * réception immédiatement et notifie l'état final par WebSocket : un arrêt de
-   * serveur Minecraft peut prendre plusieurs dizaines de secondes.
+   * Wait for the action to finish before answering. By default the daemon
+   * acknowledges at once and reports the final state over the WebSocket:
+   * stopping a Minecraft server can take tens of seconds.
    */
   wait: z.boolean().default(false),
 });
@@ -100,7 +101,7 @@ export type SendCommandsRequest = z.infer<typeof sendCommandsRequestSchema>;
 // ---------------------------------------------------------------------------
 
 export const deleteServerRequestSchema = z.object({
-  /** Supprimer aussi le volume de données. Sans cela, seul le conteneur part. */
+  /** Delete the data volume too. Without it, only the container goes. */
   purgeVolume: z.boolean().default(true),
 });
 
@@ -111,10 +112,10 @@ export type DeleteServerRequest = z.infer<typeof deleteServerRequestSchema>;
 // ---------------------------------------------------------------------------
 
 /**
- * Réponse d'erreur uniforme du daemon.
+ * The daemon's uniform error response.
  *
- * `requestId` est repris dans les logs du daemon : c'est ce qu'un opérateur
- * cherche pour relier une erreur affichée dans le panel à une trace complète.
+ * `requestId` also appears in the daemon's logs: it is what an operator looks
+ * for to tie an error shown in the panel to a complete trace.
  */
 export const daemonErrorSchema = z.object({
   error: z.object({

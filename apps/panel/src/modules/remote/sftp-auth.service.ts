@@ -16,21 +16,20 @@ import { PrismaService } from '../../prisma/prisma.service.js';
 import { AUDIT_EVENTS, AuditService } from '../audit/audit.service.js';
 import { PasswordService } from '../auth/password.service.js';
 
-/** Dix tentatives par quart d'heure et par IP. */
+/** Ten attempts per quarter of an hour, per IP. */
 const SFTP_ATTEMPT_LIMIT = 10;
 const SFTP_WINDOW_SECONDS = 15 * 60;
 
 /**
- * Authentification des connexions SFTP.
+ * Authenticating SFTP connections.
  *
- * Le daemon ne connaît ni les comptes ni les permissions : il transmet le
- * couple identifiant / mot de passe et reçoit en retour le serveur autorisé et
- * les permissions à appliquer.
+ * The daemon knows neither the accounts nor the permissions: it forwards the
+ * identifier / password pair and receives back the authorised server and the
+ * permissions to apply.
  *
- * La limitation de débit vaut ici autant que sur la connexion web — davantage
- * même : un client SFTP réessaie automatiquement, et un script qui devine des
- * mots de passe par ce canal ne laisse aucune trace dans les journaux du
- * navigateur.
+ * Rate limiting matters here as much as on the web sign-in — more, even: an
+ * SFTP client retries automatically, and a script guessing passwords through
+ * that channel leaves no trace in the browser's logs.
  */
 @Injectable()
 export class SftpAuthService {
@@ -59,8 +58,8 @@ export class SftpAuthService {
       where: { username: { equals: username, mode: 'insensitive' } },
     });
 
-    // Le hash est vérifié même sans utilisateur trouvé : sans cela, un compte
-    // inexistant répondrait bien plus vite qu'un compte valide.
+    // The hash is verified even when no user was found: without that, a
+    // non-existent account would answer far faster than a valid one.
     const valid = user
       ? await this.passwords.verify(user.passwordHash, request.password)
       : await this.passwords.verify(
@@ -79,9 +78,8 @@ export class SftpAuthService {
       throw new UnauthorizedException('Identifiants incorrects.');
     }
 
-    // Le serveur doit appartenir au node qui pose la question : un node
-    // compromis ne doit pas pouvoir authentifier l'accès aux serveurs d'un
-    // autre node.
+    // The server has to belong to the node asking: a compromised node must not
+    // be able to authenticate access to another node's servers.
     const server = await this.prisma.server.findFirst({
       where: { nodeId, uuid: { startsWith: serverIdPrefix } },
       select: {
@@ -98,15 +96,15 @@ export class SftpAuthService {
     }
 
     if (server.status === 'SUSPENDED') {
-      throw new UnauthorizedException('Ce serveur est suspendu.');
+      throw new UnauthorizedException('This server is suspended.');
     }
 
     const isOwner = server.ownerId === user.id;
     const subuser = server.subusers[0];
 
     if (!isOwner && user.role !== 'ADMIN' && !subuser) {
-      // Message identique au mot de passe erroné : distinguer les deux
-      // permettrait d'énumérer les serveurs par leur préfixe d'UUID.
+      // The same message as a wrong password: telling the two apart would allow
+      // enumerating the servers by their UUID prefix.
       throw new UnauthorizedException('Identifiants incorrects.');
     }
 
@@ -117,7 +115,7 @@ export class SftpAuthService {
 
     await this.rateLimiter.reset(this.key(request.ip));
 
-    this.logger.log(`Connexion SFTP de ${user.username} sur le serveur ${server.uuid}`);
+    this.logger.log(`SFTP sign-in by ${user.username} on server ${server.uuid}`);
 
     await this.audit.record({
       event: AUDIT_EVENTS.LOGIN_SUCCESS,
