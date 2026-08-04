@@ -23,51 +23,49 @@ export interface ConsoleController {
   state: ServerState;
   permissions: Permission[];
   /**
-   * S'abonne aux relevés de ressources. Rend la fonction de désabonnement.
+   * Subscribes to resource samples. Returns the unsubscribe function.
    *
-   * Un abonnement plutôt qu'une valeur d'état : le daemon émet un relevé par
-   * seconde, et le tenir dans un `useState` faisait re-rendre la mise en page du
-   * serveur — donc **tous** les onglets — à cette cadence. Un écran de
-   * permissions ouvert par-dessus se reconstruisait ainsi une fois par seconde
-   * pour afficher des chiffres qu'il ne montre pas.
+   * A subscription rather than a state value: the daemon emits one sample per
+   * second, and holding it in a `useState` re-rendered the server layout — so
+   * **every** tab — at that rate. A permissions screen opened on top was thus
+   * rebuilt once a second to display figures it does not show.
    */
   onUsage: (handler: (usage: ResourceUsage) => void) => () => void;
-  /** Enregistre le récepteur des lignes de console. */
+  /** Registers the receiver of console lines. */
   onLine: (handler: (line: string) => void) => void;
   /**
-   * Lignes déjà reçues, les plus anciennes d'abord.
+   * Lines already received, oldest first.
    *
-   * Rendues par une fonction et non par un état : une ligne de console arrive
-   * plusieurs fois par milliseconde au démarrage d'un serveur, et déclencher un
-   * rendu React à chacune figerait l'onglet.
+   * Returned by a function and not by state: a console line arrives several
+   * times per millisecond when a server starts, and triggering a React render
+   * on each would freeze the tab.
    */
   getHistory: () => string[];
   sendCommand: (command: string) => void;
   setPower: (action: PowerAction) => void;
 }
 
-/** Délais de reconnexion, en millisecondes. Le dernier est répété. */
+/** Reconnection delays, in milliseconds. The last one repeats. */
 const BACKOFF_MS = [1000, 2000, 5000, 10_000, 30_000];
 
 /**
- * Lignes conservées côté navigateur pour rejouer la console.
+ * Lines kept browser-side to replay the console.
  *
- * La connexion vit désormais dans la mise en page du serveur et survit aux
- * changements d'onglet, ce qui est exactement ce qu'on veut — sauf que le
- * terminal, lui, est détruit et recréé. Sans ce tampon, revenir sur la console
- * après un détour par les fichiers afficherait un écran vide, alors que le
- * serveur n'a jamais cessé de parler : le daemon ne rejoue son propre tampon
- * qu'à l'authentification, qui n'a pas lieu de nouveau.
+ * The connection now lives in the server layout and survives tab changes, which
+ * is exactly what we want — except that the terminal itself is destroyed and
+ * recreated. Without this buffer, coming back to the console after a detour
+ * through the files would show an empty screen, even though the server never
+ * stopped talking: the daemon only replays its own buffer on authentication,
+ * which does not happen again.
  */
 const HISTORY_LIMIT = 2000;
 
 /**
- * Connexion à la console d'un serveur.
+ * Connection to a server's console.
  *
- * Le navigateur parle **directement au daemon** : le panel ne sert qu'à
- * délivrer un jeton de courte durée. Ce hook gère le cycle complet — obtention
- * du jeton, connexion, renouvellement avant expiration, reconnexion après une
- * coupure réseau.
+ * The browser talks **directly to the daemon**: the panel only issues a
+ * short-lived token. This hook handles the whole cycle — obtaining the token,
+ * connecting, renewing before expiry, reconnecting after a network drop.
  */
 export function useConsole(serverUuid: string): ConsoleController {
   const [status, setStatus] = useState<ConnectionStatus>('connecting');
@@ -94,7 +92,7 @@ export function useConsole(serverUuid: string): ConsoleController {
     };
   }, []);
 
-  /** Achemine une ligne vers le terminal, et la garde pour un rejeu ultérieur. */
+  /** Routes a line to the terminal, and keeps it for a later replay. */
   const emit = useCallback((line: string) => {
     historyRef.current.push(line);
 
@@ -125,17 +123,17 @@ export function useConsole(serverUuid: string): ConsoleController {
 
   useEffect(() => {
     /**
-     * Drapeau **local à cette exécution de l'effet**, et non une `ref`.
+     * Flag **local to this run of the effect**, not a `ref`.
      *
-     * Une `ref` survit au démontage : en mode strict, React monte, démonte,
-     * puis remonte. Le nettoyage du premier montage la passait à `false`, mais
-     * le second montage la remettait aussitôt à `true` — si bien que la
-     * connexion du premier montage, encore en vol, se croyait toujours active
-     * et ouvrait son socket. Deux WebSockets recevaient alors les mêmes lignes,
-     * et la console affichait tout en double.
+     * A `ref` survives unmounting: in strict mode React mounts, unmounts, then
+     * mounts again. The first mount's cleanup set it to `false`, but the second
+     * mount immediately set it back to `true` — so the first mount's
+     * connection, still in flight, believed it was active and opened its
+     * socket. Two WebSockets then received the same lines, and the console
+     * showed everything twice.
      *
-     * Une variable de fermeture appartient à une seule exécution : celle du
-     * premier montage reste `false` quoi qu'il arrive ensuite.
+     * A closure variable belongs to a single run: the first mount's stays
+     * `false` whatever happens next.
      */
     let active = true;
     let socket: WebSocket | null = null;
@@ -149,25 +147,25 @@ export function useConsole(serverUuid: string): ConsoleController {
       try {
         const credentials = await api.get<ConsoleCredentials>(`/api/servers/${serverUuid}/console`);
 
-        // L'obtention du jeton est asynchrone : l'effet a pu être nettoyé
-        // pendant ce temps.
+        // Obtaining the token is asynchronous: the effect may have been cleaned
+        // up in the meantime.
         if (!active) {
           return;
         }
 
-        // Référence non nullable pour les gestionnaires : `socket` reste
-        // `WebSocket | null` du point de vue du nettoyage, mais à l'intérieur
-        // de cette connexion l'objet existe forcément.
+        // Non-nullable reference for the handlers: `socket` stays
+        // `WebSocket | null` from the cleanup's point of view, but inside this
+        // connection the object necessarily exists.
         const connection = new WebSocket(credentials.socketUrl);
         socket = connection;
         socketRef.current = connection;
 
         connection.onopen = () => {
-          // Une connexion neuve reçoit le tampon du daemon juste après
-          // l'authentification : on repart de zéro pour ne pas empiler une
-          // seconde copie des mêmes lignes après une reconnexion. Le
-          // renouvellement de jeton, lui, se fait sur la connexion en cours et
-          // ne rejoue rien — d'où la remise à zéro ici et non à `auth_success`.
+          // A fresh connection receives the daemon's buffer right after
+          // authentication: start from scratch so as not to stack a second copy
+          // of the same lines after a reconnect. Token renewal, in contrast,
+          // happens on the current connection and replays nothing — hence the
+          // reset here and not on `auth_success`.
           historyRef.current = [];
           connection.send(JSON.stringify({ event: 'auth', token: credentials.token }));
         };
@@ -189,8 +187,8 @@ export function useConsole(serverUuid: string): ConsoleController {
               break;
 
             case 'token_expiring':
-              // Le jeton arrive à échéance : on en demande un nouveau et on se
-              // ré-authentifie sur la même connexion, sans coupure visible.
+              // The token is about to expire: ask for a new one and
+              // re-authenticate on the same connection, with no visible break.
               void api
                 .get<ConsoleCredentials>(`/api/servers/${serverUuid}/console`)
                 .then((renewed) =>
@@ -204,8 +202,8 @@ export function useConsole(serverUuid: string): ConsoleController {
               break;
 
             case 'stats':
-              // Diffusé hors de React : aucun rendu n'est déclenché pour les
-              // écrans qui n'affichent pas ces chiffres.
+              // Broadcast outside React: no render is triggered for the screens
+              // that do not display these figures.
               usageListeners.current.forEach((handler) => handler(message.usage));
               break;
 
@@ -222,8 +220,8 @@ export function useConsole(serverUuid: string): ConsoleController {
               break;
 
             case 'token_expired':
-              // Le renouvellement n'a pas abouti à temps : le daemon ferme la
-              // connexion, `onclose` déclenche une reconnexion complète.
+              // Renewal did not land in time: the daemon closes the connection,
+              // `onclose` triggers a full reconnect.
               setStatus('reconnecting');
               break;
 
@@ -232,9 +230,8 @@ export function useConsole(serverUuid: string): ConsoleController {
             case 'install_completed':
             case 'backup_completed':
             case 'backup_restore_completed':
-              // Traités par les écrans d'installation et de sauvegarde, aux
-              // phases 3 et 5. Listés explicitement pour que l'ajout d'un
-              // événement au contrat casse la compilation ici.
+              // Handled by the install and backup screens. Listed explicitly so
+              // that adding an event to the contract breaks compilation here.
               break;
           }
         };
@@ -258,8 +255,8 @@ export function useConsole(serverUuid: string): ConsoleController {
           return;
         }
 
-        // Échec de l'obtention du jeton : le serveur a pu être supprimé ou nos
-        // droits révoqués. On réessaie, mais sans insister indéfiniment vite.
+        // Failed to obtain the token: the server may have been deleted or our
+        // rights revoked. Retry, but without insisting quickly forever.
         const delay = BACKOFF_MS[Math.min(attemptRef.current, BACKOFF_MS.length - 1)]!;
         attemptRef.current += 1;
         setStatus(attemptRef.current > 3 ? 'failed' : 'reconnecting');
@@ -273,16 +270,15 @@ export function useConsole(serverUuid: string): ConsoleController {
       active = false;
       window.clearTimeout(reconnectTimer);
 
-      // `onclose` est retiré avant la fermeture : sans cela, fermer le socket
-      // déclencherait la reconnexion automatique que l'on cherche justement à
-      // arrêter.
+      // `onclose` is removed before closing: without that, closing the socket
+      // would trigger the very automatic reconnect we are trying to stop.
       if (socket) {
         socket.onclose = null;
         socket.close();
       }
 
-      // La référence partagée n'est effacée que si elle désigne encore *notre*
-      // socket : un remontage a pu la réassigner entre-temps.
+      // The shared reference is only cleared if it still points at *our*
+      // socket: a remount may have reassigned it in the meantime.
       if (socketRef.current === socket) {
         socketRef.current = null;
       }
@@ -293,15 +289,16 @@ export function useConsole(serverUuid: string): ConsoleController {
 }
 
 /**
- * Relevés de ressources récents, du plus ancien au plus récent.
+ * Recent resource samples, oldest to newest.
  *
- * L'état vit **ici** et non dans le contrôleur : seul le composant qui appelle
- * ce hook se rend à chaque relevé, au lieu de toute la mise en page du serveur.
+ * The state lives **here** and not in the controller: only the component that
+ * calls this hook re-renders on each sample, instead of the whole server
+ * layout.
  *
- * L'historique est conservé plutôt que le seul dernier relevé, pour les courbes
- * de la page de console. Il n'est pas partagé entre montages : revenir sur la
- * console repart d'un graphe vide, ce qui reste honnête — un historique
- * reconstitué depuis un tampon montrerait une continuité que la mesure n'a pas.
+ * The history is kept rather than just the latest sample, for the charts on the
+ * console page. It is not shared across mounts: coming back to the console
+ * starts from an empty chart, which stays honest — a history rebuilt from a
+ * buffer would show a continuity the measurement does not have.
  */
 export function useUsageHistory(
   controller: ConsoleController,

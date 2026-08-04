@@ -19,7 +19,7 @@ import { directorySize } from './disk-usage.js';
 import { runInstallation } from './installer.js';
 import { buildResourceUsage, emptyUsage, type DockerStats } from './stats.js';
 
-/** Intervalle minimal entre deux parcours du volume, en millisecondes. */
+/** Minimum delay between two walks of the volume, in milliseconds. */
 const DISK_MEASURE_INTERVAL_MS = 60_000;
 
 export interface ServerInstanceEvents {
@@ -32,16 +32,15 @@ export interface ServerInstanceEvents {
 }
 
 /**
- * Événements typés.
+ * Typed events.
  *
- * `EventEmitter` accepte n'importe quel nom d'événement avec n'importe quels
- * arguments : une faute de frappe dans `on('stat', …)` passerait la compilation
- * et le tableau de bord resterait vide sans erreur. Cette surcharge rend les
- * trois événements du serveur vérifiables.
+ * `EventEmitter` accepts any event name with any arguments: a typo in
+ * `on('stat', …)` would compile and the dashboard would stay empty without an
+ * error. This overload makes the server's events checkable.
  *
- * La fusion déclaration/classe est le seul moyen d'y parvenir avec
- * `EventEmitter` ; elle est sûre ici parce que l'interface ne fait que
- * restreindre des méthodes déjà présentes sur la classe de base.
+ * Declaration/class merging is the only way to get there with `EventEmitter`;
+ * it is safe here because the interface only narrows methods already present on
+ * the base class.
  */
 /* eslint-disable-next-line @typescript-eslint/no-unsafe-declaration-merging */
 export declare interface ServerInstance {
@@ -62,20 +61,20 @@ export interface ServerInstanceOptions {
   ownership: { uid: number; gid: number };
   timezone: string;
   enableBlkioWeight: boolean;
-  /** Répertoire temporaire, où le script d'installation est déposé. */
+  /** Temporary directory, where the install script is dropped. */
   tmpPath: string;
   panel: PanelClient;
 }
 
 /**
- * Un serveur Minecraft, vu par le daemon.
+ * A Minecraft server, as the daemon sees it.
  *
- * Porte l'état, le conteneur, le flux de console et les relevés de ressources.
- * Toute la logique d'ordonnancement (ne pas démarrer deux fois, attendre l'arrêt
- * avant de recréer) vit ici plutôt que dans les routes HTTP : le WebSocket, le
- * planificateur et l'API doivent tous passer par les mêmes garde-fous.
+ * Holds the state, the container, the console stream and the resource samples.
+ * All the sequencing logic (do not start twice, wait for the stop before
+ * recreating) lives here rather than in the HTTP routes: the WebSocket, the
+ * scheduler and the API all have to go through the same guards.
  */
-// eslint-disable-next-line @typescript-eslint/no-unsafe-declaration-merging -- voir la surcharge d'événements ci-dessus
+// eslint-disable-next-line @typescript-eslint/no-unsafe-declaration-merging -- see the event overload above
 export class ServerInstance extends EventEmitter {
   private state: ServerState = 'offline';
   private readonly console = new ConsoleBuffer();
@@ -85,16 +84,16 @@ export class ServerInstance extends EventEmitter {
   private statsStream: NodeJS.ReadableStream | null = null;
   private startedAt: number | null = null;
 
-  /** Dernière mesure du volume, et instant où elle a été prise. */
+  /** Last measurement of the volume, and when it was taken. */
   private diskBytes = 0;
   private diskMeasuredAt = 0;
   private diskWalk: Promise<unknown> | null = null;
 
   /**
-   * Sérialise les actions de puissance.
+   * Serialises power actions.
    *
-   * Deux clics rapides sur « Redémarrer » lanceraient sinon deux séquences
-   * concurrentes, et l'une recréerait le conteneur pendant que l'autre l'arrête.
+   * Two quick clicks on "Restart" would otherwise launch two concurrent
+   * sequences, one recreating the container while the other stops it.
    */
   private operation: Promise<unknown> = Promise.resolve();
 
@@ -122,10 +121,10 @@ export class ServerInstance extends EventEmitter {
   }
 
   /**
-   * Relevé d'un serveur à l'arrêt, pour un client qui vient de se connecter.
+   * Sample for a stopped server, for a client that just connected.
    *
-   * Un serveur éteint n'émet aucune statistique — la page resterait donc sans
-   * chiffres, y compris pour l'espace disque, qui lui reste bel et bien occupé.
+   * A stopped server emits no statistics — the page would stay without figures,
+   * including for disk space, which is very much still occupied.
    */
   get idleUsage(): ResourceUsage {
     this.refreshDiskUsage();
@@ -137,9 +136,9 @@ export class ServerInstance extends EventEmitter {
   }
 
   /**
-   * Une regex de template est une donnée, pas du code : elle peut être invalide.
-   * Le serveur doit rester utilisable dans ce cas, quitte à passer `running` dès
-   * que le conteneur tourne.
+   * A template regex is data, not code: it can be invalid. The server has to
+   * stay usable in that case, even if it means going `running` as soon as the
+   * container runs.
    */
   private compileStartupPattern(): RegExp | null {
     const source = this.options.configuration.startupDetection;
@@ -153,7 +152,7 @@ export class ServerInstance extends EventEmitter {
     } catch (error: unknown) {
       this.logger.warn(
         { server: this.uuid, pattern: source, err: error },
-        'Expression de détection de démarrage invalide : le serveur passera en ligne dès le lancement du conteneur',
+        'Invalid startup detection expression: the server will go online as soon as the container starts',
       );
       return null;
     }
@@ -168,7 +167,7 @@ export class ServerInstance extends EventEmitter {
   }
 
   // -------------------------------------------------------------------------
-  // État
+  // State
   // -------------------------------------------------------------------------
 
   private setState(state: ServerState): void {
@@ -176,7 +175,7 @@ export class ServerInstance extends EventEmitter {
       return;
     }
 
-    this.logger.debug({ server: this.uuid, from: this.state, to: state }, "Changement d'état");
+    this.logger.debug({ server: this.uuid, from: this.state, to: state }, 'State change');
     this.state = state;
 
     if (state === 'running' && this.startedAt === null) {
@@ -189,7 +188,7 @@ export class ServerInstance extends EventEmitter {
     this.emit('state', state);
   }
 
-  /** Message émis par Hopper, distinct de la sortie du serveur. */
+  /** A line emitted by Hopper, distinct from the server's own output. */
   private emitDaemonLine(message: string): void {
     const line = `[Hopper] ${message}`;
     this.console.push(line);
@@ -203,8 +202,8 @@ export class ServerInstance extends EventEmitter {
       this.console.push(line);
       this.emit('console', line);
 
-      // La bascule `starting` → `running` se joue ici : c'est le serveur
-      // lui-même qui annonce qu'il accepte les connexions.
+      // The `starting` → `running` switch happens here: it is the server itself
+      // that announces it accepts connections.
       if (this.state === 'starting' && this.startupPattern?.test(line)) {
         this.setState('running');
       }
@@ -212,7 +211,7 @@ export class ServerInstance extends EventEmitter {
   }
 
   // -------------------------------------------------------------------------
-  // Conteneur
+  // Container
   // -------------------------------------------------------------------------
 
   private container(): Dockerode.Container {
@@ -229,18 +228,18 @@ export class ServerInstance extends EventEmitter {
   }
 
   /**
-   * Crée le conteneur, en supprimant l'ancien si nécessaire.
-   * Le volume n'est jamais touché : c'est là que vivent les données du serveur.
+   * Creates the container, removing the old one if needed.
+   * The volume is never touched: that is where the server's data lives.
    */
   async createContainer(): Promise<void> {
     await mkdir(this.volumePath, { recursive: true });
 
     if (await this.containerExists()) {
-      this.logger.debug({ server: this.uuid }, "Suppression de l'ancien conteneur");
+      this.logger.debug({ server: this.uuid }, 'Removing the previous container');
       await this.container()
         .remove({ force: true })
         .catch((error: unknown) => {
-          this.logger.warn({ server: this.uuid, err: error }, 'Suppression du conteneur échouée');
+          this.logger.warn({ server: this.uuid, err: error }, 'Container removal failed');
         });
     }
 
@@ -258,28 +257,28 @@ export class ServerInstance extends EventEmitter {
     );
 
     await this.options.docker.api.createContainer(options);
-    this.logger.info({ server: this.uuid }, 'Conteneur créé');
+    this.logger.info({ server: this.uuid }, 'Container created');
   }
 
   /**
-   * S'attache au flux d'entrée/sortie du conteneur.
+   * Attaches to the container's input/output stream.
    *
-   * Fait avant `start()` : s'attacher après ferait perdre les premières lignes,
-   * dont les erreurs de démarrage — précisément celles qu'on veut voir.
+   * Done before `start()`: attaching afterwards would lose the first lines,
+   * startup errors among them — precisely the ones worth seeing.
    */
   private async attach(): Promise<void> {
     if (this.stream) {
       return;
     }
 
-    // Attache maison plutôt que `container.attach()` de dockerode : voir le
-    // commentaire de `DockerClient.attachToContainer`, qui explique pourquoi la
-    // version de la bibliothèque injecte ses propres options dans stdin.
+    // Hand-rolled attach rather than dockerode's `container.attach()`: see the
+    // comment on `DockerClient.attachToContainer`, which explains why the
+    // library's version injects its own options into stdin.
     const stream = await this.options.docker.attachToContainer(containerNameFor(this.uuid));
 
     stream.on('data', (chunk: Buffer) => this.handleOutput(chunk));
     stream.on('error', (error: Error) => {
-      this.logger.warn({ server: this.uuid, err: error }, 'Flux de console interrompu');
+      this.logger.warn({ server: this.uuid, err: error }, 'Console stream interrupted');
     });
     stream.on('end', () => {
       this.assembler.flush().forEach((line) => {
@@ -288,18 +287,17 @@ export class ServerInstance extends EventEmitter {
       });
       this.stream = null;
 
-      // La fin du flux signale l'arrêt du processus, y compris un plantage que
-      // personne n'a demandé. On interroge alors Docker pour en donner la
-      // cause : un serveur qui disparaît sans explication est le pire cas pour
-      // celui qui l'exploite.
+      // The end of the stream signals the process stopped, including a crash
+      // nobody asked for. Docker is then queried for the cause: a server that
+      // disappears without explanation is the worst case for whoever runs it.
       const wasStopping = this.state === 'stopping';
 
       void this.explainExit(wasStopping).then((exit) => {
         this.reportStatus({
           state: 'offline',
           at: Date.now(),
-          // Un arrêt demandé, ou un `/stop` tapé par un joueur — code 0 — est
-          // attendu. Tout le reste ne l'est pas, et mérite d'être signalé.
+          // A requested stop, or a `/stop` typed by a player — code 0 — is
+          // expected. Everything else is not, and deserves to be reported.
           expected: wasStopping || exit.exitCode === 0,
           exitCode: exit.exitCode,
           oomKilled: exit.oomKilled,
@@ -314,12 +312,12 @@ export class ServerInstance extends EventEmitter {
   }
 
   /**
-   * Explique en console pourquoi le processus s'est arrêté.
+   * Explains in the console why the process stopped.
    *
-   * Le cas qui compte est le dépassement mémoire : le noyau tue le processus
-   * sans le prévenir, les journaux du serveur s'interrompent au milieu d'une
-   * phrase, et rien n'indique ce qui s'est passé. L'opérateur conclut à un
-   * plantage de son plugin et cherche des heures au mauvais endroit.
+   * The case that matters is running out of memory: the kernel kills the
+   * process without warning, the server logs stop mid-sentence, and nothing
+   * says what happened. The operator concludes their plugin crashed and spends
+   * hours looking in the wrong place.
    */
   private async explainExit(
     wasStopping: boolean,
@@ -329,22 +327,22 @@ export class ServerInstance extends EventEmitter {
     try {
       info = await this.container().inspect();
     } catch {
-      // Conteneur déjà supprimé : rien à expliquer.
+      // Container already removed: nothing to explain.
     }
 
     if (info?.State.OOMKilled) {
       const limitMib = Math.floor(this.options.configuration.build.memoryBytes / (1024 * 1024));
 
       this.emitDaemonLine(
-        `Le serveur a été arrêté par le noyau pour dépassement mémoire (limite : ${limitMib} Mio).`,
+        `The server was killed by the kernel for running out of memory (limit: ${limitMib} MiB).`,
       );
       this.emitDaemonLine(
-        'Augmentez la mémoire allouée à ce serveur : la version de Minecraft installée en demande davantage.',
+        'Raise the memory allocated to this server: the installed Minecraft version needs more.',
       );
 
       this.logger.warn(
         { server: this.uuid, limitMib },
-        'Serveur tué par le noyau pour dépassement mémoire',
+        'Server killed by the kernel for running out of memory',
       );
       return { oomKilled: true, exitCode: info.State.ExitCode };
     }
@@ -357,28 +355,28 @@ export class ServerInstance extends EventEmitter {
 
     this.emitDaemonLine(
       code === undefined || code === 0
-        ? 'Le processus du serveur s’est arrêté.'
-        : `Le processus du serveur s’est arrêté (code ${code}).`,
+        ? 'The server process stopped.'
+        : `The server process stopped (code ${code}).`,
     );
 
     return { oomKilled: false, exitCode: code };
   }
 
   /**
-   * Signale un changement d'état au panel.
+   * Reports a state change to the panel.
    *
-   * Sans attente ni reprise : cette information sert aux notifications
-   * sortantes, et un panel momentanément injoignable ne doit ni retarder ni
-   * empêcher quoi que ce soit sur cette machine.
+   * Without waiting or retrying: this information feeds outgoing notifications,
+   * and a momentarily unreachable panel must neither delay nor prevent anything
+   * on this machine.
    */
   private reportStatus(report: StatusReport): void {
     void this.options.panel.reportStatus(this.uuid, report).catch((error: unknown) => {
-      this.logger.debug({ server: this.uuid, err: error }, "Rapport d'état non remis");
+      this.logger.debug({ server: this.uuid, err: error }, 'Status report not delivered');
     });
   }
 
   // -------------------------------------------------------------------------
-  // Statistiques
+  // Statistics
   // -------------------------------------------------------------------------
 
   private async startStatsStream(): Promise<void> {
@@ -390,8 +388,8 @@ export class ServerInstance extends EventEmitter {
     const assembler = new LineAssembler();
 
     stream.on('data', (chunk: Buffer) => {
-      // Docker envoie un objet JSON par ligne ; un objet peut être scindé entre
-      // deux paquets, d'où le ré-assemblage.
+      // Docker sends one JSON object per line; an object can be split across
+      // two packets, hence the reassembly.
       for (const line of assembler.push(chunk.toString('utf8'))) {
         if (line.trim() === '') {
           continue;
@@ -409,7 +407,7 @@ export class ServerInstance extends EventEmitter {
             }),
           );
         } catch {
-          // Une ligne tronquée par la fermeture du flux n'a pas à faire de bruit.
+          // A line truncated by the stream closing has no reason to make noise.
         }
       }
     });
@@ -423,9 +421,9 @@ export class ServerInstance extends EventEmitter {
   }
 
   private stopStatsStream(): void {
-    // Le flux de statistiques est un `ReadableStream` sans `destroy` déclaré,
-    // alors que l'implémentation Node en fournit un : sans lui, la connexion
-    // HTTP vers Docker resterait ouverte après chaque arrêt de serveur.
+    // The stats stream is a `ReadableStream` with no declared `destroy`, even
+    // though the Node implementation provides one: without it, the HTTP
+    // connection to Docker would stay open after every server stop.
     const stream: (NodeJS.ReadableStream & { destroy?: () => void }) | null = this.statsStream;
     stream?.destroy?.();
     this.statsStream = null;
@@ -433,16 +431,15 @@ export class ServerInstance extends EventEmitter {
   }
 
   /**
-   * Met à jour la taille du volume, au plus une fois par intervalle.
+   * Updates the size of the volume, at most once per interval.
    *
-   * Docker ne mesure pas l'espace occupé par un montage : il faut parcourir
-   * l'arborescence. Sur un serveur moddé, elle compte des dizaines de milliers
-   * de fichiers — le faire à chaque relevé de statistiques, soit une fois par
-   * seconde, tiendrait le disque occupé en permanence pour un chiffre qui bouge
-   * de quelques mégaoctets par minute.
+   * Docker does not measure the space taken by a mount: the tree has to be
+   * walked. On a modded server it holds tens of thousands of files — doing it
+   * on every stats sample, that is once a second, would keep the disk busy
+   * permanently for a figure that moves by a few megabytes a minute.
    *
-   * La mesure ne bloque pas l'émission : le relevé courant porte la valeur
-   * précédente, et le suivant portera la nouvelle.
+   * The measurement does not block emission: the current sample carries the
+   * previous value, and the next one will carry the new one.
    */
   private refreshDiskUsage(): void {
     if (this.diskWalk !== null || Date.now() - this.diskMeasuredAt < DISK_MEASURE_INTERVAL_MS) {
@@ -454,13 +451,13 @@ export class ServerInstance extends EventEmitter {
         this.diskBytes = bytes;
       })
       .catch(() => {
-        // Volume absent ou illisible : on garde la dernière valeur connue
-        // plutôt que d'annoncer un disque vide.
+        // Volume missing or unreadable: keep the last known value rather than
+        // announce an empty disk.
       })
       .finally(() => {
-        // L'horodatage est posé à la **fin** : sur un volume énorme, la mesure
-        // peut durer plus longtemps que l'intervalle, et le compter depuis le
-        // départ enchaînerait les parcours sans répit.
+        // The timestamp is set at the **end**: on a huge volume the measurement
+        // can take longer than the interval, and counting from the start would
+        // chain walks without respite.
         this.diskMeasuredAt = Date.now();
         this.diskWalk = null;
       });
@@ -471,16 +468,15 @@ export class ServerInstance extends EventEmitter {
   // -------------------------------------------------------------------------
 
   /**
-   * Installe le serveur, puis crée son conteneur d'exécution.
+   * Installs the server, then creates its runtime container.
    *
-   * Enfilée comme une action de puissance : une réinstallation demandée pendant
-   * un démarrage doit attendre, pas écraser les fichiers sous les pieds d'une
-   * JVM en train de les lire.
+   * Queued like a power action: a reinstall requested during a start has to
+   * wait, not overwrite the files under the feet of a JVM reading them.
    */
   async install(startOnCompletion: boolean): Promise<void> {
     return this.enqueue(async () => {
-      // Un serveur en cours doit être arrêté avant : réinstaller sous un
-      // processus vivant corrompt à coup sûr quelque chose.
+      // A running server has to be stopped first: reinstalling under a live
+      // process is guaranteed to corrupt something.
       if (this.state === 'running' || this.state === 'starting') {
         await this.doStop();
       }
@@ -488,7 +484,7 @@ export class ServerInstance extends EventEmitter {
       this.setState('installing');
       this.console.clear();
       this.emit('install_started');
-      this.emitDaemonLine('Installation du serveur…');
+      this.emitDaemonLine('Installing the server…');
 
       let successful = false;
 
@@ -509,12 +505,12 @@ export class ServerInstance extends EventEmitter {
         successful = result.successful;
 
         if (!successful) {
-          this.emitDaemonLine(`Installation échouée (code ${result.exitCode}).`);
+          this.emitDaemonLine(`Installation failed (code ${result.exitCode}).`);
         }
       } catch (error: unknown) {
-        this.logger.error({ server: this.uuid, err: error }, 'Installation échouée');
+        this.logger.error({ server: this.uuid, err: error }, 'Installation failed');
         this.emitDaemonLine(
-          `Installation échouée : ${error instanceof Error ? error.message : String(error)}`,
+          `Installation failed: ${error instanceof Error ? error.message : String(error)}`,
         );
       }
 
@@ -525,16 +521,16 @@ export class ServerInstance extends EventEmitter {
         return;
       }
 
-      this.emitDaemonLine('Installation terminée. Préparation du conteneur…');
+      this.emitDaemonLine('Installation finished. Preparing the container…');
       await this.createContainer();
 
-      // Rapporté au panel avant le démarrage : c'est ce qui fait passer le
-      // serveur de INSTALLING à READY dans l'interface. Un échec de rapport ne
-      // doit pas empêcher le serveur de démarrer.
+      // Reported to the panel before starting: this is what moves the server
+      // from INSTALLING to READY in the interface. A failed report must not
+      // prevent the server from starting.
       await this.options.panel
         .reportInstall(this.uuid, true)
         .catch((error: unknown) =>
-          this.logger.error({ server: this.uuid, err: error }, "Rapport d'installation échoué"),
+          this.logger.error({ server: this.uuid, err: error }, 'Install report failed'),
         );
 
       if (startOnCompletion) {
@@ -547,14 +543,14 @@ export class ServerInstance extends EventEmitter {
   }
 
   // -------------------------------------------------------------------------
-  // Actions de puissance
+  // Power actions
   // -------------------------------------------------------------------------
 
-  /** Enfile une action pour qu'elle n'en croise jamais une autre. */
+  /** Queues an action so it never crosses another. */
   private enqueue<T>(action: () => Promise<T>): Promise<T> {
     const next = this.operation.then(action, action);
-    // La chaîne ne doit pas se rompre sur un échec, sinon toute action ultérieure
-    // serait rejetée avec l'erreur de la précédente.
+    // The chain must not break on a failure, otherwise every later action would
+    // be rejected with the previous one's error.
     this.operation = next.catch(() => undefined);
     return next;
   }
@@ -577,20 +573,20 @@ export class ServerInstance extends EventEmitter {
 
   private async doStart(): Promise<void> {
     if (this.state === 'running' || this.state === 'starting') {
-      this.emitDaemonLine('Le serveur est déjà démarré.');
+      this.emitDaemonLine('The server is already started.');
       return;
     }
 
     if (this.options.configuration.suspended) {
-      throw new Error('Ce serveur est suspendu.');
+      throw new Error('This server is suspended.');
     }
 
     this.setState('starting');
     this.console.clear();
-    this.emitDaemonLine('Démarrage du serveur…');
+    this.emitDaemonLine('Starting the server…');
 
     if (this.options.configuration.container.requiresRebuild || !(await this.containerExists())) {
-      this.emitDaemonLine('Construction du conteneur…');
+      this.emitDaemonLine('Building the container…');
       await this.createContainer();
     }
 
@@ -599,18 +595,18 @@ export class ServerInstance extends EventEmitter {
     await this.startStatsStream();
 
     if (!this.startupPattern) {
-      // Sans marqueur de démarrage, le conteneur qui tourne est le seul signal
-      // disponible.
+      // With no startup marker, the running container is the only signal
+      // available.
       this.setState('running');
     }
   }
 
   /**
-   * Arrêt propre.
+   * Clean stop.
    *
-   * Envoie la commande d'arrêt du template sur stdin (`stop` pour un serveur
-   * Bukkit) et laisse le serveur sauvegarder ses mondes. Un SIGKILL immédiat
-   * corromprait des régions de map.
+   * Sends the template's stop command on stdin (`stop` for a Bukkit server) and
+   * lets the server save its worlds. An immediate SIGKILL would corrupt map
+   * regions.
    */
   private async doStop(): Promise<void> {
     if (this.state === 'offline') {
@@ -622,10 +618,10 @@ export class ServerInstance extends EventEmitter {
     const { stop, stopTimeoutSeconds } = this.options.configuration;
 
     if (stop.type === 'command') {
-      this.emitDaemonLine(`Arrêt en cours (commande « ${stop.value} »)…`);
+      this.emitDaemonLine(`Stopping (command "${stop.value}")…`);
       await this.sendCommand(stop.value);
     } else {
-      this.emitDaemonLine(`Arrêt en cours (signal ${stop.value})…`);
+      this.emitDaemonLine(`Stopping (signal ${stop.value})…`);
       await this.container().kill({ signal: stop.value });
     }
 
@@ -633,26 +629,26 @@ export class ServerInstance extends EventEmitter {
 
     if (!stopped) {
       this.emitDaemonLine(
-        `Le serveur n’a pas répondu en ${stopTimeoutSeconds} s : arrêt forcé. Une perte de données est possible.`,
+        `The server did not answer within ${stopTimeoutSeconds}s: killing it. Data loss is possible.`,
       );
       await this.doKill();
     }
   }
 
   private async doKill(): Promise<void> {
-    this.emitDaemonLine('Arrêt forcé du conteneur.');
+    this.emitDaemonLine('Killing the container.');
 
     await this.container()
       .kill({ signal: 'SIGKILL' })
       .catch((error: unknown) => {
-        this.logger.debug({ server: this.uuid, err: error }, 'Conteneur déjà arrêté');
+        this.logger.debug({ server: this.uuid, err: error }, 'Container already stopped');
       });
 
     this.setState('offline');
     this.stopStatsStream();
   }
 
-  /** Attend un état, ou expire. Retourne `false` en cas d'expiration. */
+  /** Waits for a state, or times out. Returns `false` on timeout. */
   private waitForState(target: ServerState, timeoutMs: number): Promise<boolean> {
     if (this.state === target) {
       return Promise.resolve(true);
@@ -677,15 +673,15 @@ export class ServerInstance extends EventEmitter {
   }
 
   /**
-   * Écrit une commande sur l'entrée standard du serveur.
+   * Writes a command on the server's standard input.
    *
-   * Le retour à la ligne est ajouté ici et la commande est débarrassée des
-   * siens : une valeur contenant `\n` enverrait sinon plusieurs commandes d'un
-   * coup, ce qui contournerait la journalisation d'audit ligne par ligne.
+   * The newline is added here and the command is stripped of its own: a value
+   * containing `\n` would otherwise send several commands at once, which would
+   * bypass line-by-line audit logging.
    */
   async sendCommand(command: string): Promise<void> {
     if (!this.stream) {
-      throw new Error("Le serveur n'est pas démarré.");
+      throw new Error('The server is not started.');
     }
 
     const sanitized = command.replace(/[\r\n]+/g, ' ').trim();
@@ -701,14 +697,14 @@ export class ServerInstance extends EventEmitter {
 
   // -------------------------------------------------------------------------
 
-  /** Détache les flux sans toucher au conteneur. */
+  /** Detaches the streams without touching the container. */
   detach(): void {
     this.stream?.destroy();
     this.stream = null;
     this.stopStatsStream();
   }
 
-  /** Supprime le conteneur. Le volume est traité par l'appelant. */
+  /** Removes the container. The volume is handled by the caller. */
   async destroyContainer(): Promise<void> {
     this.detach();
 
@@ -720,21 +716,21 @@ export class ServerInstance extends EventEmitter {
   }
 
   /**
-   * Aligne l'état interne sur la réalité du conteneur.
-   * Appelé au démarrage du daemon : les serveurs continuent de tourner pendant
-   * un redémarrage de hopperd, et il faut les retrouver.
+   * Aligns the internal state with the container's reality.
+   * Called when the daemon starts: servers keep running across a hopperd
+   * restart, and they have to be found again.
    */
   async reconcile(): Promise<void> {
     try {
       const info = await this.container().inspect();
 
       if (info.State.Running) {
-        this.logger.info({ server: this.uuid }, 'Serveur déjà en cours : ré-attachement');
+        this.logger.info({ server: this.uuid }, 'Server already running: reattaching');
         await this.attach();
         await this.startStatsStream();
         this.startedAt = new Date(info.State.StartedAt).getTime();
-        // Le marqueur de démarrage est passé avant notre attache : on ne peut
-        // que constater que le conteneur tourne.
+        // The startup marker went by before we attached: all we can do is note
+        // that the container is running.
         this.setState('running');
       } else {
         this.setState('offline');

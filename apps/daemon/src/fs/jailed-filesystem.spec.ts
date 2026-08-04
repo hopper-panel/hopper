@@ -14,31 +14,27 @@ import {
 } from './jailed-filesystem.js';
 
 /**
- * Ces tests s'exécutent contre un vrai système de fichiers temporaire, avec de
- * vrais liens symboliques : une évasion par symlink ne se reproduit pas avec un
- * `fs` simulé, et c'est précisément le cas qu'on cherche à empêcher.
+ * These tests run against a real temporary filesystem, with real symlinks: a
+ * symlink escape does not reproduce against a mocked `fs`, and that is exactly
+ * the case we are trying to prevent.
  *
- * Windows refuse la création de liens symboliques sans élévation ni mode
- * développeur. Les tests concernés sont donc conditionnés à une sonde, et
- * s'exécutent en intégration continue — qui tourne sous Linux, comme les nodes
- * en production. Un développeur sous Windows les verra marqués « ignorés »,
- * jamais « réussis ».
- */
-/**
- * La sonde est **synchrone et au niveau du module**, pas dans un `beforeAll`.
+ * Windows refuses to create symlinks without elevation or developer mode. The
+ * tests concerned are therefore gated behind a probe and run in continuous
+ * integration — which runs on Linux, like production nodes. A developer on
+ * Windows sees them marked "skipped", never "passed".
  *
- * `describe.runIf(...)` est évalué au moment où Vitest collecte les tests,
- * c'est-à-dire avant l'exécution du moindre `beforeAll`. Une sonde asynchrone
- * laissait donc le drapeau à `false` sur toutes les plateformes, y compris
- * Linux : les huit tests étaient annoncés « ignorés » partout, et n'ont jamais
- * rien vérifié.
+ * The probe is **synchronous and at module level**, not in a `beforeAll`.
+ * `describe.runIf(...)` is evaluated when Vitest collects the tests, before any
+ * `beforeAll` runs. An asynchronous probe left the flag at `false` on every
+ * platform, Linux included: the eight tests were reported as skipped
+ * everywhere and never checked anything.
  */
 const symlinkSupported = ((): boolean => {
   const probe = mkdtempSync(join(tmpdir(), 'hopper-symlink-probe-'));
 
   try {
-    mkdirSync(join(probe, 'cible'));
-    symlinkSync(join(probe, 'cible'), join(probe, 'lien'), 'dir');
+    mkdirSync(join(probe, 'target'));
+    symlinkSync(join(probe, 'target'), join(probe, 'link'), 'dir');
     return true;
   } catch {
     return false;
@@ -50,8 +46,8 @@ const symlinkSupported = ((): boolean => {
 afterAll(() => {
   if (!symlinkSupported) {
     process.stderr.write(
-      '\n⚠ Liens symboliques indisponibles sur cette plateforme : les tests d’évasion par symlink ont été ignorés.\n' +
-        '  Ils s’exécutent en intégration continue, sous Linux.\n\n',
+      '\n⚠ Symlinks are unavailable on this platform: the symlink escape tests were skipped.\n' +
+        '  They run in continuous integration, on Linux.\n\n',
     );
   }
 });
@@ -81,45 +77,45 @@ describe('JailedFilesystem', () => {
     await rm(sandbox, { recursive: true, force: true });
   });
 
-  describe('chemins légitimes', () => {
-    it('accepte un fichier à la racine', async () => {
+  describe('legitimate paths', () => {
+    it('accepts a file at the root', async () => {
       expect(await jail.resolvePath('server.properties')).toBe(join(volume, 'server.properties'));
     });
 
-    it('accepte un chemin imbriqué', async () => {
+    it('accepts a nested path', async () => {
       expect(await jail.resolvePath('plugins/config.yml')).toBe(
         join(volume, 'plugins', 'config.yml'),
       );
     });
 
-    it('accepte le préfixe « / » comme racine du volume', async () => {
+    it('accepts a leading "/" as the volume root', async () => {
       expect(await jail.resolvePath('/plugins')).toBe(join(volume, 'plugins'));
     });
 
-    it('accepte les séparateurs Windows', async () => {
+    it('accepts Windows separators', async () => {
       expect(await jail.resolvePath('plugins\\config.yml')).toBe(
         join(volume, 'plugins', 'config.yml'),
       );
     });
 
-    it('accepte un « .. » qui reste dans le volume', async () => {
+    it('accepts a ".." that stays inside the volume', async () => {
       expect(await jail.resolvePath('plugins/../server.properties')).toBe(
         join(volume, 'server.properties'),
       );
     });
 
-    it("accepte un fichier qui n'existe pas encore", async () => {
-      expect(await jail.resolvePath('nouveau/dossier/fichier.txt')).toBe(
-        join(volume, 'nouveau', 'dossier', 'fichier.txt'),
+    it('accepts a file that does not exist yet', async () => {
+      expect(await jail.resolvePath('new/folder/file.txt')).toBe(
+        join(volume, 'new', 'folder', 'file.txt'),
       );
     });
   });
 
   // ---------------------------------------------------------------------------
-  // Ce bloc est la raison d'être du module.
+  // This block is the reason the module exists.
   // ---------------------------------------------------------------------------
 
-  describe('évasion par traversée', () => {
+  describe('traversal escape', () => {
     it.each([
       '../secret/passwd',
       '../../etc/passwd',
@@ -127,29 +123,29 @@ describe('JailedFilesystem', () => {
       '..',
       '../',
       'a/../../secret',
-    ])('refuse « %s »', async (attack) => {
+    ])('rejects "%s"', async (attack) => {
       await expect(jail.resolvePath(attack)).rejects.toThrow(PathEscapeError);
     });
 
     /**
-     * L'invariant qui compte n'est pas « ces charges sont refusées », mais
-     * « elles ne désignent jamais un fichier de l'hôte ». Selon la charge et la
-     * plateforme, le jail les refuse ou les ramène à l'intérieur du volume :
-     * les deux issues sont sûres, et l'affirmation les couvre toutes deux.
+     * The invariant that matters is not "these payloads are rejected" but "they
+     * never designate a host file". Depending on the payload and the platform,
+     * the jail either rejects them or brings them back inside the volume: both
+     * outcomes are safe, and the assertion covers them both.
      *
-     * `....//....//` ne piège que les filtres qui suppriment « .. » en boucle :
-     * `....` est un nom de dossier ordinaire, que la normalisation de Node
-     * traite comme tel. Un chemin absolu est réinterprété relativement au
-     * volume — comme le fait `tar` sans `--absolute-names` — sauf sous Windows
-     * où `C:/…` est reconnu comme absolu et donc rejeté.
+     * `....//....//` only traps filters that strip ".." in a loop: `....` is an
+     * ordinary folder name, which Node's normalisation treats as such. An
+     * absolute path is reinterpreted relative to the volume — as `tar` does
+     * without `--absolute-names` — except on Windows where `C:/…` is recognised
+     * as absolute and therefore rejected.
      */
     it.each([
       '....//....//secret/passwd',
       '/etc/passwd',
       '//etc/passwd',
       'C:/Windows/system32',
-      '\\\\serveur\\partage\\fichier',
-    ])('ne laisse jamais « %s » désigner un fichier de l’hôte', async (payload) => {
+      '\\\\server\\share\\file',
+    ])('never lets "%s" designate a host file', async (payload) => {
       let resolved: string;
 
       try {
@@ -163,57 +159,57 @@ describe('JailedFilesystem', () => {
       expect(resolved).not.toContain(outside);
     });
 
-    // Un octet nul tronque le chemin dans les appels système en C : la
-    // vérification verrait `a`, le noyau verrait autre chose.
-    it('refuse un chemin contenant un octet nul', async () => {
+    // A null byte truncates the path in C system calls: the check would see
+    // `a`, the kernel would see something else.
+    it('rejects a path containing a null byte', async () => {
       await expect(jail.resolvePath('a\0/../../secret/passwd')).rejects.toThrow(PathEscapeError);
     });
   });
 
-  // Conditionnés à la sonde : voir le commentaire en tête de fichier.
-  describe.runIf(symlinkSupported)('évasion par lien symbolique', () => {
-    // L'utilisateur peut créer ces liens lui-même depuis sa console ou en SFTP.
-    it('refuse un lien vers un dossier extérieur', async () => {
-      await symlink(outside, join(volume, 'evasion'), 'dir');
+  // Gated behind the probe: see the comment at the top of the file.
+  describe.runIf(symlinkSupported)('symlink escape', () => {
+    // The user can create these links themselves, from their console or over SFTP.
+    it('rejects a link to an outside folder', async () => {
+      await symlink(outside, join(volume, 'escape'), 'dir');
 
-      await expect(jail.resolvePath('evasion/passwd')).rejects.toThrow(PathEscapeError);
+      await expect(jail.resolvePath('escape/passwd')).rejects.toThrow(PathEscapeError);
     });
 
-    it('refuse un lien vers un fichier extérieur', async () => {
-      await symlink(join(outside, 'passwd'), join(volume, 'lien.txt'));
+    it('rejects a link to an outside file', async () => {
+      await symlink(join(outside, 'passwd'), join(volume, 'link.txt'));
 
-      await expect(jail.resolvePath('lien.txt')).rejects.toThrow(PathEscapeError);
+      await expect(jail.resolvePath('link.txt')).rejects.toThrow(PathEscapeError);
     });
 
-    it('refuse un lien vers la racine du système', async () => {
-      await symlink(sep, join(volume, 'racine'), 'dir');
+    it('rejects a link to the system root', async () => {
+      await symlink(sep, join(volume, 'root'), 'dir');
 
-      await expect(jail.resolvePath('racine/etc/passwd')).rejects.toThrow(PathEscapeError);
+      await expect(jail.resolvePath('root/etc/passwd')).rejects.toThrow(PathEscapeError);
     });
 
-    // Le fichier visé n'existe pas encore : c'est le cas d'une écriture, et le
-    // contrôle doit porter sur le dossier parent.
-    it("refuse l'écriture à travers un lien, même sur un fichier absent", async () => {
-      await symlink(outside, join(volume, 'evasion'), 'dir');
+    // The target file does not exist yet: this is the write case, and the check
+    // has to apply to the parent folder.
+    it('rejects a write through a link, even on a missing file', async () => {
+      await symlink(outside, join(volume, 'escape'), 'dir');
 
-      await expect(jail.resolvePath('evasion/nouveau.txt')).rejects.toThrow(PathEscapeError);
+      await expect(jail.resolvePath('escape/new.txt')).rejects.toThrow(PathEscapeError);
     });
 
-    it('accepte un lien qui reste dans le volume', async () => {
-      await symlink(join(volume, 'plugins'), join(volume, 'raccourci'), 'dir');
+    it('accepts a link that stays inside the volume', async () => {
+      await symlink(join(volume, 'plugins'), join(volume, 'shortcut'), 'dir');
 
-      await expect(jail.resolvePath('raccourci/config.yml')).resolves.toContain('plugins');
+      await expect(jail.resolvePath('shortcut/config.yml')).resolves.toContain('plugins');
     });
 
-    it('refuse un lien imbriqué en deux sauts', async () => {
-      await symlink(outside, join(sandbox, 'saut1'), 'dir');
-      await symlink(join(sandbox, 'saut1'), join(volume, 'saut2'), 'dir');
+    it('rejects a link nested in two hops', async () => {
+      await symlink(outside, join(sandbox, 'hop1'), 'dir');
+      await symlink(join(sandbox, 'hop1'), join(volume, 'hop2'), 'dir');
 
-      await expect(jail.resolvePath('saut2/passwd')).rejects.toThrow(PathEscapeError);
+      await expect(jail.resolvePath('hop2/passwd')).rejects.toThrow(PathEscapeError);
     });
   });
 
-  describe('liste noire', () => {
+  describe('denylist', () => {
     beforeEach(() => {
       jail = new JailedFilesystem({
         root: volume,
@@ -221,21 +217,20 @@ describe('JailedFilesystem', () => {
       });
     });
 
-    it.each(['forwarding.secret', 'secrets/token.txt', 'secrets/a/b/c.txt', 'serveur.key'])(
-      'refuse « %s »',
+    it.each(['forwarding.secret', 'secrets/token.txt', 'secrets/a/b/c.txt', 'server.key'])(
+      'rejects "%s"',
       async (denied) => {
         await expect(jail.resolvePath(denied)).rejects.toThrow(DeniedFileError);
       },
     );
 
-    it('laisse passer ce qui ne correspond pas', async () => {
+    it('lets through what does not match', async () => {
       await expect(jail.resolvePath('server.properties')).resolves.toBeTruthy();
       await expect(jail.resolvePath('plugins/config.yml')).resolves.toBeTruthy();
     });
 
-    // Montrer un fichier sans permettre de le lire ne ferait qu'attirer
-    // l'attention dessus.
-    it("masque les fichiers interdits dans la liste d'un dossier", async () => {
+    // Showing a file without allowing it to be read would only draw attention to it.
+    it('hides denied files from a folder listing', async () => {
       await writeFile(join(volume, 'forwarding.secret'), 'secret');
 
       const entries = await jail.list('.');
@@ -245,48 +240,46 @@ describe('JailedFilesystem', () => {
     });
   });
 
-  describe('extraction d’archive', () => {
-    it('accepte une entrée normale', async () => {
-      const target = await jail.resolveArchiveEntry('.', 'plugins/nouveau.jar');
-      expect(target).toBe(join(volume, 'plugins', 'nouveau.jar'));
+  describe('archive extraction', () => {
+    it('accepts an ordinary entry', async () => {
+      const target = await jail.resolveArchiveEntry('.', 'plugins/new.jar');
+      expect(target).toBe(join(volume, 'plugins', 'new.jar'));
     });
 
-    // Le « zip-slip » : beaucoup de bibliothèques d'extraction écrivent cette
-    // entrée sans broncher.
-    it.each(['../../etc/cron.d/backdoor', '../evasion.txt', 'a/../../../../evasion'])(
-      'refuse l’entrée « %s »',
+    // The "zip slip": many extraction libraries write this entry without
+    // flinching.
+    it.each(['../../etc/cron.d/backdoor', '../escape.txt', 'a/../../../../escape'])(
+      'rejects the entry "%s"',
       async (entry) => {
         await expect(jail.resolveArchiveEntry('.', entry)).rejects.toThrow(PathEscapeError);
       },
     );
 
-    // Une entrée absolue est réinterprétée relativement à la destination, comme
-    // le fait `tar` : elle n'écrit donc jamais hors du volume.
-    it('ramène une entrée absolue dans le volume', async () => {
+    // An absolute entry is reinterpreted relative to the destination, as `tar`
+    // does: it therefore never writes outside the volume.
+    it('brings an absolute entry back into the volume', async () => {
       const target = await jail.resolveArchiveEntry('.', '/etc/passwd');
 
       expect(target).toBe(join(volume, 'etc', 'passwd'));
     });
 
-    // Une archive extraite dans `plugins/` ne doit pas écrire ailleurs dans le
-    // volume, même si la destination reste légale.
-    it('refuse une entrée qui sort de la destination demandée', async () => {
+    // An archive extracted into `plugins/` must not write elsewhere in the
+    // volume, even where the destination would be legal.
+    it('rejects an entry that leaves the requested destination', async () => {
       await expect(jail.resolveArchiveEntry('plugins', '../server.properties')).rejects.toThrow(
         PathEscapeError,
       );
     });
 
-    it('refuse une entrée figurant dans la liste noire', async () => {
+    it('rejects an entry on the denylist', async () => {
       const guarded = new JailedFilesystem({ root: volume, denylist: ['*.key'] });
 
-      await expect(guarded.resolveArchiveEntry('.', 'serveur.key')).rejects.toThrow(
-        DeniedFileError,
-      );
+      await expect(guarded.resolveArchiveEntry('.', 'server.key')).rejects.toThrow(DeniedFileError);
     });
   });
 
-  describe('opérations', () => {
-    it('liste un dossier, dossiers en tête', async () => {
+  describe('operations', () => {
+    it('lists a folder, directories first', async () => {
       const entries = await jail.list('.');
 
       expect(entries[0]!.name).toBe('plugins');
@@ -294,89 +287,88 @@ describe('JailedFilesystem', () => {
       expect(entries.map((entry) => entry.name)).toContain('server.properties');
     });
 
-    it('renvoie des chemins relatifs, jamais absolus', async () => {
+    it('returns relative paths, never absolute ones', async () => {
       const entries = await jail.list('plugins');
 
       expect(entries[0]!.path).toBe('plugins/config.yml');
-      // Le chemin sur l'hôte révélerait l'arborescence de la machine.
+      // The host path would reveal the machine's directory tree.
       expect(entries[0]!.path).not.toContain(sandbox);
     });
 
-    it('signale un dossier introuvable', async () => {
-      await expect(jail.list('absent')).rejects.toThrow(NotFoundError);
+    it('reports a missing folder', async () => {
+      await expect(jail.list('missing')).rejects.toThrow(NotFoundError);
     });
 
-    it('écrit un fichier et crée son dossier parent', async () => {
-      await jail.writeFile('nouveau/dossier/fichier.txt', 'contenu');
+    it('writes a file and creates its parent folder', async () => {
+      await jail.writeFile('new/folder/file.txt', 'content');
 
-      expect((await jail.stat('nouveau/dossier/fichier.txt')).sizeBytes).toBe(7);
+      expect((await jail.stat('new/folder/file.txt')).sizeBytes).toBe(7);
     });
 
-    it('renomme un fichier', async () => {
-      await jail.rename('server.properties', 'renomme.properties');
+    it('renames a file', async () => {
+      await jail.rename('server.properties', 'renamed.properties');
 
-      await expect(jail.stat('renomme.properties')).resolves.toBeTruthy();
+      await expect(jail.stat('renamed.properties')).resolves.toBeTruthy();
       await expect(jail.stat('server.properties')).rejects.toThrow(NotFoundError);
     });
 
-    it('refuse un renommage dont la destination sort du volume', async () => {
-      await expect(jail.rename('server.properties', '../evade.txt')).rejects.toThrow(
+    it('rejects a rename whose destination leaves the volume', async () => {
+      await expect(jail.rename('server.properties', '../escape.txt')).rejects.toThrow(
         PathEscapeError,
       );
     });
 
-    it('copie un dossier entier', async () => {
-      await jail.copy('plugins', 'plugins-copie');
+    it('copies a whole folder', async () => {
+      await jail.copy('plugins', 'plugins-copy');
 
-      expect((await jail.list('plugins-copie')).map((entry) => entry.name)).toEqual(['config.yml']);
+      expect((await jail.list('plugins-copy')).map((entry) => entry.name)).toEqual(['config.yml']);
     });
 
-    it('supprime plusieurs entrées', async () => {
+    it('deletes several entries', async () => {
       await jail.delete(['server.properties', 'plugins']);
 
       expect(await jail.list('.')).toEqual([]);
     });
 
-    // Supprimer la racine viderait le serveur d'un coup, sans passer par la
-    // suppression du serveur elle-même.
-    it('refuse de supprimer la racine du volume', async () => {
+    // Deleting the root would empty the server in one go, bypassing server
+    // deletion itself.
+    it('refuses to delete the volume root', async () => {
       await expect(jail.delete(['.'])).rejects.toThrow(PathEscapeError);
       await expect(jail.delete(['/'])).rejects.toThrow(PathEscapeError);
     });
 
-    it.runIf(symlinkSupported)('décrit un lien comme lien, sans suivre sa cible', async () => {
-      await symlink(join(outside, 'passwd'), join(volume, 'lien.txt'));
+    it.runIf(symlinkSupported)('describes a link as a link, without following it', async () => {
+      await symlink(join(outside, 'passwd'), join(volume, 'link.txt'));
 
-      const entry = (await jail.list('.')).find((candidate) => candidate.name === 'lien.txt');
+      const entry = (await jail.list('.')).find((candidate) => candidate.name === 'link.txt');
 
       expect(entry?.symlink).toBe(true);
-      // La taille de la cible révélerait un fichier hors du volume.
+      // The target's size would reveal a file outside the volume.
       expect(entry?.sizeBytes).not.toBe(12);
     });
   });
 
   describe('chmod', () => {
-    // Le changement de droits passe par la même résolution que tout le reste :
-    // sans cela, `../../etc/shadow` deviendrait accessible en écriture à tout
-    // le monde depuis un gestionnaire de fichiers de serveur Minecraft.
-    it('refuse un chemin hors du volume', async () => {
+    // Changing permissions goes through the same resolution as everything else:
+    // without it, `../../etc/shadow` would become world-writable from a
+    // Minecraft server's file manager.
+    it('rejects a path outside the volume', async () => {
       await expect(jail.chmod('../../etc/shadow', 0o777)).rejects.toThrow(PathEscapeError);
     });
 
-    it('refuse un fichier de la liste noire', async () => {
+    it('rejects a file on the denylist', async () => {
       const guarded = new JailedFilesystem({ root: volume, denylist: ['*.key'] });
 
       await expect(guarded.chmod('secret.key', 0o600)).rejects.toThrow(DeniedFileError);
     });
 
-    // Le schéma du contrat n'accepte que trois chiffres octaux, mais le masque
-    // est appliqué ici aussi : un binaire `setuid` déposé dans un volume
-    // s'exécuterait avec les droits de son propriétaire et annulerait le
-    // cloisonnement du conteneur.
+    // The contract schema only accepts three octal digits, but the mask is
+    // applied here too: a `setuid` binary dropped in a volume would run with its
+    // owner's rights and defeat the container boundary.
     //
-    // Ignoré sous Windows, qui ne retient que le bit d'écriture : le test y
-    // passerait sans rien prouver.
-    it.runIf(process.platform !== 'win32')('écarte les bits setuid et setgid', async () => {
+    // Skipped on Windows, which only keeps the write bit: the test would pass
+    // there without proving anything.
+    it.runIf(process.platform !== 'win32')('strips the setuid and setgid bits', async () => {
       await jail.writeFile('script.sh', '#!/bin/sh');
       await jail.chmod('script.sh', 0o6755);
 
@@ -387,32 +379,32 @@ describe('JailedFilesystem', () => {
     });
   });
 
-  describe('appartenance', () => {
-    // Le daemon écrit en root, le serveur tourne en uid non privilégié. Sans
-    // reprise de propriété, tout chemin créé par le gestionnaire de fichiers
-    // devenait illisible pour le serveur — un plugin qui n'arrive pas à écrire
-    // sa configuration, des heures après l'envoi du fichier.
-    it('ne casse pas les écritures quand aucune appartenance n’est demandée', async () => {
-      await expect(jail.writeFile('sans-proprietaire.txt', 'ok')).resolves.toBeUndefined();
-      await expect(jail.createDirectory('dossier')).resolves.toBeUndefined();
+  describe('ownership', () => {
+    // The daemon writes as root, the server runs under an unprivileged uid.
+    // Without taking ownership, every path created by the file manager was
+    // unreadable to the server — a plugin unable to write its configuration,
+    // hours after the file was uploaded.
+    it('does not break writes when no ownership is requested', async () => {
+      await expect(jail.writeFile('no-owner.txt', 'ok')).resolves.toBeUndefined();
+      await expect(jail.createDirectory('folder')).resolves.toBeUndefined();
     });
 
-    // `chown` échoue sous Windows et pour un utilisateur non privilégié : la
-    // reprise de propriété ne doit jamais faire échouer l'écriture elle-même.
-    it('n’échoue pas quand chown est impossible', async () => {
+    // `chown` fails on Windows and for an unprivileged user: taking ownership
+    // must never make the write itself fail.
+    it('does not fail when chown is impossible', async () => {
       const owned = new JailedFilesystem({
         root: volume,
         ownership: { uid: 4242, gid: 4242 },
       });
 
-      await expect(owned.writeFile('possede.txt', 'ok')).resolves.toBeUndefined();
-      await expect(owned.stat('possede.txt')).resolves.toMatchObject({ name: 'possede.txt' });
+      await expect(owned.writeFile('owned.txt', 'ok')).resolves.toBeUndefined();
+      await expect(owned.stat('owned.txt')).resolves.toMatchObject({ name: 'owned.txt' });
     });
   });
 
-  describe.runIf(symlinkSupported)('racine elle-même liée', () => {
-    it('résout la racine avant toute comparaison', async () => {
-      const link = join(sandbox, 'lien-vers-volume');
+  describe.runIf(symlinkSupported)('root that is itself a link', () => {
+    it('resolves the root before any comparison', async () => {
+      const link = join(sandbox, 'link-to-volume');
       await symlink(volume, link, 'dir');
 
       const linked = new JailedFilesystem({ root: link });
@@ -424,35 +416,35 @@ describe('JailedFilesystem', () => {
 });
 
 describe('isInside', () => {
-  // Sans le séparateur dans la comparaison, `/var/lib/hopper-evil` passerait
-  // pour être sous `/var/lib/hopper`.
-  it('refuse un répertoire voisin au nom préfixé', () => {
+  // Without the separator in the comparison, `/var/lib/hopper-evil` would pass
+  // for being under `/var/lib/hopper`.
+  it('rejects a sibling directory whose name is a prefix', () => {
     expect(isInside(resolve('/var/lib/hopper'), resolve('/var/lib/hopper-evil/x'))).toBe(false);
   });
 
-  it('accepte le répertoire lui-même', () => {
+  it('accepts the directory itself', () => {
     expect(isInside(resolve('/var/lib/hopper'), resolve('/var/lib/hopper'))).toBe(true);
   });
 
-  it('accepte un descendant', () => {
+  it('accepts a descendant', () => {
     expect(isInside(resolve('/var/lib/hopper'), resolve('/var/lib/hopper/a/b'))).toBe(true);
   });
 });
 
 describe('globToRegExp', () => {
   it.each([
-    ['*.key', 'serveur.key', true],
-    ['*.key', 'plugins/serveur.key', false],
-    ['**/*.key', 'plugins/serveur.key', true],
+    ['*.key', 'server.key', true],
+    ['*.key', 'plugins/server.key', false],
+    ['**/*.key', 'plugins/server.key', true],
     ['secrets/**', 'secrets/a/b.txt', true],
-    ['secrets/**', 'autre/a.txt', false],
+    ['secrets/**', 'other/a.txt', false],
     ['forwarding.secret', 'forwarding.secret', true],
     ['forwarding.secret', 'forwarding-secret', false],
-  ])('« %s » contre « %s » → %s', (pattern, path, expected) => {
+  ])('"%s" against "%s" → %s', (pattern, path, expected) => {
     expect(globToRegExp(pattern).test(path)).toBe(expected);
   });
 
-  it('échappe les caractères spéciaux des expressions régulières', () => {
+  it('escapes regular-expression metacharacters', () => {
     expect(globToRegExp('a.b').test('axb')).toBe(false);
     expect(globToRegExp('a.b').test('a.b')).toBe(true);
   });
@@ -465,7 +457,7 @@ describe('formatMode', () => {
     [0o600, 'rw-------'],
     [0o777, 'rwxrwxrwx'],
     [0o000, '---------'],
-  ])('formate %s en %s', (mode, expected) => {
+  ])('formats %s as %s', (mode, expected) => {
     expect(formatMode(mode)).toBe(expected);
   });
 });

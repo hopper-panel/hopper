@@ -1,23 +1,23 @@
 /**
- * Construction de la commande de démarrage d'un serveur.
+ * Building a server's startup command.
  *
- * C'est le point le plus sensible du daemon : le gabarit vient d'un template, et
- * les valeurs des variables viennent en partie de l'utilisateur. Une
- * concaténation naïve suivie d'un `sh -c` donnerait à quiconque peut éditer une
- * variable la possibilité d'exécuter n'importe quoi dans le conteneur.
+ * This is the most sensitive point in the daemon: the template comes from a
+ * template, and the variable values come partly from the user. A naive
+ * concatenation followed by `sh -c` would give anyone who can edit a variable
+ * the ability to run anything inside the container.
  *
- * La parade tient en une règle : **on découpe d'abord, on substitue ensuite.**
+ * The defence is one rule: **split first, substitute second.**
  *
- *   1. Le gabarit est découpé en arguments, en respectant les guillemets.
- *   2. Les `{{VARIABLES}}` sont remplacées *à l'intérieur* de chaque argument.
- *   3. Le tableau obtenu est passé tel quel à Docker, sans interpréteur.
+ *   1. The template is split into arguments, honouring quotes.
+ *   2. The `{{VARIABLES}}` are replaced *inside* each argument.
+ *   3. The resulting array is handed to Docker as is, with no interpreter.
  *
- * Une valeur contenant un espace reste donc un seul argument ; une valeur
- * contenant `;`, `&&`, `$(...)` ou un retour à la ligne n'est jamais interprétée,
- * puisque aucun shell ne voit jamais la commande.
+ * A value containing a space therefore stays a single argument; a value
+ * containing `;`, `&&`, `$(...)` or a newline is never interpreted, since no
+ * shell ever sees the command.
  */
 
-/** Motif d'une variable dans un gabarit : `{{NOM}}`, espaces tolérés. */
+/** Pattern of a variable in a template: `{{NAME}}`, spaces tolerated. */
 const VARIABLE_PATTERN = /\{\{\s*([A-Za-z_][A-Za-z0-9_.]*)\s*\}\}/g;
 
 export class InvocationError extends Error {
@@ -28,11 +28,11 @@ export class InvocationError extends Error {
 }
 
 /**
- * Découpe une ligne de commande en arguments.
+ * Splits a command line into arguments.
  *
- * Reproduit le comportement d'un shell sur les guillemets simples et doubles,
- * et rien d'autre : ni expansion de variables, ni globbing, ni substitution de
- * commande. Ce qui n'est pas implémenté ici ne peut pas être exploité.
+ * Reproduces a shell's behaviour on single and double quotes, and nothing else:
+ * no variable expansion, no globbing, no command substitution. What is not
+ * implemented here cannot be exploited.
  */
 export function tokenize(input: string): string[] {
   const tokens: string[] = [];
@@ -54,7 +54,8 @@ export function tokenize(input: string): string[] {
 
     if (char === '"' || char === "'") {
       quote = char;
-      // Un argument vide explicite (`""`) doit produire un argument, pas rien.
+      // An explicitly empty argument (`""`) has to produce an argument, not
+      // nothing.
       started = true;
       continue;
     }
@@ -73,7 +74,7 @@ export function tokenize(input: string): string[] {
   }
 
   if (quote) {
-    throw new InvocationError(`Guillemet ${quote} non fermé dans la commande de démarrage.`);
+    throw new InvocationError(`Unclosed ${quote} quote in the startup command.`);
   }
 
   if (started) {
@@ -84,56 +85,54 @@ export function tokenize(input: string): string[] {
 }
 
 export interface InvocationContext {
-  /** Variables du template, déjà validées côté panel. */
+  /** Template variables, already validated on the panel side. */
   environment: Record<string, string>;
-  /** Mémoire allouée, en mébioctets — c'est l'unité qu'attend `-Xmx`. */
+  /** Allocated memory, in mebibytes — the unit `-Xmx` expects. */
   memoryMib: number;
   ip: string;
   port: number;
 }
 
 /**
- * Marge laissée en dehors du tas, en mébioctets.
+ * Headroom left outside the heap, in mebibytes.
  *
- * Deux postes s'y cachent, et oublier le second est le piège :
+ * Two costs hide there, and forgetting the second is the trap:
  *
- *  - **le hors-tas de la JVM** : métaespace, cache de code, piles de threads, et
- *    les tampons directs de Netty qui portent le trafic réseau. Mesuré à ~250
- *    Mio sur un Paper 1.21.4 au repos ;
- *  - **le cache de pages**, qui est compté dans le cgroup au même titre que la
- *    mémoire anonyme. Un serveur Minecraft lit ses fichiers de région en
- *    permanence ; s'il ne reste rien pour les cacher, le noyau évince tout — et
- *    une fois qu'il n'a plus rien à reprendre, il tue le processus.
+ *  - **the JVM's off-heap**: metaspace, code cache, thread stacks, and Netty's
+ *    direct buffers carrying the network traffic. Measured at ~250 MiB on an
+ *    idle Paper 1.21.4;
+ *  - **the page cache**, which counts towards the cgroup just like anonymous
+ *    memory. A Minecraft server reads its region files constantly; if nothing
+ *    is left to cache them, the kernel evicts everything — and once it has
+ *    nothing left to reclaim, it kills the process.
  *
- * Une mesure sur la machine de test le montre sans ambiguïté : conteneur de
- * 1024 Mio, `-Xmx768M`. Le serveur démarre complètement, puis reste collé au
- * plafond pendant que le cache tombe de 127 Mio à 0, et meurt en code 137.
- * L'anonyme seul atteignait 1018 Mio — la marge de 256 Mio couvrait la JVM,
- * mais ne laissait pas un octet au cache.
+ * A measurement on the test machine shows it without ambiguity: a 1024 MiB
+ * container, `-Xmx768M`. The server starts fully, then stays pinned at the
+ * ceiling while the cache falls from 127 MiB to 0, and dies with code 137.
+ * Anonymous memory alone reached 1018 MiB — the 256 MiB headroom covered the
+ * JVM but left not one byte for the cache.
  */
 const JVM_OVERHEAD_MIB = 384;
 
 /**
- * Part maximale de la limite attribuable au tas.
+ * Largest share of the limit that can go to the heap.
  *
- * Prend le relais sur les grosses allocations : les structures du GC et les
- * tampons de Netty croissent avec le tas et avec le nombre de joueurs, si bien
- * qu'une marge fixe finirait par être dépassée. Le plafond garde une
- * proportion constante quelle que soit la taille.
+ * Takes over on large allocations: the GC's structures and Netty's buffers grow
+ * with the heap and with the number of players, so a fixed headroom would end
+ * up being exceeded. The ceiling keeps a constant proportion whatever the size.
  */
 export const MAX_HEAP_RATIO = 0.8;
 
 /**
- * Budget de tas d'une JVM, à partir de la limite du conteneur.
+ * A JVM's heap budget, from the container's limit.
  *
- * Donner la limite entière à `-Xmx` est le piège classique de l'hébergement
- * Minecraft : le tas peut alors à lui seul remplir le cgroup, et le noyau tue
- * le processus dès que la JVM alloue hors tas. Le serveur meurt en code 137,
- * sans rien dans ses journaux — il était en train de générer son monde, tout
- * allait bien, et il disparaît.
+ * Giving the whole limit to `-Xmx` is the classic Minecraft hosting trap: the
+ * heap alone can then fill the cgroup, and the kernel kills the process as soon
+ * as the JVM allocates off-heap. The server dies with code 137, with nothing in
+ * its logs — it was generating its world, all was well, and it vanishes.
  *
- * On réserve donc la marge ci-dessus, en la plafonnant à une fraction de la
- * limite pour que les petites allocations gardent elles aussi de l'air.
+ * So the headroom above is reserved, capped at a fraction of the limit so that
+ * small allocations keep some air too.
  */
 export function heapBudgetMib(limitMib: number): number {
   if (limitMib <= 0) {
@@ -143,28 +142,28 @@ export function heapBudgetMib(limitMib: number): number {
   const withOverhead = limitMib - JVM_OVERHEAD_MIB;
   const withRatio = Math.floor(limitMib * MAX_HEAP_RATIO);
 
-  // 128 Mio est le plancher en dessous duquel une JVM ne démarre pas.
+  // 128 MiB is the floor below which a JVM does not start.
   return Math.max(128, Math.min(withOverhead, withRatio));
 }
 
 /**
- * Variables fournies par Hopper en plus de celles du template.
- * Elles priment : un template ne doit pas pouvoir redéfinir le port d'écoute.
+ * Variables supplied by Hopper on top of the template's own.
+ * They win: a template must not be able to redefine the listening port.
  */
 function builtinVariables(context: InvocationContext): Record<string, string> {
   const heap = heapBudgetMib(context.memoryMib);
 
   return {
-    // `SERVER_MEMORY` désigne le budget de **tas**, pas la limite du conteneur.
-    // C'est ce que les templates passent à `-Xmx`, et c'est la valeur qui doit
-    // laisser de la marge.
+    // `SERVER_MEMORY` is the **heap** budget, not the container limit. It is
+    // what templates pass to `-Xmx`, and it is the value that has to leave
+    // headroom.
     SERVER_MEMORY: String(heap),
-    // La limite brute reste disponible pour les templates qui en ont besoin —
-    // un script d'installation qui dimensionne un cache, par exemple.
+    // The raw limit stays available for templates that need it — an install
+    // script sizing a cache, for instance.
     SERVER_MEMORY_LIMIT: String(context.memoryMib),
     SERVER_IP: context.ip,
     SERVER_PORT: String(context.port),
-    // Alias couramment utilisés par les eggs Pterodactyl importés.
+    // Aliases commonly used by imported Pterodactyl eggs.
     'server.build.default.ip': context.ip,
     'server.build.default.port': String(context.port),
     'server.build.memory': String(heap),
@@ -172,11 +171,10 @@ function builtinVariables(context: InvocationContext): Record<string, string> {
 }
 
 /**
- * Remplace les variables dans une chaîne.
+ * Replaces the variables in a string.
  *
- * Une variable inconnue est remplacée par une chaîne vide, comme le ferait un
- * shell — et signalée par l'appelant, car c'est presque toujours une faute de
- * frappe dans le template.
+ * An unknown variable is replaced by an empty string, as a shell would — and
+ * reported by the caller, because it is nearly always a typo in the template.
  */
 export function substitute(
   input: string,
@@ -200,25 +198,25 @@ export function substitute(
 }
 
 export interface BuiltInvocation {
-  /** Arguments prêts pour Docker. Le premier élément est l'exécutable. */
+  /** Arguments ready for Docker. The first element is the executable. */
   argv: string[];
-  /** Variables référencées par le gabarit mais absentes du contexte. */
+  /** Variables referenced by the template but absent from the context. */
   missingVariables: string[];
 }
 
 /**
- * Transforme un gabarit de démarrage en tableau d'arguments.
+ * Turns a startup template into an array of arguments.
  *
- * @throws {InvocationError} si le gabarit est vide, mal guillemeté, ou ne
- *   produit aucun exécutable une fois substitué.
+ * @throws {InvocationError} if the template is empty, badly quoted, or produces
+ *   no executable once substituted.
  */
 export function buildInvocation(template: string, context: InvocationContext): BuiltInvocation {
-  // Découpage AVANT substitution : c'est ce qui empêche une valeur de variable
-  // d'introduire un argument supplémentaire.
+  // Splitting BEFORE substitution: this is what stops a variable value from
+  // introducing an extra argument.
   const tokens = tokenize(template);
 
   if (tokens.length === 0) {
-    throw new InvocationError('La commande de démarrage est vide.');
+    throw new InvocationError('The startup command is empty.');
   }
 
   const missing = new Set<string>();
@@ -228,10 +226,10 @@ export function buildInvocation(template: string, context: InvocationContext): B
     const result = substitute(token, context);
     result.missing.forEach((name) => missing.add(name));
 
-    // Un argument devenu vide est retiré : `-Xmx{{SERVER_MEMORY}}M` avec une
-    // mémoire illimitée donnerait `-XmxM`, que la JVM refuse. Mais un argument
-    // vide écrit explicitement (`""`) a été conservé par le tokenizer et doit
-    // le rester — d'où le test sur le token d'origine.
+    // An argument that became empty is dropped: `-Xmx{{SERVER_MEMORY}}M` with
+    // unlimited memory would give `-XmxM`, which the JVM refuses. But an
+    // explicitly written empty argument (`""`) was kept by the tokenizer and
+    // must stay — hence the test on the original token.
     if (result.value === '' && token !== '') {
       continue;
     }
@@ -241,7 +239,7 @@ export function buildInvocation(template: string, context: InvocationContext): B
 
   if (argv.length === 0 || argv[0] === '') {
     throw new InvocationError(
-      'La commande de démarrage ne désigne aucun exécutable une fois les variables résolues.',
+      'The startup command names no executable once the variables are resolved.',
     );
   }
 
@@ -249,11 +247,11 @@ export function buildInvocation(template: string, context: InvocationContext): B
 }
 
 /**
- * Variables d'environnement injectées dans le conteneur.
+ * Environment variables injected into the container.
  *
- * Les noms ne respectant pas la syntaxe POSIX sont écartés : `docker` les
- * accepterait, mais un `export` dans un script d'installation échouerait, et le
- * message d'erreur serait incompréhensible.
+ * Names that do not follow POSIX syntax are dropped: `docker` would accept
+ * them, but an `export` in an install script would fail, and the error message
+ * would be incomprehensible.
  */
 export function buildEnvironment(context: InvocationContext): string[] {
   const merged = { ...context.environment, ...builtinVariables(context) };

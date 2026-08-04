@@ -15,58 +15,58 @@ import {
 import { dirname, isAbsolute, join, normalize, posix, relative, resolve, sep } from 'node:path';
 
 /**
- * Accès au système de fichiers d'un serveur, confiné à son volume.
+ * Access to a server's filesystem, confined to its volume.
  *
- * **Toute** opération sur les fichiers d'un serveur passe par cette classe.
- * C'est la règle la plus importante du daemon : un `fs.readFile` direct sur un
- * chemin venu d'une requête suffit à donner à l'utilisateur d'un serveur
- * Minecraft la lecture de `/etc/shadow` ou l'écriture dans `/etc/cron.d`.
+ * **Every** operation on a server's files goes through this class. It is the
+ * most important rule in the daemon: a single direct `fs.readFile` on a path
+ * that came from a request is enough to give the user of a Minecraft server
+ * read access to `/etc/shadow` or write access to `/etc/cron.d`.
  *
- * Trois mécanismes se superposent, parce qu'aucun ne suffit seul :
+ * Three mechanisms are stacked, because none is enough on its own:
  *
- *  1. **Normalisation** — `../../etc/passwd` est réduit puis comparé à la
- *     racine. Élimine la traversée naïve.
- *  2. **Résolution réelle** — le chemin est résolu à travers les liens
- *     symboliques. Sans elle, `ln -s / evasion` puis `evasion/etc/passwd`
- *     passerait la normalisation sans problème, et l'utilisateur peut créer ce
- *     lien lui-même depuis sa console.
- *  3. **Liste noire** — certains fichiers restent interdits même à l'intérieur
- *     du volume : le secret de redirection d'un proxy, par exemple, permettrait
- *     d'usurper l'identité de n'importe quel joueur.
+ *  1. **Normalisation** — `../../etc/passwd` is reduced then compared to the
+ *     root. Kills naive traversal.
+ *  2. **Real resolution** — the path is resolved through symlinks. Without it,
+ *     `ln -s / escape` then `escape/etc/passwd` would sail through
+ *     normalisation, and the user can create that link themselves from their
+ *     own console.
+ *  3. **Denylist** — some files stay forbidden even inside the volume: a
+ *     proxy's forwarding secret, for instance, would allow impersonating any
+ *     player.
  *
- * Les chemins manipulés à l'extérieur de cette classe sont toujours **relatifs
- * au volume et en séparateurs POSIX** (`plugins/config.yml`). Le chemin absolu
- * sur l'hôte ne sort jamais d'ici : il apparaîtrait sinon dans un message
- * d'erreur renvoyé à l'utilisateur, révélant l'arborescence de la machine.
+ * Paths handled outside this class are always **relative to the volume and in
+ * POSIX separators** (`plugins/config.yml`). The absolute host path never
+ * leaves here: it would otherwise surface in an error message returned to the
+ * user, revealing the machine's directory tree.
  */
 
 export class PathEscapeError extends Error {
   constructor(readonly requestedPath: string) {
-    super('Chemin hors du répertoire du serveur.');
+    super('Path outside the server directory.');
     this.name = 'PathEscapeError';
   }
 }
 
 export class DeniedFileError extends Error {
   constructor(readonly requestedPath: string) {
-    super('Ce fichier est protégé et ne peut pas être consulté ni modifié.');
+    super('This file is protected and cannot be read or modified.');
     this.name = 'DeniedFileError';
   }
 }
 
 export class NotFoundError extends Error {
   constructor(readonly requestedPath: string) {
-    super('Fichier ou dossier introuvable.');
+    super('File or folder not found.');
     this.name = 'NotFoundError';
   }
 }
 
 export interface FileEntry {
   name: string;
-  /** Chemin relatif au volume, séparateurs POSIX. */
+  /** Path relative to the volume, POSIX separators. */
   path: string;
   directory: boolean;
-  /** Vrai pour un lien symbolique, quelle que soit sa cible. */
+  /** True for a symlink, whatever its target. */
   symlink: boolean;
   sizeBytes: number;
   mode: string;
@@ -74,28 +74,27 @@ export interface FileEntry {
 }
 
 export interface JailOptions {
-  /** Racine du volume sur l'hôte. */
+  /** Volume root on the host. */
   root: string;
-  /** Motifs glob interdits, relatifs à la racine. */
+  /** Forbidden glob patterns, relative to the root. */
   denylist?: string[];
   /**
-   * Utilisateur du conteneur, propriétaire de tout ce qui est créé ici.
+   * Container user, owner of everything created here.
    *
-   * Le daemon écrit en root ; le serveur, lui, tourne en uid non privilégié.
-   * Sans cette reprise de propriété, tout chemin **créé** par le gestionnaire
-   * de fichiers — un dossier de plugin, une archive extraite, un fichier
-   * envoyé — appartenait à root et devenait illisible pour le serveur. Le
-   * symptôme apparaît bien plus tard, sous la forme d'un plugin qui n'arrive
-   * pas à écrire sa configuration.
+   * The daemon writes as root; the server runs under an unprivileged uid.
+   * Without taking ownership, every path **created** by the file manager — a
+   * plugin folder, an extracted archive, an uploaded file — belonged to root
+   * and became unreadable to the server. The symptom shows up much later, as a
+   * plugin that cannot write its configuration.
    *
-   * Absent sous Windows, où `chown` n'a pas de sens.
+   * Absent on Windows, where `chown` makes no sense.
    */
   ownership?: { uid: number; gid: number };
 }
 
 export class JailedFilesystem {
   private readonly denylist: RegExp[];
-  /** Racine résolue, calculée une fois : elle-même peut être un lien. */
+  /** Resolved root, computed once: it may itself be a link. */
   private resolvedRoot: string | null = null;
 
   constructor(private readonly options: JailOptions) {
@@ -112,15 +111,15 @@ export class JailedFilesystem {
   }
 
   // -------------------------------------------------------------------------
-  // Résolution
+  // Resolution
   // -------------------------------------------------------------------------
 
   /**
-   * Traduit un chemin fourni par l'utilisateur en chemin absolu sur l'hôte.
+   * Turns a user-supplied path into an absolute host path.
    *
-   * @throws {PathEscapeError} si le chemin sort du volume, directement ou via
-   *   un lien symbolique.
-   * @throws {DeniedFileError} si le chemin figure dans la liste noire.
+   * @throws {PathEscapeError} if the path leaves the volume, directly or
+   *   through a symlink.
+   * @throws {DeniedFileError} if the path is on the denylist.
    */
   async resolvePath(userPath: string): Promise<string> {
     const root = await this.root();
@@ -130,38 +129,37 @@ export class JailedFilesystem {
 
     const candidate = resolve(root, relativePath);
 
-    // Première barrière : après normalisation, le chemin doit rester sous la
-    // racine. Attrape `../../etc/passwd` et les chemins absolus.
+    // First barrier: after normalisation the path must stay under the root.
+    // Catches `../../etc/passwd` and absolute paths.
     if (!isInside(root, candidate)) {
       throw new PathEscapeError(userPath);
     }
 
-    // Seconde barrière : la résolution réelle. Le fichier visé peut ne pas
-    // exister encore — on résout donc le plus long ancêtre existant, puis on
-    // vérifie que le reste ne ressort pas.
+    // Second barrier: real resolution. The target file may not exist yet — so
+    // resolve the longest existing ancestor, then check the rest does not come
+    // back out.
     const resolved = await this.realpathOfLongestExistingPrefix(candidate);
 
     if (!isInside(root, resolved)) {
       throw new PathEscapeError(userPath);
     }
 
-    // C'est le chemin **résolu** qui est rendu, pas celui fourni.
+    // It is the **resolved** path that is returned, not the supplied one.
     //
-    // Rendre le chemin d'origine laisserait le système de fichiers retraverser
-    // les liens au moment de l'opération, donc une seconde fois après la
-    // vérification. Un utilisateur qui remplace le lien entre les deux — il en
-    // a les moyens, par sa console comme par SFTP — ferait porter l'écriture
-    // sur une cible que personne n'a contrôlée. En travaillant sur le chemin
-    // déjà résolu, il n'y a plus de lien à retraverser.
+    // Returning the original would let the filesystem walk the links again at
+    // operation time, a second time after the check. A user who swaps the link
+    // in between — they can, from their console as well as over SFTP — would
+    // have the write land on a target nobody vetted. Working on the
+    // already-resolved path leaves no link to walk.
     return resolved;
   }
 
   /**
-   * Résout les liens symboliques sur la portion existante d'un chemin.
+   * Resolves symlinks over the existing portion of a path.
    *
-   * `realpath` échoue sur un chemin inexistant, or on doit pouvoir écrire un
-   * fichier qui n'existe pas encore. On remonte donc jusqu'au premier ancêtre
-   * existant, on le résout, et on rattache le reste.
+   * `realpath` fails on a non-existent path, yet we have to be able to write a
+   * file that does not exist yet. So we walk up to the first existing ancestor,
+   * resolve it, and reattach the rest.
    */
   private async realpathOfLongestExistingPrefix(candidate: string): Promise<string> {
     let existing = candidate;
@@ -174,7 +172,7 @@ export class JailedFilesystem {
       } catch {
         const parent = dirname(existing);
 
-        // Racine du système atteinte : plus rien à remonter.
+        // System root reached: nothing left to walk up.
         if (parent === existing) {
           return candidate;
         }
@@ -187,18 +185,18 @@ export class JailedFilesystem {
     return join(await realpath(existing), ...missing);
   }
 
-  /** Normalise un chemin utilisateur en chemin relatif sûr à manipuler. */
+  /** Normalises a user path into a relative path that is safe to handle. */
   private toRelative(userPath: string): string {
-    // Les séparateurs Windows sont acceptés en entrée : un client SFTP ou un
-    // navigateur peut en envoyer, et les refuser n'apporterait rien.
+    // Windows separators are accepted as input: an SFTP client or a browser can
+    // send them, and rejecting them would gain nothing.
     const unified = userPath.replace(/\\/g, '/');
 
-    // Un octet nul tronque le chemin dans les appels système en C : `a\0../..`
-    // serait vu comme `a` par la vérification et comme autre chose par le
-    // noyau. Node lève déjà sur ce cas, mais on refuse explicitement.
-    // `includes` sur la chaîne plutôt qu'une expression régulière : chercher un
-    // caractère de contrôle dans une regex déclenche `no-control-regex`, et une
-    // exception de lint attirerait l'attention sur la mauvaise chose.
+    // A null byte truncates the path in C system calls: `a\0../..` would be
+    // seen as `a` by the check and as something else by the kernel. Node
+    // already throws on this, but we reject it explicitly. `includes` on the
+    // string rather than a regular expression: looking for a control character
+    // in a regex trips `no-control-regex`, and a lint exception would draw
+    // attention to the wrong thing.
     if (unified.includes('\0')) {
       throw new PathEscapeError(userPath);
     }
@@ -217,14 +215,14 @@ export class JailedFilesystem {
     }
   }
 
-  /** Chemin relatif au volume, en séparateurs POSIX, pour l'extérieur. */
+  /** Path relative to the volume, POSIX separators, for the outside world. */
   private async toUserPath(absolute: string): Promise<string> {
     const root = await this.root();
     return relative(root, absolute).split(sep).join('/');
   }
 
   // -------------------------------------------------------------------------
-  // Lecture
+  // Reading
   // -------------------------------------------------------------------------
 
   async list(userPath: string): Promise<FileEntry[]> {
@@ -243,15 +241,15 @@ export class JailedFilesystem {
       const entryPath = join(absolute, entry.name);
       const relativePath = await this.toUserPath(entryPath);
 
-      // Un fichier de la liste noire n'apparaît pas non plus dans la liste :
-      // le montrer sans permettre de le lire ne ferait qu'attirer l'attention.
+      // A denied file does not show up in the listing either: showing it
+      // without allowing it to be read would only draw attention to it.
       if (this.denylist.some((pattern) => pattern.test(relativePath))) {
         continue;
       }
 
-      // `lstat` et non `stat` : on veut décrire le lien lui-même, pas sa cible.
-      // Suivre la cible ferait apparaître la taille d'un fichier situé hors du
-      // volume.
+      // `lstat`, not `stat`: we want to describe the link itself, not its
+      // target. Following the target would expose the size of a file located
+      // outside the volume.
       const stats = await lstat(entryPath).catch(() => null);
 
       if (!stats) {
@@ -269,13 +267,13 @@ export class JailedFilesystem {
       });
     }
 
-    // Dossiers d'abord, puis ordre alphabétique : c'est ce qu'affichent tous
-    // les gestionnaires de fichiers, et l'écart surprendrait.
+    // Folders first, then alphabetical: that is what every file manager shows,
+    // and departing from it would surprise.
     return results.sort((a, b) => {
       if (a.directory !== b.directory) {
         return a.directory ? -1 : 1;
       }
-      return a.name.localeCompare(b.name, 'fr');
+      return a.name.localeCompare(b.name, 'en');
     });
   }
 
@@ -298,13 +296,13 @@ export class JailedFilesystem {
     };
   }
 
-  /** Chemin absolu sur l'hôte, pour les appels qui ouvrent un flux. */
+  /** Absolute host path, for the calls that open a stream. */
   async absolutePathFor(userPath: string): Promise<string> {
     return this.resolvePath(userPath);
   }
 
   // -------------------------------------------------------------------------
-  // Écriture
+  // Writing
   // -------------------------------------------------------------------------
 
   async writeFile(userPath: string, content: string | Buffer): Promise<void> {
@@ -322,12 +320,12 @@ export class JailedFilesystem {
   }
 
   /**
-   * Donne un chemin déjà résolu à l'utilisateur du conteneur.
+   * Hands an already-resolved path over to the container user.
    *
-   * Public car les écritures en flux — envoi d'un fichier, extraction d'une
-   * archive — produisent leurs chemins elles-mêmes et doivent pouvoir en
-   * reprendre la propriété. Un échec est ignoré : sur un système de fichiers
-   * sans propriétaires, perdre l'appartenance vaut mieux que perdre l'écriture.
+   * Public because streaming writes — a file upload, an archive extraction —
+   * produce their own paths and have to be able to take ownership of them. A
+   * failure is ignored: on a filesystem without owners, losing ownership beats
+   * losing the write.
    */
   async applyOwnership(absolutePath: string): Promise<void> {
     const ownership = this.options.ownership;
@@ -340,12 +338,11 @@ export class JailedFilesystem {
   }
 
   /**
-   * Change les droits d'un chemin.
+   * Changes the permissions of a path.
    *
-   * Les bits `setuid`/`setgid` ne sont pas atteignables : le schéma du contrat
-   * n'accepte que trois chiffres octaux. Un binaire setuid déposé dans un
-   * volume s'exécuterait avec les droits de son propriétaire et annulerait le
-   * cloisonnement du conteneur.
+   * The `setuid`/`setgid` bits are out of reach: the contract schema only
+   * accepts three octal digits. A setuid binary dropped in a volume would run
+   * with its owner's rights and defeat the container boundary.
    */
   async chmod(userPath: string, mode: number): Promise<void> {
     const absolute = await this.resolvePath(userPath);
@@ -357,8 +354,8 @@ export class JailedFilesystem {
       const absolute = await this.resolvePath(userPath);
       const root = await this.root();
 
-      // Supprimer la racine viderait le serveur d'un coup, sans passer par la
-      // suppression du serveur elle-même.
+      // Deleting the root would empty the server in one go, bypassing server
+      // deletion itself.
       if (absolute === root) {
         throw new PathEscapeError(userPath);
       }
@@ -368,16 +365,15 @@ export class JailedFilesystem {
   }
 
   /**
-   * Vide le volume sans le supprimer.
+   * Empties the volume without removing it.
    *
-   * Réservé à la restauration d'une sauvegarde : `delete` refuse la racine, et
-   * à raison — aucune opération de l'utilisateur ne doit pouvoir effacer un
-   * serveur d'un seul appel. Restaurer est le seul cas où c'est l'intention,
-   * et le point d'entrée distinct rend cette intention explicite plutôt que de
-   * relâcher la garde de `delete`.
+   * Reserved for restoring a backup: `delete` refuses the root, and rightly so
+   * — no user operation should be able to wipe a server in a single call.
+   * Restoring is the one case where that is the intent, and a separate entry
+   * point makes that intent explicit rather than loosening `delete`'s guard.
    *
-   * Le répertoire lui-même est conservé : il porte les droits `uid:gid` que le
-   * conteneur attend, et le recréer les perdrait.
+   * The directory itself is kept: it carries the `uid:gid` the container
+   * expects, and recreating it would lose them.
    */
   async emptyRoot(): Promise<void> {
     const root = await this.root();
@@ -408,8 +404,8 @@ export class JailedFilesystem {
     await mkdir(dirname(to), { recursive: true });
 
     const { cp } = await import('node:fs/promises');
-    // `dereference: false` : copier un lien le recopie comme lien, sans
-    // rapatrier le contenu de sa cible — qui pourrait être hors du volume.
+    // `dereference: false`: copying a link copies it as a link, without pulling
+    // in the content of its target — which could be outside the volume.
     await cp(from, to, { recursive: true, dereference: false, force: true });
   }
 
@@ -418,15 +414,15 @@ export class JailedFilesystem {
   // -------------------------------------------------------------------------
 
   /**
-   * Vérifie qu'une entrée d'archive peut être extraite.
+   * Checks that an archive entry can be extracted.
    *
-   * C'est la protection contre le « zip-slip » : une archive peut contenir une
-   * entrée nommée `../../etc/cron.d/backdoor`, et beaucoup de bibliothèques
-   * d'extraction l'écrivent sans broncher. Chaque entrée passe donc par la
-   * même résolution que n'importe quel chemin utilisateur.
+   * This is the protection against the "zip slip": an archive can hold an entry
+   * named `../../etc/cron.d/backdoor`, and many extraction libraries write it
+   * without flinching. Every entry therefore goes through the same resolution
+   * as any user path.
    *
-   * @returns le chemin absolu de destination.
-   * @throws {PathEscapeError} si l'entrée sort du répertoire de destination.
+   * @returns the absolute destination path.
+   * @throws {PathEscapeError} if the entry leaves the destination directory.
    */
   async resolveArchiveEntry(destination: string, entryName: string): Promise<string> {
     const destinationPath = await this.resolvePath(destination);
@@ -434,9 +430,9 @@ export class JailedFilesystem {
 
     const target = resolve(destinationPath, this.toRelative(entryName));
 
-    // Double contrôle : sous la racine du volume *et* sous la destination
-    // demandée. Une archive ne doit pas non plus écrire ailleurs dans le
-    // volume que là où l'utilisateur a demandé de l'extraire.
+    // Two checks: under the volume root *and* under the requested destination.
+    // An archive must not write elsewhere in the volume than where the user
+    // asked for it to be extracted.
     if (!isInside(root, target) || !isInside(destinationPath, target)) {
       throw new PathEscapeError(entryName);
     }
@@ -447,7 +443,7 @@ export class JailedFilesystem {
   }
 }
 
-/** `rwxr-xr-x` à partir du mode POSIX. */
+/** `rwxr-xr-x` from a POSIX mode. */
 export function formatMode(mode: number): string {
   const permissions = ['r', 'w', 'x'];
 
@@ -458,10 +454,10 @@ export function formatMode(mode: number): string {
 }
 
 /**
- * Un chemin est-il à l'intérieur d'un répertoire ?
+ * Is a path inside a directory?
  *
- * La comparaison inclut le séparateur : sans lui, `/var/lib/hopper-evil`
- * passerait pour être sous `/var/lib/hopper`.
+ * The comparison includes the separator: without it, `/var/lib/hopper-evil`
+ * would pass for being under `/var/lib/hopper`.
  */
 export function isInside(parent: string, candidate: string): boolean {
   if (candidate === parent) {
@@ -473,23 +469,21 @@ export function isInside(parent: string, candidate: string): boolean {
 }
 
 /**
- * Traduit un motif glob simple en expression régulière.
+ * Translates a simple glob pattern into a regular expression.
  *
- * Volontairement limité à `*` (un segment) et `**` (plusieurs) : les listes
- * noires de templates n'utilisent rien d'autre, et une implémentation complète
- * de glob serait une surface d'erreur inutile à un endroit où une faute se paie
- * en fichier exposé.
+ * Deliberately limited to `*` (one segment) and `**` (several): template
+ * denylists use nothing else, and a full glob implementation would be a
+ * needless surface for mistakes somewhere a mistake costs an exposed file.
  */
 export function globToRegExp(pattern: string): RegExp {
   const escaped = pattern
     .split(sep)
     .join('/')
     .replace(/[.+^${}()|[\]\\]/g, '\\$&')
-    // `**` est mis de côté avant `*`, sinon le remplacement de `*` le
-    // découperait en deux. Le marqueur temporaire est un octet nul plutôt
-    // qu'une espace : une espace peut apparaître dans un nom de fichier
-    // légitime — « Mon Monde/** » — et serait alors transformée en `.*`,
-    // élargissant le motif bien au-delà de ce que son auteur voulait.
+    // `**` is set aside before `*`, otherwise replacing `*` would cut it in
+    // two. The temporary marker is a null byte rather than a space: a space can
+    // appear in a legitimate file name — "My World/**" — and would then be
+    // turned into `.*`, widening the pattern far beyond what its author meant.
     .replace(/\*\*/g, '\0')
     .replace(/\*/g, '[^/]*')
     .replace(/\0/g, '.*')
@@ -498,7 +492,7 @@ export function globToRegExp(pattern: string): RegExp {
   return new RegExp(`^${escaped}$`);
 }
 
-/** Un chemin utilisateur est-il absolu, sous une forme ou une autre ? */
+/** Is a user path absolute, in one form or another? */
 export function looksAbsolute(userPath: string): boolean {
   return (
     isAbsolute(userPath) || /^[a-zA-Z]:[\\/]/.test(userPath) || normalize(userPath).startsWith('/')
