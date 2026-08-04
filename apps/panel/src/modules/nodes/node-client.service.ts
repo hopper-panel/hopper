@@ -13,12 +13,12 @@ import {
 import { Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
 import { InstanceSettingsService } from '../instance-settings/instance-settings.service.js';
 
-/** Coordonnées d'un daemon. En phase 1, elles viendront de la table `Node`. */
+/** Address of a daemon, resolved from the `Node` table. */
 export interface NodeConnection {
   uuid: string;
-  /** URL de base du daemon, ex. `https://node1.example.com:8443`. */
+  /** Base URL of the daemon, e.g. `https://node1.example.com:8443`. */
   url: string;
-  /** Jeton complet `<id>.<secret>`. */
+  /** Full token, `<id>.<secret>`. */
   token: string;
 }
 
@@ -27,30 +27,30 @@ export type NodeHealth =
   | { reachable: false; reason: string; latencyMs: number };
 
 /**
- * Client HTTP vers un daemon.
+ * HTTP client towards a daemon.
  *
- * Toutes les erreurs sont converties en résultat structuré plutôt qu'en
- * exception : un node injoignable est un état normal du système, pas un bug. Le
- * panel doit continuer à servir l'interface et afficher le node hors ligne.
+ * Every error is turned into a structured result rather than an exception: an
+ * unreachable node is a normal state of the system, not a bug. The panel has to
+ * keep serving the interface and show the node as offline.
  */
 @Injectable()
 export class NodeClientService {
   private readonly logger = new Logger(NodeClientService.name);
 
   /**
-   * Un daemon injoignable ne doit pas bloquer le rendu d'une page.
+   * An unreachable daemon must not block a page from rendering.
    *
-   * La valeur est réglable depuis l'administration : cinq secondes conviennent
-   * à un node sur le même réseau, beaucoup moins à une machine à l'autre bout
-   * du monde, où le délai fait passer pour morte une machine qui répond.
+   * The value is adjustable from the administration: five seconds suit a node
+   * on the same network, far less a machine on the other side of the world,
+   * where the delay makes a responding machine look dead.
    */
   private static readonly DEFAULT_TIMEOUT_MS = 5000;
 
   constructor(private readonly settings: InstanceSettingsService) {}
 
   private async timeoutMs(): Promise<number> {
-    // Un paramètre illisible ne doit pas empêcher de joindre un node : on
-    // retombe sur la valeur d'origine plutôt que de propager l'erreur.
+    // An unreadable setting must not prevent reaching a node: fall back to the
+    // original value rather than propagate the error.
     return this.settings
       .all()
       .then((values) => values.nodeTimeoutMs)
@@ -74,26 +74,26 @@ export class NodeClientService {
 
       if (!response.ok) {
         this.logger.warn(
-          `Node ${node.uuid} a répondu ${response.status} (jeton ${redactNodeToken(node.token)})`,
+          `Node ${node.uuid} answered ${response.status} (token ${redactNodeToken(node.token)})`,
         );
         return {
           reachable: false,
           reason:
             response.status === 401
-              ? 'Jeton de node refusé par le daemon.'
-              : `Le daemon a répondu ${response.status}.`,
+              ? 'Node token refused by the daemon.'
+              : `The daemon answered ${response.status}.`,
           latencyMs,
         };
       }
 
-      // Un écart de version majeure du contrat signifie que le panel et le
-      // daemon ne parlent plus la même langue : mieux vaut le dire tout de
-      // suite que laisser échouer une création de serveur plus tard.
+      // A mismatch on the contract's major version means the panel and the
+      // daemon no longer speak the same language: better to say so at once than
+      // to let a server creation fail later.
       const remoteContract = response.headers.get('x-hopper-contract');
       if (remoteContract && remoteContract !== CONTRACT_VERSION) {
         return {
           reachable: false,
-          reason: `Version de contrat incompatible : le daemon annonce ${remoteContract}, le panel attend ${CONTRACT_VERSION}.`,
+          reason: `Incompatible contract version: the daemon announces ${remoteContract}, the panel expects ${CONTRACT_VERSION}.`,
           latencyMs,
         };
       }
@@ -103,7 +103,7 @@ export class NodeClientService {
         return {
           reachable: false,
           reason:
-            'Réponse du daemon illisible : la version du daemon est probablement trop ancienne.',
+            'Unreadable answer from the daemon: its version is probably too old.',
           latencyMs,
         };
       }
@@ -113,22 +113,22 @@ export class NodeClientService {
       const latencyMs = Math.round(performance.now() - startedAt);
       const reason =
         error instanceof Error && error.name === 'TimeoutError'
-          ? `Aucune réponse du daemon en ${timeout} ms.`
-          : 'Connexion au daemon impossible.';
+          ? `No answer from the daemon within ${timeout}ms.`
+          : 'Could not connect to the daemon.';
 
-      this.logger.warn(`Node ${node.uuid} injoignable : ${reason}`);
+      this.logger.warn(`Node ${node.uuid} unreachable: ${reason}`);
       return { reachable: false, reason, latencyMs };
     }
   }
 
   // -------------------------------------------------------------------------
-  // Pilotage des serveurs
+  // Driving the servers
   // -------------------------------------------------------------------------
 
   /**
-   * Crée le serveur sur le daemon et lance son installation.
-   * Contrairement aux sondes d'état, un échec lève : créer un serveur en base
-   * sans que le daemon n'en sache rien laisserait un enregistrement fantôme.
+   * Creates the server on the daemon and starts its installation.
+   * Unlike the health probes, a failure throws: creating a server in the
+   * database without the daemon knowing would leave a phantom record.
    */
   async createServer(
     node: NodeConnection,
@@ -138,7 +138,7 @@ export class NodeClientService {
     await this.send(node, DAEMON_ROUTES.servers, 'POST', { configuration, startOnCompletion });
   }
 
-  /** Transmet une configuration à jour sans toucher au conteneur. */
+  /** Passes an up-to-date configuration without touching the container. */
   async syncServer(node: NodeConnection, configuration: ServerConfiguration): Promise<void> {
     await this.send(node, DAEMON_ROUTES.serverSync(configuration.uuid), 'POST', configuration);
   }
@@ -147,17 +147,17 @@ export class NodeClientService {
     await this.send(node, DAEMON_ROUTES.serverPower(uuid), 'POST', { action, wait: false });
   }
 
-  /** Envoie des commandes à la console du serveur. */
+  /** Sends commands to the server's console. */
   async sendCommands(node: NodeConnection, uuid: string, commands: string[]): Promise<void> {
     await this.send(node, DAEMON_ROUTES.serverCommands(uuid), 'POST', { commands });
   }
 
   /**
-   * État courant d'un serveur, tel que le daemon le voit.
+   * A server's current state, as the daemon sees it.
    *
-   * Rend `null` si le node est injoignable ou répond de travers : l'appelant —
-   * le planificateur — doit pouvoir distinguer « le serveur est arrêté » de
-   * « on ne sait pas », et ne pas prendre le second pour le premier.
+   * Returns `null` if the node is unreachable or answers oddly: the caller —
+   * the scheduler — has to be able to tell "the server is stopped" from "we do
+   * not know", and not mistake the second for the first.
    */
   async fetchServerState(node: NodeConnection, uuid: string): Promise<ServerState | null> {
     const timeout = await this.timeoutMs();
@@ -185,16 +185,16 @@ export class NodeClientService {
   }
 
   /**
-   * Relaie une requête vers le daemon et rend sa réponse telle quelle.
+   * Relays a request to the daemon and returns its answer as is.
    *
-   * Utilisé par l'API fichiers : le panel décide *qui* a le droit de faire
-   * quoi, le daemon décide *où* — c'est lui qui détient le jail. Réimplémenter
-   * la validation des chemins côté panel créerait deux vérités, et celle qui
-   * dériverait serait forcément la mauvaise.
+   * Used by the file API: the panel decides *who* may do what, the daemon
+   * decides *where* — it is the one holding the jail. Reimplementing path
+   * validation panel-side would create two truths, and the one that drifted
+   * would necessarily be the wrong one.
    *
-   * Les corps d'erreur du daemon sont transmis sans réécriture : ils sont déjà
-   * rédigés pour être lus par un utilisateur, et les masquer priverait celui-ci
-   * de la raison du refus.
+   * The daemon's error bodies are passed through unrewritten: they are already
+   * written to be read by a user, and hiding them would deprive that user of
+   * the reason for the refusal.
    */
   async proxy(
     node: NodeConnection,
@@ -211,13 +211,13 @@ export class NodeClientService {
           ...(options.body === undefined ? {} : { 'content-type': 'application/json' }),
         },
         body: options.body === undefined ? undefined : JSON.stringify(options.body),
-        // Compresser un monde de plusieurs gigaoctets prend du temps ; la
-        // requête ne doit pas expirer avant que le daemon n'ait fini.
+        // Compressing a world of several gigabytes takes time; the request
+        // must not expire before the daemon has finished.
         signal: AbortSignal.timeout(options.timeoutMs ?? 120_000),
       });
     } catch (error: unknown) {
-      this.logger.error(`Relais ${options.method} ${path} vers ${node.uuid} : ${String(error)}`);
-      throw new ServiceUnavailableException('Le node est injoignable.');
+      this.logger.error(`Relay ${options.method} ${path} to ${node.uuid}: ${String(error)}`);
+      throw new ServiceUnavailableException('The node is unreachable.');
     }
 
     return {
@@ -228,16 +228,15 @@ export class NodeClientService {
   }
 
   /**
-   * Relaie une réponse du daemon **en flux**, sans la mettre en mémoire.
+   * Relays a daemon response **as a stream**, without holding it in memory.
    *
-   * `proxy` accumule le corps dans un `Buffer`, ce qui convient à une réponse
-   * JSON mais pas à une archive de sauvegarde : un monde de quelques
-   * gigaoctets ferait tomber le panel — et le ferait tomber pour tous ses
-   * utilisateurs, pas seulement pour celui qui télécharge.
+   * `proxy` accumulates the body in a `Buffer`, which suits a JSON response but
+   * not a backup archive: a world of a few gigabytes would take the panel down
+   * — and take it down for all its users, not only for the one downloading.
    *
-   * Aucun délai n'est posé : la durée d'un téléchargement dépend du débit du
-   * client, et couper au bout d'un temps fixe pénaliserait précisément les
-   * connexions lentes qui en ont le plus besoin.
+   * No timeout is set: how long a download takes depends on the client's
+   * bandwidth, and cutting after a fixed time would penalise precisely the slow
+   * connections that need it most.
    */
   async stream(
     node: NodeConnection,
@@ -251,20 +250,20 @@ export class NodeClientService {
         headers: { authorization: `Bearer ${node.token}` },
       });
     } catch (error: unknown) {
-      this.logger.error(`Flux GET ${path} vers ${node.uuid} : ${String(error)}`);
-      throw new ServiceUnavailableException('Le node est injoignable.');
+      this.logger.error(`Streaming GET ${path} to ${node.uuid}: ${String(error)}`);
+      throw new ServiceUnavailableException('The node is unreachable.');
     }
 
     return { status: response.status, headers: response.headers, body: response.body };
   }
 
   /**
-   * Retransmet un corps de requête **en flux** vers le daemon.
+   * Forwards a request body **as a stream** to the daemon.
    *
-   * Le pendant de `stream` pour l'envoi. Le fichier ne tient à aucun moment en
-   * mémoire dans le panel : les octets reçus du navigateur repartent vers le
-   * node au fil de leur arrivée. Sans cela, envoyer un modpack de deux
-   * gigaoctets ferait tomber le panel pour tout le monde.
+   * The counterpart of `stream` for uploads. The file is never held in memory
+   * in the panel: the bytes received from the browser leave for the node as
+   * they arrive. Without this, uploading a two-gigabyte modpack would take the
+   * panel down for everyone.
    */
   async pipeTo(
     node: NodeConnection,
@@ -283,13 +282,13 @@ export class NodeClientService {
           ...(contentLength ? { 'content-length': contentLength } : {}),
         },
         body,
-        // Exigé par `fetch` dès que le corps est un flux : la requête commence
-        // à partir avant que la réponse n'existe.
+        // Required by `fetch` as soon as the body is a stream: the request
+        // starts leaving before the response exists.
         duplex: 'half',
       });
     } catch (error: unknown) {
-      this.logger.error(`Envoi vers ${node.uuid} sur ${path} : ${String(error)}`);
-      throw new ServiceUnavailableException('Le node est injoignable.');
+      this.logger.error(`Upload to ${node.uuid} on ${path}: ${String(error)}`);
+      throw new ServiceUnavailableException('The node is unreachable.');
     }
 
     return {
@@ -315,27 +314,27 @@ export class NodeClientService {
           'content-type': 'application/json',
         },
         body: JSON.stringify(body),
-        // Plus généreux que la sonde d'état : créer un serveur peut impliquer
-        // le téléchargement d'une image Docker.
+        // More generous than the health probe: creating a server can involve
+        // downloading a Docker image.
         signal: AbortSignal.timeout(30_000),
       });
     } catch (error: unknown) {
       this.logger.error(
-        `Appel ${method} ${path} vers le node ${node.uuid} impossible (jeton ${redactNodeToken(node.token)}) : ${String(error)}`,
+        `Call ${method} ${path} to node ${node.uuid} failed (token ${redactNodeToken(node.token)}): ${String(error)}`,
       );
       throw new ServiceUnavailableException(
-        "Le node est injoignable. L'opération n'a pas été appliquée.",
+        'The node is unreachable. The operation was not applied.',
       );
     }
 
     if (!response.ok) {
       const detail = await response.text().catch(() => '');
-      this.logger.error(`Node ${node.uuid} a répondu ${response.status} sur ${path} : ${detail}`);
+      this.logger.error(`Node ${node.uuid} answered ${response.status} on ${path}: ${detail}`);
 
       throw new ServiceUnavailableException(
         response.status === 401
-          ? 'Jeton de node refusé par le daemon. Régénérez-le depuis la page du node.'
-          : `Le daemon a refusé l'opération (HTTP ${response.status}).`,
+          ? 'Node token refused by the daemon. Regenerate it from the node page.'
+          : `The daemon refused the operation (HTTP ${response.status}).`,
       );
     }
   }

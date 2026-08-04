@@ -2,54 +2,54 @@ import { describe, expect, it } from 'vitest';
 import { MAX_ALLOCATIONS_PER_REQUEST, expandPortRanges } from './nodes.dto.js';
 
 describe('expandPortRanges', () => {
-  it('accepte un port isolé', () => {
+  it('accepts a single port', () => {
     expect(expandPortRanges(['25565'])).toEqual([25565]);
   });
 
-  it('développe une plage', () => {
+  it('expands a range', () => {
     expect(expandPortRanges(['25565-25568'])).toEqual([25565, 25566, 25567, 25568]);
   });
 
-  it('combine plusieurs entrées et trie le résultat', () => {
+  it('combines several entries and sorts the result', () => {
     expect(expandPortRanges(['25570', '25565-25566'])).toEqual([25565, 25566, 25570]);
   });
 
-  // Recouvrir deux plages est un geste courant quand on étend un node.
-  it('déduplique les ports présents dans plusieurs plages', () => {
+  // Overlapping two ranges is a common move when extending a node.
+  it('deduplicates ports present in several ranges', () => {
     expect(expandPortRanges(['25565-25567', '25566-25568'])).toEqual([25565, 25566, 25567, 25568]);
   });
 
-  it('accepte une plage d’un seul port', () => {
+  it('accepts a range of a single port', () => {
     expect(expandPortRanges(['25565-25565'])).toEqual([25565]);
   });
 
   it.each([
-    ['port zéro', '0'],
-    ['port au-delà de 65535', '65536'],
-    ['borne haute hors plage', '25565-70000'],
-  ])('refuse un port hors plage : %s', (_label, entry) => {
-    expect(() => expandPortRanges([entry])).toThrow(/hors plage/);
+    ['zero port', '0'],
+    ['port beyond 65535', '65536'],
+    ['upper bound out of range', '25565-70000'],
+  ])('refuses a port out of range: %s', (_label, entry) => {
+    expect(() => expandPortRanges([entry])).toThrow(/out of range/);
   });
 
-  it('refuse une plage inversée', () => {
-    expect(() => expandPortRanges(['25570-25565'])).toThrow(/inversée/);
+  it('refuses a reversed range', () => {
+    expect(() => expandPortRanges(['25570-25565'])).toThrow(/Reversed/);
   });
 
-  // Sans cette borne, `1-65535` insérerait 65 000 lignes et bloquerait la base
-  // plusieurs secondes — accessible à tout administrateur par simple faute de
-  // frappe.
-  it('refuse une plage plus large que la limite', () => {
-    expect(() => expandPortRanges([`1-${MAX_ALLOCATIONS_PER_REQUEST + 1}`])).toThrow(/dépasse/);
+  // Without this bound, `1-65535` would insert 65,000 rows and block the
+  // database for several seconds — reachable by any administrator through a
+  // simple typo.
+  it('refuses a range wider than the limit', () => {
+    expect(() => expandPortRanges([`1-${MAX_ALLOCATIONS_PER_REQUEST + 1}`])).toThrow(/exceeds/);
   });
 
-  it('refuse un total cumulé au-dessus de la limite', () => {
+  it('refuses a cumulative total above the limit', () => {
     const half = MAX_ALLOCATIONS_PER_REQUEST / 2;
     expect(() => expandPortRanges([`1000-${1000 + half}`, `20000-${20000 + half}`])).toThrow(
-      /maximum/,
+      /at most/,
     );
   });
 
-  it('accepte exactement la limite', () => {
+  it('accepts exactly the limit', () => {
     expect(expandPortRanges([`1000-${1000 + MAX_ALLOCATIONS_PER_REQUEST - 1}`])).toHaveLength(
       MAX_ALLOCATIONS_PER_REQUEST,
     );

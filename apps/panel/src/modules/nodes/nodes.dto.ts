@@ -1,12 +1,11 @@
 import { z } from 'zod';
 
 /**
- * Le FQDN doit résoudre **depuis le navigateur des utilisateurs**, pas
- * seulement depuis le panel : la console ouvre un WebSocket directement vers le
- * daemon. Une adresse privée type `192.168.x.x` fonctionne donc en réseau
- * local, mais casse toute console ouverte depuis l'extérieur — c'est signalé à
- * l'administrateur au lieu d'être refusé, l'auto-hébergement en LAN étant un
- * cas d'usage légitime.
+ * The FQDN has to resolve **from the users' browsers**, not only from the
+ * panel: the console opens a WebSocket straight to the daemon. A private
+ * address such as `192.168.x.x` therefore works on a local network but breaks
+ * any console opened from outside — that is flagged to the administrator rather
+ * than refused, self-hosting on a LAN being a legitimate use.
  */
 const fqdnSchema = z
   .string()
@@ -14,7 +13,7 @@ const fqdnSchema = z
   .max(255)
   .regex(
     /^[a-zA-Z0-9.-]+$/,
-    'Le FQDN ne peut contenir que des lettres, chiffres, points et tirets.',
+    'The FQDN may only contain letters, digits, dots and hyphens.',
   );
 
 export const createNodeSchema = z.object({
@@ -38,16 +37,16 @@ export const createNodeSchema = z.object({
 export const updateNodeSchema = createNodeSchema.partial();
 
 /**
- * Création d'allocations par plage : `25565-25585` crée 21 ports d'un coup.
- * Saisir cent ports un par un dans l'interface serait intenable.
+ * Creating allocations by range: `25565-25585` creates 21 ports at once.
+ * Typing a hundred ports one by one in the interface would be unbearable.
  */
 export const createAllocationsSchema = z.object({
   ip: z
     .string()
     .min(1)
     .max(45)
-    .regex(/^[0-9a-fA-F.:]+$/, 'IP invalide.'),
-  /** Un port isolé (`25565`) ou une plage (`25565-25585`). */
+    .regex(/^[0-9a-fA-F.:]+$/, 'Invalid IP.'),
+  /** A single port (`25565`) or a range (`25565-25585`). */
   ports: z
     .array(z.string().regex(/^\d{1,5}(-\d{1,5})?$/, 'Format attendu : 25565 ou 25565-25585.'))
     .min(1)
@@ -60,15 +59,15 @@ export type UpdateNodeDto = z.infer<typeof updateNodeSchema>;
 export type CreateAllocationsDto = z.infer<typeof createAllocationsSchema>;
 
 /**
- * Nombre maximal de ports créés en une requête.
+ * Largest number of ports created in one request.
  *
- * Une plage `1-65535` insérerait 65 000 lignes et bloquerait la base plusieurs
- * secondes. La borne est volontairement basse : allouer plus de mille ports à
- * un node relève de l'erreur de saisie bien plus souvent que du besoin réel.
+ * A `1-65535` range would insert 65,000 rows and block the database for several
+ * seconds. The bound is deliberately low: allocating more than a thousand ports
+ * to a node is far more often a typo than a real need.
  */
 export const MAX_ALLOCATIONS_PER_REQUEST = 1000;
 
-/** Convertit `["25565", "25570-25572"]` en `[25565, 25570, 25571, 25572]`. */
+/** Turns `["25565", "25570-25572"]` into `[25565, 25570, 25571, 25572]`. */
 export function expandPortRanges(ports: string[]): number[] {
   const expanded = new Set<number>();
 
@@ -78,20 +77,20 @@ export function expandPortRanges(ports: string[]): number[] {
     const end = endRaw === undefined ? start : Number(endRaw);
 
     if (!Number.isInteger(start) || start < 1 || start > 65535) {
-      throw new Error(`Port hors plage : ${entry}`);
+      throw new Error(`Port out of range: ${entry}`);
     }
 
     if (!Number.isInteger(end) || end < 1 || end > 65535) {
-      throw new Error(`Port hors plage : ${entry}`);
+      throw new Error(`Port out of range: ${entry}`);
     }
 
     if (end < start) {
-      throw new Error(`Plage inversée : ${entry}`);
+      throw new Error(`Reversed range: ${entry}`);
     }
 
     if (end - start + 1 > MAX_ALLOCATIONS_PER_REQUEST) {
       throw new Error(
-        `La plage ${entry} dépasse ${MAX_ALLOCATIONS_PER_REQUEST} ports. Découpez-la.`,
+        `Range ${entry} exceeds ${MAX_ALLOCATIONS_PER_REQUEST} ports. Split it up.`,
       );
     }
 
@@ -102,7 +101,7 @@ export function expandPortRanges(ports: string[]): number[] {
 
   if (expanded.size > MAX_ALLOCATIONS_PER_REQUEST) {
     throw new Error(
-      `${expanded.size} ports demandés, maximum ${MAX_ALLOCATIONS_PER_REQUEST} par requête.`,
+      `${expanded.size} ports requested, at most ${MAX_ALLOCATIONS_PER_REQUEST} per request.`,
     );
   }
 

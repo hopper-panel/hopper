@@ -53,16 +53,16 @@ export class NodesController {
   }
 
   /**
-   * Interroge le daemon pour savoir s'il répond.
+   * Asks the daemon whether it answers.
    *
-   * Le résultat n'est pas mis en cache : un administrateur qui ouvre cette page
-   * veut l'état maintenant, pas celui d'il y a une minute. Le client applique
-   * un délai d'attente court pour qu'un node éteint ne fige pas la page.
+   * The result is not cached: an administrator opening this page wants the
+   * state now, not the one from a minute ago. The client applies a short
+   * timeout so that a powered-off node does not freeze the page.
    */
   @Get(':uuid/health')
   async health(@Param('uuid') uuid: string): Promise<NodeHealth> {
-    // `getConnection` déchiffre le jeton : le résultat ne sort jamais d'ici,
-    // seule la réponse du daemon est renvoyée au navigateur.
+    // `getConnection` decrypts the token: the result never leaves this method,
+    // only the daemon's answer is returned to the browser.
     return this.client.fetchSystemInformation(await this.nodes.getConnection(uuid));
   }
 

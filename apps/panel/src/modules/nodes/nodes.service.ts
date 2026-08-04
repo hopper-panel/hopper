@@ -26,7 +26,7 @@ import {
   type UpdateNodeDto,
 } from './nodes.dto.js';
 
-/** Vue d'un node. Ne contient jamais le secret du jeton ni le secret JWT. */
+/** A node view. Never holds the token secret nor the JWT secret. */
 export interface NodeView {
   uuid: string;
   name: string;
@@ -40,7 +40,7 @@ export interface NodeView {
   memoryOverallocation: number;
   diskOverallocation: number;
   maintenance: boolean;
-  /** Partie publique du jeton : suffit à identifier le node dans les journaux. */
+  /** Public half of the token: enough to identify the node in the logs. */
   daemonTokenId: string;
   serverCount: number;
   allocationCount: number;
@@ -114,23 +114,22 @@ export class NodesService {
     });
 
     if (!node) {
-      throw new NotFoundException('Node introuvable.');
+      throw new NotFoundException('Node not found.');
     }
 
     return toNodeView(node);
   }
 
   /**
-   * Crée un node et sa paire de jetons.
+   * Creates a node and its token pair.
    *
-   * Le secret n'est retourné qu'ici, une seule fois, à l'intérieur du fichier
-   * de configuration prêt à coller sur la machine hôte. Aucune autre route ne
-   * le réexpose : le perdre impose une rotation, ce qui est le comportement
-   * voulu.
+   * The secret is returned here only, once, inside the configuration file ready
+   * to paste on the host machine. No other route exposes it again: losing it
+   * forces a rotation, which is the intended behaviour.
    */
   async create(
     dto: CreateNodeDto,
-    /** Nul quand la création vient de la ligne de commande, sans session. */
+    /** Null when the creation comes from the command line, with no session. */
     actorId: number | null,
     context: RequestContext,
   ): Promise<{ node: NodeView; configuration: string }> {
@@ -181,7 +180,7 @@ export class NodesService {
     const existing = await this.prisma.node.findUnique({ where: { uuid } });
 
     if (!existing) {
-      throw new NotFoundException('Node introuvable.');
+      throw new NotFoundException('Node not found.');
     }
 
     const node = await this.prisma.node.update({
@@ -214,22 +213,22 @@ export class NodesService {
   }
 
   /**
-   * Régénère la paire de jetons et le secret JWT.
+   * Regenerates the token pair and the JWT secret.
    *
-   * Le daemon devient injoignable jusqu'à ce que sa configuration soit mise à
-   * jour et le service redémarré. Les serveurs déjà lancés continuent de
-   * tourner : c'est le lien de contrôle qui est coupé, pas les conteneurs.
+   * The daemon becomes unreachable until its configuration is updated and the
+   * service restarted. Servers already running keep running: it is the control
+   * link that is cut, not the containers.
    */
   async rotateToken(
     uuid: string,
-    /** Nul quand la rotation vient de la ligne de commande, sans session. */
+    /** Null when the rotation comes from the command line, with no session. */
     actorId: number | null,
     context: RequestContext,
   ): Promise<{ configuration: string }> {
     const existing = await this.prisma.node.findUnique({ where: { uuid } });
 
     if (!existing) {
-      throw new NotFoundException('Node introuvable.');
+      throw new NotFoundException('Node not found.');
     }
 
     const tokenId = this.crypto.randomString(NODE_TOKEN_ID_LENGTH);
@@ -265,12 +264,12 @@ export class NodesService {
     });
 
     if (!node) {
-      throw new NotFoundException('Node introuvable.');
+      throw new NotFoundException('Node not found.');
     }
 
     if (node._count.servers > 0) {
       throw new BadRequestException(
-        `Ce node héberge encore ${node._count.servers} serveur(s). Supprimez-les ou déplacez-les d'abord.`,
+        `This node still hosts ${node._count.servers} server(s). Delete or move them first.`,
       );
     }
 
@@ -285,7 +284,7 @@ export class NodesService {
     });
   }
 
-  /** Secret JWT en clair, pour signer un jeton de console. Usage interne. */
+  /** Plaintext JWT secret, to sign a console token. Internal use. */
   async getJwtSecret(nodeId: number): Promise<string> {
     const node = await this.prisma.node.findUniqueOrThrow({
       where: { id: nodeId },
@@ -296,12 +295,11 @@ export class NodesService {
   }
 
   /**
-   * Coordonnées complètes d'un node, jeton déchiffré compris, pour appeler son
-   * daemon.
+   * A node's full address, decrypted token included, to call its daemon.
    *
-   * Réservé aux appels internes du panel : le jeton ne doit jamais franchir la
-   * frontière HTTP vers un navigateur. Aucun contrôleur ne retourne le résultat
-   * de cette méthode tel quel.
+   * Reserved for the panel's internal calls: the token must never cross the
+   * HTTP boundary towards a browser. No controller returns the result of this
+   * method as is.
    */
   async getConnection(uuid: string): Promise<{ uuid: string; url: string; token: string }> {
     const node = await this.prisma.node.findUnique({
@@ -317,7 +315,7 @@ export class NodesService {
     });
 
     if (!node) {
-      throw new NotFoundException('Node introuvable.');
+      throw new NotFoundException('Node not found.');
     }
 
     return {
@@ -335,7 +333,7 @@ export class NodesService {
     const node = await this.prisma.node.findUnique({ where: { uuid }, select: { id: true } });
 
     if (!node) {
-      throw new NotFoundException('Node introuvable.');
+      throw new NotFoundException('Node not found.');
     }
 
     const where: Prisma.AllocationWhereInput = { nodeId: node.id };
@@ -371,19 +369,19 @@ export class NodesService {
     const node = await this.prisma.node.findUnique({ where: { uuid }, select: { id: true } });
 
     if (!node) {
-      throw new NotFoundException('Node introuvable.');
+      throw new NotFoundException('Node not found.');
     }
 
     let ports: number[];
     try {
       ports = expandPortRanges(dto.ports);
     } catch (error: unknown) {
-      throw new BadRequestException(error instanceof Error ? error.message : 'Plage invalide.');
+      throw new BadRequestException(error instanceof Error ? error.message : 'Invalid range.');
     }
 
-    // `skipDuplicates` plutôt qu'une erreur : réappliquer une plage qui recouvre
-    // partiellement des ports existants est un geste courant. Le compte des
-    // ignorés est renvoyé pour que l'interface le dise clairement.
+    // `skipDuplicates` rather than an error: reapplying a range that partly
+    // overlaps existing ports is a common move. The count of skipped ports is
+    // returned so the interface can say so plainly.
     const result = await this.prisma.allocation.createMany({
       data: ports.map((port) => ({
         nodeId: node.id,
@@ -404,12 +402,12 @@ export class NodesService {
     });
 
     if (!allocation) {
-      throw new NotFoundException('Allocation introuvable sur ce node.');
+      throw new NotFoundException('Allocation not found on this node.');
     }
 
     if (allocation.serverId !== null) {
       throw new ConflictException(
-        `Le port ${allocation.port} est attribué à un serveur. Retirez-le du serveur d'abord.`,
+        `Port ${allocation.port} is assigned to a server. Remove it from that server first.`,
       );
     }
 
@@ -419,12 +417,12 @@ export class NodesService {
   // -------------------------------------------------------------------------
 
   /**
-   * Produit le `daemon.yml` prêt à coller sur la machine hôte.
+   * Produces the `daemon.yml` ready to paste on the host machine.
    *
-   * Généré côté panel plutôt que laissé à la charge de l'administrateur : c'est
-   * le seul moyen de garantir que l'UUID, les jetons et l'URL du panel
-   * concordent. Une faute de frappe dans un de ces champs se traduirait par un
-   * node « injoignable » sans indication de la cause.
+   * Generated panel-side rather than left to the administrator: it is the only
+   * way to guarantee the UUID, the tokens and the panel URL agree. A typo in
+   * any of those fields would show up as an "unreachable" node with no clue as
+   * to the cause.
    */
   private buildDaemonConfiguration(
     node: Node,
@@ -440,12 +438,11 @@ export class NodesService {
       api: {
         host: '0.0.0.0',
         port: node.port,
-        // Les chemins de certificat sont **obligatoires** dès que `enabled` vaut
-        // vrai : sans eux, le daemon refuse de démarrer avec une configuration
-        // qu'il vient pourtant de recevoir du panel. On propose donc ceux de
-        // Let's Encrypt, de loin les plus courants — un autre émetteur se
-        // corrige en deux lignes, une configuration invalide se diagnostique en
-        // vingt minutes.
+        // The certificate paths are **mandatory** as soon as `enabled` is
+        // true: without them the daemon refuses to start with a configuration
+        // it has just received from the panel. So Let's Encrypt's paths are
+        // offered, by far the most common — another issuer is a two-line fix,
+        // an invalid configuration is a twenty-minute diagnosis.
         ssl:
           node.scheme === 'https'
             ? {
