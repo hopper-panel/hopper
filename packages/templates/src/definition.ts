@@ -2,11 +2,11 @@ import { configFileSchema } from '@hopper/shared';
 import { z } from 'zod';
 
 /**
- * Définition d'un template de serveur.
+ * Definition of a server template.
  *
- * C'est la forme qu'ont les templates livrés avec Hopper, et celle vers
- * laquelle l'importeur d'« eggs » Pterodactyl convertit. Le panel la traduit
- * ensuite en lignes de base de données.
+ * This is the shape of the templates shipped with Hopper, and the one the
+ * Pterodactyl egg importer converts into. The panel then translates it into
+ * database rows.
  */
 
 export const templateVariableDefinitionSchema = z.object({
@@ -15,29 +15,29 @@ export const templateVariableDefinitionSchema = z.object({
   envVariable: z
     .string()
     .min(1)
-    .regex(/^[A-Za-z_][A-Za-z0-9_]*$/, 'Nom de variable non conforme à la syntaxe POSIX.'),
+    .regex(/^[A-Za-z_][A-Za-z0-9_]*$/, 'Variable name does not follow POSIX syntax.'),
   defaultValue: z.string().default(''),
   userViewable: z.boolean().default(true),
   /**
-   * Une variable modifiable entre dans la commande de démarrage : c'est une
-   * entrée utilisateur qui influe sur ce que la JVM exécute. Le défaut est donc
-   * « non modifiable », et chaque exception doit être un choix conscient.
+   * An editable variable feeds the startup command: it is user input that
+   * influences what the JVM runs. The default is therefore "not editable", and
+   * every exception has to be a conscious choice.
    */
   userEditable: z.boolean().default(false),
   rules: z.string().default('nullable|string'),
 });
 
 export const dockerImageOptionSchema = z.object({
-  /** Libellé affiché, ex. « Java 21 ». */
+  /** Displayed label, e.g. "Java 21". */
   name: z.string().min(1),
   image: z.string().min(1),
 });
 
 export const templateDefinitionSchema = z.object({
   /**
-   * Identifiant stable, indépendant du nom affiché.
-   * Sert de clé d'upsert : renommer « Paper » en « PaperMC » ne doit pas créer
-   * un second template ni orpheliner les serveurs existants.
+   * Stable identifier, independent of the displayed name.
+   * Used as the upsert key: renaming "Paper" to "PaperMC" must not create a
+   * second template nor orphan the existing servers.
    */
   key: z.string().regex(/^[a-z0-9-]+$/),
   group: z.string().min(1),
@@ -45,13 +45,13 @@ export const templateDefinitionSchema = z.object({
   description: z.string().default(''),
   author: z.string().default('Hopper'),
 
-  /** Ordonnées : la première est le défaut proposé à la création. */
+  /** Ordered: the first is the default offered at creation. */
   dockerImages: z.array(dockerImageOptionSchema).min(1),
 
   startup: z.string().min(1),
   /** `command:stop` ou `signal:SIGTERM`. */
   stopCommand: z.string().default('command:stop'),
-  /** Expression régulière signalant que le serveur accepte les connexions. */
+  /** Regular expression signalling that the server accepts connections. */
   startupDetection: z.string().optional(),
 
   configFiles: z.array(configFileSchema).default([]),
@@ -63,7 +63,7 @@ export const templateDefinitionSchema = z.object({
 
   variables: z.array(templateVariableDefinitionSchema).default([]),
 
-  /** UUID de l'egg Pterodactyl d'origine, pour éviter les doubles imports. */
+  /** UUID of the original Pterodactyl egg, to avoid double imports. */
   importedFromEgg: z.string().optional(),
 });
 
@@ -71,7 +71,7 @@ export type TemplateDefinition = z.infer<typeof templateDefinitionSchema>;
 export type TemplateVariableDefinition = z.infer<typeof templateVariableDefinitionSchema>;
 export type DockerImageOption = z.infer<typeof dockerImageOptionSchema>;
 
-/** Groupes de templates livrés avec Hopper. */
+/** Template groups shipped with Hopper. */
 export const TEMPLATE_GROUPS = {
   JAVA: 'Minecraft: Java Edition',
   BEDROCK: 'Minecraft: Bedrock Edition',
@@ -79,11 +79,11 @@ export const TEMPLATE_GROUPS = {
 } as const;
 
 /**
- * Images Java proposées par défaut.
+ * Java images offered by default.
  *
- * L'ordre compte : la première est retenue quand l'utilisateur n'en choisit
- * pas. Java 21 convient à toutes les versions modernes ; Java 8 n'est là que
- * pour les serveurs 1.8 à 1.12, encore très répandus en PvP.
+ * The order matters: the first is used when the user picks none. Java 21 suits
+ * every modern version; Java 8 is only there for 1.8 to 1.12 servers, still
+ * very common in PvP.
  */
 export const JAVA_IMAGES: DockerImageOption[] = [
   { name: 'Java 21', image: 'ghcr.io/hopper-panel/java:21' },
@@ -93,18 +93,18 @@ export const JAVA_IMAGES: DockerImageOption[] = [
 ];
 
 /**
- * Ligne émise par un serveur Bukkit quand il a fini de charger.
- * Échappée pour être stockée telle quelle et compilée par le daemon.
+ * Line a Bukkit server emits once it has finished loading.
+ * Escaped so it can be stored as is and compiled by the daemon.
  */
 export const BUKKIT_STARTUP_DETECTION = '\\)! For help, type "help"';
 
-/** Réécriture de `server.properties` appliquée avant chaque démarrage. */
+/** Rewrite of `server.properties` applied before every start. */
 export const SERVER_PROPERTIES_CONFIG = {
   file: 'server.properties',
   parser: 'properties' as const,
   replacements: [
-    // Le serveur doit écouter sur toutes les interfaces du conteneur : c'est
-    // Docker qui restreint la publication au port alloué.
+    // The server has to listen on every interface of the container: it is
+    // Docker that restricts publication to the allocated port.
     { match: 'server-ip', replaceWith: '0.0.0.0' },
     { match: 'server-port', replaceWith: '{{server.build.default.port}}' },
   ],

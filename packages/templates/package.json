@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "license": "AGPL-3.0-or-later",
-  "description": "Catalogue de templates de serveurs Hopper et importeur d'eggs Pterodactyl",
+  "description": "Hopper server template catalogue and Pterodactyl egg importer",
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",

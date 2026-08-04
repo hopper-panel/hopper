@@ -14,11 +14,11 @@ import {
 } from './backup-archive.js';
 
 /**
- * Sonde synchrone, au niveau du module.
+ * Synchronous probe, at module level.
  *
- * `describe.runIf` est évalué au moment de la collecte des tests, avant tout
- * `beforeAll` : une sonde asynchrone arriverait trop tard et les tests seraient
- * silencieusement ignorés partout.
+ * `describe.runIf` is evaluated when the tests are collected, before any
+ * `beforeAll`: an asynchronous probe would arrive too late and the tests would
+ * be silently skipped everywhere.
  */
 const symlinkSupported = ((): boolean => {
   const probe = mkdtempSync(join(tmpdir(), 'hopper-backup-symlink-probe-'));
@@ -63,30 +63,30 @@ async function seedVolume(): Promise<void> {
 }
 
 describe('detectCompression', () => {
-  // Le format n'est pas figé : il dépend de la version de Node. Ce qui compte,
-  // c'est qu'il soit inscrit dans le nom du fichier — une archive produite
-  // avant une mise à jour doit rester restaurable après.
+  // The format is not fixed: it depends on the Node version. What matters is
+  // that it is written into the file name — an archive produced before an
+  // upgrade has to stay restorable afterwards.
   it('retient un format connu', () => {
     expect(['gzip', 'zstd']).toContain(detectCompression());
   });
 });
 
 describe('compressionOf', () => {
-  it('déduit le format de l’extension', () => {
+  it('infers the format from the extension', () => {
     expect(compressionOf('/var/lib/hopper/backups/abc.tar.gz')).toBe('gzip');
     expect(compressionOf('/var/lib/hopper/backups/abc.tar.zst')).toBe('zstd');
   });
 
-  // Refuser plutôt que deviner : ouvrir une archive avec le mauvais
-  // décompresseur produit une erreur de flux illisible, bien après avoir
-  // commencé à écrire dans le volume.
+  // Refuse rather than guess: opening an archive with the wrong decompressor
+  // produces an unreadable stream error, long after writing into the volume has
+  // begun.
   it('refuse une extension inconnue', () => {
     expect(() => compressionOf('/backups/abc.zip')).toThrow(BackupError);
   });
 });
 
 describe('createBackupArchive', () => {
-  it('archive le volume et rend une empreinte vérifiable', async () => {
+  it('archives the volume and returns a verifiable digest', async () => {
     await seedVolume();
     const archivePath = join(
       archives,
@@ -102,8 +102,8 @@ describe('createBackupArchive', () => {
 
     expect(result.fileCount).toBe(3);
     expect(result.sizeBytes).toBeGreaterThan(0);
-    // L'empreinte porte sur l'archive telle qu'elle sera relue : c'est la seule
-    // qui détecte une corruption survenue après la compression.
+    // The digest covers the archive as it will be read back: it is the only one
+    // that catches a corruption occurring after compression.
     expect(await checksumOf(archivePath)).toBe(result.checksum);
   });
 
@@ -121,17 +121,16 @@ describe('createBackupArchive', () => {
     expect(result.fileCount).toBe(2);
   });
 
-  // Une archive tronquée est pire que pas d'archive : le panel la présenterait
-  // comme restaurable et l'échec n'apparaîtrait qu'au moment d'extraire, sur un
-  // volume déjà vidé.
+  // A truncated archive is worse than no archive: the panel would present it as
+  // restorable and the failure would only appear at extraction time, on an
+  // already-emptied volume.
   //
-  // Ce test garde aussi une seconde propriété, moins visible : il a révélé un
-  // rejet non rattaché sur le flux d'écriture. Détruire le paquetage faisait
-  // rejeter le pipeline sans que personne n'écoute, ce que Node traite en
-  // « unhandled rejection » — le daemon entier tombait pour une sauvegarde
-  // manquée. Vitest fait échouer la campagne sur un tel rejet : si la parade
-  // disparaît, ce test redevient rouge.
-  it('ne laisse pas d’archive partielle derrière un échec', async () => {
+  // This test also guards a second, less visible property: it revealed an
+  // unattached rejection on the write stream. Destroying the packer rejected the
+  // pipeline with nobody listening, which Node treats as an unhandled rejection
+  // — the whole daemon fell over for one missed backup. Vitest fails the run on
+  // such a rejection: if the guard disappears, this test goes red again.
+  it('leaves no partial archive behind a failure', async () => {
     const archivePath = join(archives, 'c.tar.gz');
 
     await expect(
@@ -146,7 +145,7 @@ describe('createBackupArchive', () => {
     await expect(readFile(archivePath)).rejects.toThrow();
   });
 
-  it('archive une arborescence vide sans échouer', async () => {
+  it('archives an empty tree without failing', async () => {
     const archivePath = join(archives, 'd.tar.gz');
 
     const result = await createBackupArchive({
@@ -173,7 +172,7 @@ describe('restoreBackupArchive', () => {
     return archivePath;
   }
 
-  it('rétablit les fichiers dans le volume', async () => {
+  it('puts the files back into the volume', async () => {
     await seedVolume();
     const archivePath = await archiveVolume('e.tar.gz');
 
@@ -190,9 +189,9 @@ describe('restoreBackupArchive', () => {
     expect(await readFile(join(target, 'world', 'level.dat'), 'utf8')).toBe('donnees-du-monde');
   });
 
-  // Restaurer, c'est revenir à l'état sauvegardé. Sans purge, un fichier créé
-  // après la sauvegarde survivrait, et l'état obtenu ne serait celui d'aucun
-  // instant réel.
+  // Restoring means going back to the state that was saved. Without a purge, a
+  // file created after the backup would survive, and the resulting state would
+  // be that of no real moment.
   it('vide le volume quand on le lui demande', async () => {
     await seedVolume();
     const archivePath = await archiveVolume('f.tar.gz');
@@ -216,9 +215,9 @@ describe('restoreBackupArchive', () => {
     expect(await readFile(join(volume, 'ajoute-apres.txt'), 'utf8')).toBe('a garder');
   });
 
-  // Le cas qui compte : une archive corrompue ne doit pas commencer à écrire.
-  // Détecter la corruption en cours d'extraction laisserait un volume à moitié
-  // écrasé — un serveur détruit par l'opération censée le sauver.
+  // The case that matters: a corrupt archive must not start writing. Detecting
+  // the corruption mid-extraction would leave a half-overwritten volume — a
+  // server destroyed by the operation meant to save it.
   it('refuse une archive dont l’empreinte ne correspond pas', async () => {
     await seedVolume();
     const archivePath = await archiveVolume('h.tar.gz');
@@ -233,7 +232,7 @@ describe('restoreBackupArchive', () => {
       }),
     ).rejects.toThrow(BackupError);
 
-    // Le volume est intact : rien n'a été purgé.
+    // The volume is intact: nothing was purged.
     expect(await readFile(join(volume, 'server.properties'), 'utf8')).toBe('motd=Hopper\n');
   });
 
@@ -254,9 +253,9 @@ describe('restoreBackupArchive', () => {
 });
 
 describe.runIf(symlinkSupported)('liens symboliques', () => {
-  // Suivre un lien ferait entrer dans la sauvegarde des fichiers de l'hôte —
-  // un lien vers `/etc` suffirait — et un lien vers un parent produirait une
-  // archive qui ne se termine jamais.
+  // Following a link would pull host files into the backup — a link to `/etc`
+  // would be enough — and a link to a parent would produce an archive that
+  // never ends.
   it('archive le lien, sans suivre sa cible', async () => {
     await writeFile(join(volume, 'reel.txt'), 'contenu');
     await symlink(join(volume, 'reel.txt'), join(volume, 'lien.txt'));
@@ -269,14 +268,14 @@ describe.runIf(symlinkSupported)('liens symboliques', () => {
       compression: 'gzip',
     });
 
-    // Deux entrées : le fichier et le lien — pas le fichier deux fois.
+    // Two entries: the file and the link — not the file twice.
     expect(result.fileCount).toBe(2);
   });
 
-  // Un lien restauré pointant hors du volume rendrait n'importe quel fichier de
-  // l'hôte lisible par le gestionnaire de fichiers et le SFTP : ce serait le
-  // jail contourné par une archive.
-  it('ne recrée pas les liens à la restauration', async () => {
+  // A restored link pointing outside the volume would make any host file
+  // readable through the file manager and SFTP: the jail bypassed by an
+  // archive.
+  it('does not recreate links on restore', async () => {
     await writeFile(join(volume, 'reel.txt'), 'contenu');
     await symlink('/etc/shadow', join(volume, 'evasion.txt'));
 

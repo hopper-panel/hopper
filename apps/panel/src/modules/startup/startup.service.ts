@@ -6,21 +6,20 @@ import { ServerConfigurationService } from '../servers/server-configuration.serv
 import { validateValue } from './variable-rules.js';
 
 /**
- * Paramètres de démarrage d'un serveur.
+ * A server's startup settings.
  *
- * Trois éléments décident de ce qui s'exécute dans le conteneur : la commande
- * de lancement, l'image Docker, et les variables du template. Les deux derniers
- * sont modifiables ici ; la commande, elle, appartient au template et n'est
- * qu'affichée — la laisser éditer par l'utilisateur d'un serveur reviendrait à
- * lui donner le choix du binaire exécuté.
+ * Three things decide what runs inside the container: the launch command, the
+ * Docker image, and the template's variables. The last two are editable here;
+ * the command belongs to the template and is only displayed — letting a
+ * server's user edit it would amount to handing them the choice of binary.
  *
- * Deux filtres, et non un seul :
+ * Two filters, not one:
  *
- *  - `userViewable` décide de ce qui est **rendu** ; une variable masquée
- *    contient souvent un secret et ne doit apparaître dans aucune réponse ;
- *  - `userEditable` décide de ce qui est **accepté** en écriture. Une variable
- *    non modifiable soumise est refusée plutôt qu'ignorée : l'ignorer
- *    laisserait croire que le changement a été pris en compte.
+ *  - `userViewable` decides what is **returned**; a hidden variable often holds
+ *    a secret and must appear in no response;
+ *  - `userEditable` decides what is **accepted** on write. A non-editable
+ *    variable that is submitted is refused rather than ignored: ignoring it
+ *    would suggest the change had been taken into account.
  */
 @Injectable()
 export class StartupService {
@@ -45,13 +44,13 @@ export class StartupService {
       where: { serverId: server.id },
     });
 
-    // Indexé par nom de variable d'environnement, et non par identifiant de
-    // variable de template : c'est ainsi que la valeur est stockée, pour qu'un
-    // template modifié après coup ne casse pas les serveurs existants.
+    // Keyed by environment variable name, not by template variable id: that is
+    // how the value is stored, so that a template edited afterwards does not
+    // break the existing servers.
     const byEnv = new Map(values.map((value) => [value.envVariable, value.value]));
 
     return {
-      /** Gabarit du template, variables non substituées : c'est ce qui sera exécuté. */
+      /** The template's own line, variables unsubstituted: this is what will run. */
       startupCommand: server.startupCommand,
       dockerImage: server.dockerImage,
       dockerImages: readImages(server.template.dockerImages),
@@ -100,13 +99,13 @@ export class StartupService {
       );
     }
 
-    // L'image doit venir du template. Sans cette vérification, une valeur
-    // libre ferait exécuter n'importe quelle image du registre — donc n'importe
-    // quel programme — dans un conteneur monté sur le volume du serveur.
+    // The image has to come from the template. Without this check, a free-form
+    // value would run any image from the registry — so any program — in a
+    // container mounted on the server's volume.
     const proposed = readImages(server.template.dockerImages);
 
     if (!proposed.some((candidate) => candidate.image === image)) {
-      throw new BadRequestException("Cette image n'est pas proposée par le template du serveur.");
+      throw new BadRequestException("This image is not offered by the server's template.");
     }
 
     await this.prisma.server.update({ where: { id: server.id }, data: { dockerImage: image } });
@@ -126,22 +125,22 @@ export class StartupService {
       const variable = byEnv.get(envVariable);
 
       if (!variable) {
-        errors.push(`${envVariable} : variable inconnue de ce template.`);
+        errors.push(`${envVariable}: unknown variable for this template.`);
         continue;
       }
 
-      // Refus explicite plutôt qu'omission silencieuse : une variable masquée
-      // ou verrouillée soumise est soit une erreur de l'interface, soit une
-      // tentative — dans les deux cas, le dire vaut mieux que l'ignorer.
+      // An explicit refusal rather than a silent omission: a hidden or locked
+      // variable that is submitted is either an interface bug or an attempt —
+      // in both cases, saying so beats ignoring it.
       if (!variable.userEditable || !variable.userViewable) {
-        errors.push(`${variable.name} : cette variable n'est pas modifiable.`);
+        errors.push(`${variable.name}: this variable is not editable.`);
         continue;
       }
 
       const violations = validateValue(value, variable.rules);
 
       if (violations.length > 0) {
-        errors.push(`${variable.name} : ${violations.map((one) => one.message).join(' ')}`);
+        errors.push(`${variable.name}: ${violations.map((one) => one.message).join(' ')}`);
       }
     }
 
@@ -149,8 +148,8 @@ export class StartupService {
       throw new BadRequestException(errors.join('\n'));
     }
 
-    // Écriture seulement une fois **tout** validé : une saisie à moitié
-    // appliquée laisserait un serveur dans un état que personne n'a demandé.
+    // Writing only once **everything** has been validated: a half-applied form
+    // would leave a server in a state nobody asked for.
     for (const [envVariable, value] of Object.entries(submitted)) {
       await this.prisma.serverVariable.upsert({
         where: { serverId_envVariable: { serverId, envVariable } },
@@ -161,11 +160,11 @@ export class StartupService {
   }
 
   /**
-   * Renvoie la configuration au daemon.
+   * Sends the configuration back to the daemon.
    *
-   * Un échec n'annule pas le changement : il est en base, et la réconciliation
-   * du daemon le rattrapera. Le refuser parce que le node est momentanément
-   * injoignable laisserait le panel et la machine désaccordés.
+   * A failure does not undo the change: it is in the database, and the daemon's
+   * reconciliation will catch up. Refusing it because the node is momentarily
+   * unreachable would leave the panel and the machine out of tune.
    */
   private async pushConfiguration(serverUuid: string, nodeId: number): Promise<void> {
     try {
@@ -180,8 +179,8 @@ export class StartupService {
       await this.client.syncServer(connection, configuration);
     } catch (error: unknown) {
       this.logger.warn(
-        `Synchronisation du serveur ${serverUuid} impossible, elle sera rattrapée au prochain ` +
-          `démarrage du daemon : ${String(error)}`,
+        `Could not sync server ${serverUuid}; it will be caught up the next time ` +
+          `the daemon starts: ${String(error)}`,
       );
     }
   }
@@ -206,10 +205,10 @@ export interface DockerImage {
 }
 
 /**
- * Lit la liste d'images du template.
+ * Reads the template's image list.
  *
- * Stockée en JSON : sa forme n'est pas garantie par la base, et un template
- * importé d'un egg mal formé ne doit pas faire échouer l'affichage de la page.
+ * Stored as JSON: its shape is not guaranteed by the database, and a template
+ * imported from a malformed egg must not break the rendering of the page.
  */
 function readImages(raw: unknown): DockerImage[] {
   if (!Array.isArray(raw)) {

@@ -7,20 +7,20 @@ describe('catalogue de templates', () => {
     expect(TEMPLATE_CATALOG.length).toBeGreaterThan(0);
   });
 
-  it('valide chaque définition', () => {
+  it('validates every definition', () => {
     for (const template of TEMPLATE_CATALOG) {
       expect(() => templateDefinitionSchema.parse(template)).not.toThrow();
     }
   });
 
-  // Les clés servent d'identifiant d'upsert : un doublon ferait qu'un template
-  // en écraserait un autre à chaque amorçage.
-  it('utilise des clés uniques', () => {
+  // The keys serve as upsert identifiers: a duplicate would have one template
+  // overwrite another on every seed.
+  it('uses unique keys', () => {
     const keys = TEMPLATE_CATALOG.map((template) => template.key);
     expect(new Set(keys).size).toBe(keys.length);
   });
 
-  it('déclare des groupes connus', () => {
+  it('declares known groups', () => {
     expect(catalogGroups().length).toBeGreaterThan(0);
     for (const group of catalogGroups()) {
       expect(group.trim()).not.toBe('');
@@ -29,14 +29,14 @@ describe('catalogue de templates', () => {
 
   describe('chaque template', () => {
     it.each(TEMPLATE_CATALOG.map((template) => [template.name, template] as const))(
-      '%s est cohérent',
+      '%s is coherent',
       (_name, template) => {
-        // Une image par défaut est indispensable : c'est celle retenue quand
-        // l'utilisateur n'en choisit pas.
+        // A default image is indispensable: it is the one used when the user
+        // picks none.
         expect(template.dockerImages.length).toBeGreaterThan(0);
 
-        // Une regex de détection invalide ne lèverait qu'au démarrage du
-        // premier serveur, longtemps après l'erreur.
+        // An invalid detection regex would only throw when the first server
+        // starts, long after the mistake.
         if (template.startupDetection) {
           expect(() => new RegExp(template.startupDetection!)).not.toThrow();
         }
@@ -46,17 +46,17 @@ describe('catalogue de templates', () => {
     );
   });
 
-  describe('scripts d’installation', () => {
+  describe('install scripts', () => {
     it.each(TEMPLATE_CATALOG.map((template) => [template.name, template] as const))(
-      '%s échoue bruyamment',
+      '%s fails loudly',
       (_name, template) => {
-        // Sans `set -e`, une commande en échec laisse le script continuer et
-        // l'installation est déclarée réussie avec un volume incomplet.
+        // Without `set -e`, a failing command lets the script carry on and the
+        // installation is declared successful with an incomplete volume.
         expect(template.installScript).toContain('set -e');
 
-        // Sans `--fail`, curl écrit une page d'erreur HTTP dans le fichier de
-        // destination et renvoie 0. C'est ainsi que l'arrêt de l'API v2 de
-        // PaperMC produisait des .jar de zéro octet.
+        // Without `--fail`, curl writes an HTTP error page into the destination
+        // file and returns 0. That is how the retirement of PaperMC v2 produced
+        // zero-byte .jars.
         const curlCalls = template.installScript.match(/curl [^\n|]*-o /g) ?? [];
         for (const call of curlCalls) {
           expect(call).toContain('--fail');
@@ -65,26 +65,26 @@ describe('catalogue de templates', () => {
     );
 
     it.each(TEMPLATE_CATALOG.map((template) => [template.name, template] as const))(
-      '%s ne référence que des variables déclarées',
+      '%s only references declared variables',
       (_name, template) => {
         const declared = new Set([
           ...template.variables.map((variable) => variable.envVariable),
-          // Fournies par Hopper à tous les serveurs.
+          // Supplied by Hopper to every server.
           'SERVER_MEMORY',
           'SERVER_IP',
           'SERVER_PORT',
         ]);
 
-        // `${VAR}` dans le script, `{{VAR}}` dans la commande de démarrage.
+        // `${VAR}` in the script, `{{VAR}}` in the startup command.
         const used = [
           ...template.installScript.matchAll(/\$\{([A-Z_][A-Z0-9_]*)\}/g),
           ...template.startup.matchAll(/\{\{\s*([A-Za-z_][A-Za-z0-9_.]*)\s*\}\}/g),
         ].map((match) => match[1]!);
 
-        // Les variables locales du script (majuscules mais assignées sur place)
-        // sont écartées : seules comptent celles que Hopper doit fournir.
-        // `\s*` en tête : une assignation dans un bloc `if` est indentée, et
-        // l'ancrage strict la faisait passer pour une variable non déclarée.
+        // The script's local variables (uppercase but assigned on the spot)
+        // are skipped: only those Hopper has to supply count. A leading
+        // `\s*`: an assignment inside an `if` block is indented, and strict
+        // anchoring made it look like an undeclared variable.
         const assigned = new Set(
           [...template.installScript.matchAll(/^\s*([A-Z_][A-Z0-9_]*)=/gm)].map(
             (match) => match[1]!,

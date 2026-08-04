@@ -13,12 +13,11 @@ import { PANEL_VERSION } from './version.js';
 import { registerWebAssets } from './web/web-assets.js';
 
 /**
- * Les tailles en octets sont stockées en `BigInt` — un `integer` PostgreSQL
- * plafonne à 2,1 Go, ce qui ne suffit ni pour la RAM d'un node ni pour un
- * disque. `JSON.stringify` refuse les BigInt, ce qui produirait une 500 sur
- * toute réponse contenant un serveur. Les valeurs manipulées (octets d'un
- * disque, d'une RAM) restent très en dessous de 2^53, donc la conversion en
- * `number` est exacte.
+ * Byte sizes are stored as `BigInt` — a PostgreSQL `integer` tops out at 2.1 GB,
+ * which is enough for neither a node's RAM nor a disk. `JSON.stringify` refuses
+ * BigInt, which would produce a 500 on any response containing a server. The
+ * values handled (bytes of a disk, of a RAM) stay far below 2^53, so the
+ * conversion to `number` is exact.
  */
 (BigInt.prototype as unknown as { toJSON: () => number }).toJSON = function toJSON(this: bigint) {
   return Number(this);
@@ -40,9 +39,9 @@ async function bootstrap(): Promise<void> {
   const appUrl = config.get('APP_URL', { infer: true });
   const isProduction = config.get('NODE_ENV', { infer: true }) === 'production';
 
-  // Le relais d'envoi de fichier retransmet le corps de la requête tel quel
-  // vers le daemon. Sans ce parseur, Fastify tenterait d'analyser un binaire —
-  // et refuserait en 415 avant même d'atteindre le contrôleur.
+  // The file-upload relay passes the request body on to the daemon as is.
+  // Without this parser, Fastify would try to parse a binary — and refuse with
+  // a 415 before ever reaching the controller.
   app
     .getHttpAdapter()
     .getInstance()
@@ -54,28 +53,27 @@ async function bootstrap(): Promise<void> {
   await app.register(fastifyCookie, { secret: appSecret });
 
   await app.register(fastifyHelmet, {
-    // Désactivée en développement : la politique par défaut casserait le
-    // rechargement à chaud de Vite.
+    // Off in development: the default policy would break Vite's hot reload.
     contentSecurityPolicy: isProduction
       ? {
           useDefaults: true,
           directives: {
-            // La console et les statistiques ouvrent un WebSocket **vers le
-            // daemon**, pas vers le panel — c'est ce qui évite d'en faire un
-            // goulot d'étranglement. Ce daemon vit sur un autre hôte et un
-            // autre port, donc sur une autre origine : la valeur par défaut
-            // `'self'` bloquerait la console sans le moindre message côté
-            // serveur. Les nodes étant déclarés à l'exécution, leurs origines
-            // ne peuvent pas être énumérées ici.
+            // The console and the statistics open a WebSocket **to the
+            // daemon**, not to the panel — that is what keeps the panel from
+            // being a bottleneck. That daemon lives on another host and
+            // another port, so on another origin: the default `'self'` would
+            // block the console without a single message on the server side.
+            // Since nodes are declared at runtime, their origins cannot be
+            // enumerated here.
             'connect-src': ["'self'", 'ws:', 'wss:'],
-            // Vite n'émet pas de script en ligne ; la valeur par défaut suffit
-            // et interdit l'injection.
+            // Vite emits no inline script; the default value is enough and
+            // forbids injection.
             'script-src': ["'self'"],
-            // `upgrade-insecure-requests` réécrit aussi `ws://` en `wss://`.
-            // Sur un panel servi en HTTP — installation interne, ou avant la
-            // mise en place du reverse proxy — cela couperait la console au
-            // profit d'un chiffrement que le daemon n'offre pas encore. La
-            // directive n'a de sens que si le panel est lui-même en HTTPS.
+            // `upgrade-insecure-requests` also rewrites `ws://` into `wss://`.
+            // On a panel served over HTTP — an internal install, or before the
+            // reverse proxy is in place — that would cut the console off in
+            // favour of encryption the daemon does not offer yet. The directive
+            // only makes sense if the panel itself is on HTTPS.
             ...(appUrl.startsWith('https://') ? {} : { 'upgrade-insecure-requests': null }),
           },
         }
@@ -83,16 +81,16 @@ async function bootstrap(): Promise<void> {
     crossOriginEmbedderPolicy: false,
   });
 
-  // Le front de développement tourne sur un autre port que l'API. En
-  // production, l'interface est servie par le panel lui-même : aucune origine
-  // tierce n'a besoin d'accéder à l'API avec des cookies.
+  // The development front runs on a different port from the API. In
+  // production, the interface is served by the panel itself: no third-party
+  // origin needs to reach the API with cookies.
   await app.register(fastifyCors, {
     origin: isProduction ? [appUrl] : [appUrl, 'http://localhost:5173'],
     credentials: true,
   });
 
-  // Pas de ValidationPipe global : la validation passe par les schémas Zod du
-  // paquet partagé, via ZodValidationPipe déclaré route par route.
+  // No global ValidationPipe: validation goes through the shared package's Zod
+  // schemas, via ZodValidationPipe declared route by route.
   app.enableShutdownHooks();
 
   const web = await registerWebAssets(app, {
@@ -104,24 +102,24 @@ async function bootstrap(): Promise<void> {
 
   await app.listen({ host, port });
 
-  logger.log(`Hopper Panel ${PANEL_VERSION} à l'écoute sur http://${host}:${port}`);
+  logger.log(`Hopper Panel ${PANEL_VERSION} listening on http://${host}:${port}`);
 
   if (web.served) {
-    logger.log(`Interface servie depuis ${web.root}`);
+    logger.log(`Interface served from ${web.root}`);
   } else if (isProduction) {
-    // En production, c'est une erreur de déploiement : l'API répond, mais le
-    // navigateur ne reçoit rien. Le dire clairement évite de chercher du côté
-    // du reverse proxy.
+    // In production this is a deployment mistake: the API answers, but the
+    // browser receives nothing. Saying so plainly saves a search through the
+    // reverse proxy.
     logger.error(
-      `Interface introuvable dans ${web.root} — lancez « pnpm build » ; ` +
-        `le panel ne répondra qu'en API.`,
+      `Interface not found in ${web.root} — run "pnpm build"; ` +
+        `the panel will answer as an API only.`,
     );
   } else {
-    logger.log("Interface non construite : en développement, c'est Vite qui la sert.");
+    logger.log('Interface not built: in development, Vite serves it.');
   }
 }
 
 bootstrap().catch((error: unknown) => {
-  process.stderr.write(`\n✖ Échec du démarrage du panel :\n${String(error)}\n\n`);
+  process.stderr.write(`\n✖ The panel failed to start:\n${String(error)}\n\n`);
   process.exit(1);
 });

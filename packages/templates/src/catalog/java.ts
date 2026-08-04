@@ -7,20 +7,20 @@ import {
 } from '../definition.js';
 
 /**
- * Templates Minecraft: Java Edition.
+ * Minecraft: Java Edition templates.
  *
- * Chaque script d'installation est écrit contre l'API réellement en service au
- * moment de sa rédaction, et vérifie ce qu'il télécharge. Un `curl` sans
- * `--fail` sur une API qui répond « 200 » avec un corps d'erreur — le cas de
- * l'API v2 de PaperMC depuis son arrêt — produit un fichier de zéro octet et
- * un serveur qui échoue au démarrage sans explication.
+ * Each install script is written against the API actually in service when it
+ * was written, and checks what it downloads. A `curl` without `--fail` against
+ * an API that answers "200" with an error body — the case of PaperMC's v2 API
+ * since it was retired — produces a zero-byte file and a server that fails to
+ * start with no explanation.
  */
 
-/** Préambule commun : mode strict, outils, répertoire de travail. */
+/** Shared preamble: strict mode, tools, working directory. */
 const PREAMBLE = [
   '#!/bin/bash',
-  '# set -e : la moindre commande en échec arrête l’installation, plutôt que de',
-  '# laisser croire au succès avec un volume à moitié rempli.',
+  '# set -e: the slightest failing command stops the installation, rather than',
+  '# suggesting success with a half-filled volume.',
   'set -euo pipefail',
   '',
   'apt-get update',
@@ -33,14 +33,14 @@ const PREAMBLE = [
 
 const EULA = [
   '',
-  '# Sans ce fichier, le serveur s’arrête au premier démarrage.',
+  '# Without this file, the server stops on its first start.',
   'echo "eula=true" > eula.txt',
   '',
 ].join('\n');
 
 const MINECRAFT_VERSION_VARIABLE = {
-  name: 'Version de Minecraft',
-  description: 'Version à installer, par exemple 1.21.4.',
+  name: 'Minecraft version',
+  description: 'Version to install, for example 1.21.4.',
   envVariable: 'MINECRAFT_VERSION',
   defaultValue: '1.21.4',
   userViewable: true,
@@ -49,31 +49,30 @@ const MINECRAFT_VERSION_VARIABLE = {
 };
 
 const JARFILE_VARIABLE = {
-  name: 'Fichier du serveur',
-  description: 'Nom du fichier .jar lancé au démarrage. Il doit se trouver à la racine du serveur.',
+  name: 'Server file',
+  description: 'Name of the .jar launched at startup. It has to sit at the root of the server.',
   envVariable: 'SERVER_JARFILE',
   defaultValue: 'server.jar',
   userViewable: true,
   /**
-   * Modifiable, mais étroitement contraint.
+   * Editable, but tightly constrained.
    *
-   * Cette valeur entre dans `java -jar {{SERVER_JARFILE}}`. Le laisser libre ne
-   * donne toutefois rien de plus que ce dont l'utilisateur dispose déjà : il
-   * peut déposer un fichier par le gestionnaire ou en SFTP, et un greffon
-   * s'exécute de toute façon dans la JVM du serveur. Le conteneur reste la
-   * frontière — capabilities abandonnées, utilisateur non privilégié, aucun
-   * accès au socket Docker.
+   * This value feeds `java -jar {{SERVER_JARFILE}}`. Leaving it free gives the
+   * user nothing beyond what they already have, though: they can drop a file in
+   * through the file manager or over SFTP, and a plugin runs inside the
+   * server's JVM anyway. The container stays the boundary — capabilities
+   * dropped, unprivileged user, no access to the Docker socket.
    *
-   * L'expression impose en revanche un **nom de fichier**, jamais un chemin :
-   * ni barre oblique, ni `..`, et l'extension `.jar` exigée. Cela empêche de
-   * désigner un fichier ailleurs dans le volume — un `.jar` déposé dans
-   * `plugins/` ne serait pas lancé par erreur — et écarte les valeurs qui ne
-   * pourraient de toute façon rien exécuter.
+   * The expression does impose a **file name**, never a path: no slash, no
+   * `..`, and the `.jar` extension required. That stops it from naming a file
+   * elsewhere in the volume — a `.jar` dropped in `plugins/` would not be
+   * launched by mistake — and rules out values that could not run anything
+   * anyway.
    */
   userEditable: true,
-  // `String.raw` : dans une chaîne ordinaire, `\.` est avalé par l'échappement
-  // et le point redevient « n'importe quel caractère » — `serveurXjar`
-  // passerait alors la règle.
+  // `String.raw`: in an ordinary string, `\.` is swallowed by the escaping and
+  // the dot becomes "any character" again — `serverXjar` would then pass the
+  // rule.
   rules: String.raw`required|string|max:100|regex:/^[A-Za-z0-9._-]+\.jar$/`,
 };
 
@@ -85,7 +84,7 @@ export const paper: TemplateDefinition = {
   group: TEMPLATE_GROUPS.JAVA,
   name: 'Paper',
   description:
-    'Fork de Spigot largement optimisé, compatible avec les plugins Bukkit et Spigot. Le choix par défaut pour un serveur à plugins.',
+    'A heavily optimised fork of Spigot, compatible with Bukkit and Spigot plugins. The default choice for a plugin server.',
   author: 'Hopper',
   dockerImages: JAVA_IMAGES,
   startup: JAVA_STARTUP,
@@ -97,18 +96,18 @@ export const paper: TemplateDefinition = {
   installEntrypoint: '/bin/bash',
   installScript: [
     PREAMBLE,
-    '# API « fill » v3. La v2 a été arrêtée en 2025 : elle répond désormais',
-    '# {"ok":false,"error":"sunset"} avec un code HTTP 200, ce qui produirait un',
-    '# .jar de zéro octet sans que curl ne signale d’erreur.',
+    '# The "fill" v3 API. v2 was retired in 2025: it now answers',
+    '# {"ok":false,"error":"sunset"} with HTTP 200, which would produce a',
+    '# zero-byte .jar without curl reporting an error.',
     'BUILDS="https://fill.papermc.io/v3/projects/paper/versions/${MINECRAFT_VERSION}/builds"',
     '',
-    '# max_by(.id) et non last : l’API renvoie les builds les plus récentes en',
-    '# premier, et « last » installerait donc la plus ancienne.',
+    '# max_by(.id) and not last: the API returns the most recent builds first,',
+    '# so "last" would install the oldest one.',
     'URL=$(curl -sSL --fail "${BUILDS}" \\',
     '  | jq -r \'[.[] | select(.channel == "STABLE")] | max_by(.id) | .downloads["server:default"].url\')',
     '',
     'if [ -z "${URL}" ] || [ "${URL}" = "null" ]; then',
-    '  echo "Aucune build stable de Paper pour Minecraft ${MINECRAFT_VERSION}." >&2',
+    '  echo "No stable Paper build for Minecraft ${MINECRAFT_VERSION}." >&2',
     '  exit 1',
     'fi',
     '',
@@ -123,7 +122,7 @@ export const purpur: TemplateDefinition = {
   group: TEMPLATE_GROUPS.JAVA,
   name: 'Purpur',
   description:
-    'Fork de Paper ajoutant de nombreux réglages de gameplay. Compatible avec les plugins Paper.',
+    'A fork of Paper adding many gameplay settings. Compatible with Paper plugins.',
   author: 'Hopper',
   dockerImages: JAVA_IMAGES,
   startup: JAVA_STARTUP,
@@ -139,7 +138,7 @@ export const purpur: TemplateDefinition = {
     '  | jq -r ".builds.latest")',
     '',
     'if [ -z "${BUILD}" ] || [ "${BUILD}" = "null" ]; then',
-    '  echo "Purpur ne publie pas de build pour Minecraft ${MINECRAFT_VERSION}." >&2',
+    '  echo "Purpur publishes no build for Minecraft ${MINECRAFT_VERSION}." >&2',
     '  exit 1',
     'fi',
     '',
@@ -155,13 +154,13 @@ export const vanilla: TemplateDefinition = {
   group: TEMPLATE_GROUPS.JAVA,
   name: 'Vanilla',
   description:
-    'Serveur officiel de Mojang, sans modification. Aucun plugin ni mod ne peut y être installé.',
+    "Mojang's official server, unmodified. No plugin or mod can be installed on it.",
   author: 'Hopper',
   dockerImages: JAVA_IMAGES,
   startup: JAVA_STARTUP,
   stopCommand: 'command:stop',
-  // Le serveur vanilla n'émet pas la ligne de Bukkit : c'est « Done (x.xxxs)! »
-  // qui marque la fin du chargement.
+  // The vanilla server does not emit Bukkit's line: "Done (x.xxxs)!" is what
+  // marks the end of loading.
   startupDetection: 'Done \\([0-9.]+s\\)!',
   configFiles: [SERVER_PROPERTIES_CONFIG],
   fileDenylist: [],
@@ -171,8 +170,8 @@ export const vanilla: TemplateDefinition = {
     PREAMBLE,
     'MANIFEST="https://launchermeta.mojang.com/mc/game/version_manifest_v2.json"',
     '',
-    '# « latest » suit la dernière version publiée, ce qui évite d’avoir à',
-    '# modifier le template à chaque sortie de Mojang.',
+    '# "latest" follows the most recently published version, which saves',
+    '# editing the template on every Mojang release.',
     'if [ "${MINECRAFT_VERSION}" = "latest" ]; then',
     '  VERSION=$(curl -sSL --fail "${MANIFEST}" | jq -r ".latest.release")',
     'else',
@@ -192,7 +191,7 @@ export const vanilla: TemplateDefinition = {
     EULA,
   ].join('\n'),
   variables: [
-    { ...MINECRAFT_VERSION_VARIABLE, description: 'Version à installer, ou « latest ».' },
+    { ...MINECRAFT_VERSION_VARIABLE, description: 'Version to install, or "latest".' },
     JARFILE_VARIABLE,
   ],
 };
@@ -202,7 +201,7 @@ export const fabric: TemplateDefinition = {
   group: TEMPLATE_GROUPS.JAVA,
   name: 'Fabric',
   description:
-    'Chargeur de mods léger et rapide à suivre les nouvelles versions de Minecraft. Incompatible avec les plugins Bukkit.',
+    'A light mod loader, quick to follow new Minecraft versions. Not compatible with Bukkit plugins.',
   author: 'Hopper',
   dockerImages: JAVA_IMAGES,
   startup: JAVA_STARTUP,
@@ -228,13 +227,12 @@ export const fabric: TemplateDefinition = {
     'fi',
     '',
     'if [ -z "${LOADER}" ] || [ "${LOADER}" = "null" ]; then',
-    '  echo "Fabric ne publie pas de loader stable pour Minecraft ${MINECRAFT_VERSION}." >&2',
+    '  echo "Fabric publishes no stable loader for Minecraft ${MINECRAFT_VERSION}." >&2',
     '  exit 1',
     'fi',
     '',
-    '# Le « server jar » de Fabric est un lanceur autonome : il télécharge le',
-    '# reste au premier démarrage, ce qui évite de dépendre d’un installeur',
-    '# interactif.',
+    '# Fabric\'s "server jar" is a standalone launcher: it downloads the rest',
+    '# on the first start, which avoids depending on an interactive installer.',
     'curl -sSL --fail -o "${SERVER_JARFILE}" \\',
     '  "https://meta.fabricmc.net/v2/versions/loader/${MINECRAFT_VERSION}/${LOADER}/${INSTALLER}/server/jar"',
     EULA,
@@ -242,8 +240,8 @@ export const fabric: TemplateDefinition = {
   variables: [
     MINECRAFT_VERSION_VARIABLE,
     {
-      name: 'Version du loader Fabric',
-      description: 'Version du chargeur, ou « latest » pour la dernière stable.',
+      name: 'Fabric loader version',
+      description: 'Loader version, or "latest" for the latest stable one.',
       envVariable: 'FABRIC_LOADER_VERSION',
       defaultValue: 'latest',
       userViewable: true,
@@ -252,7 +250,7 @@ export const fabric: TemplateDefinition = {
     },
     {
       name: "Version de l'installeur Fabric",
-      description: 'Version de l’installeur, ou « latest ».',
+      description: 'Installer version, or "latest".',
       envVariable: 'FABRIC_INSTALLER_VERSION',
       defaultValue: 'latest',
       userViewable: true,
@@ -268,22 +266,21 @@ export const neoforge: TemplateDefinition = {
   group: TEMPLATE_GROUPS.JAVA,
   name: 'NeoForge',
   description:
-    'Chargeur de mods issu de Forge, adopté par la majorité des modpacks récents. Incompatible avec les plugins Bukkit.',
+    'A mod loader descended from Forge, adopted by most recent modpacks. Not compatible with Bukkit plugins.',
   author: 'Hopper',
   dockerImages: JAVA_IMAGES,
-  // NeoForge ne se lance pas avec `-jar` : son installeur produit un fichier
-  // d'arguments qui construit le classpath. Ce fichier vit normalement sous
-  // `libraries/net/neoforged/neoforge/<version>/unix_args.txt`, chemin qui
-  // change à chaque version — impossible à écrire dans une commande de
-  // démarrage figée. L'installation en dépose donc une copie à un emplacement
-  // stable.
+  // NeoForge does not launch with `-jar`: its installer produces an argument
+  // file that builds the classpath. That file normally lives under
+  // `libraries/net/neoforged/neoforge/<version>/unix_args.txt`, a path that
+  // changes with every version — impossible to write into a frozen startup
+  // command. The installation therefore drops a copy at a stable location.
   startup: 'java @user_jvm_args.txt @hopper_args.txt nogui',
   stopCommand: 'command:stop',
   startupDetection: 'Done \\([0-9.]+s\\)!',
   configFiles: [SERVER_PROPERTIES_CONFIG],
   fileDenylist: [],
-  // L'installeur NeoForge est lui-même un programme Java : le conteneur
-  // d'installation doit donc embarquer un JDK.
+  // The NeoForge installer is itself a Java program: the install container
+  // therefore has to carry a JDK.
   installContainer: 'eclipse-temurin:21-jdk-noble',
   installEntrypoint: '/bin/bash',
   installScript: [
@@ -299,7 +296,7 @@ export const neoforge: TemplateDefinition = {
     'VERSIONS="https://maven.neoforged.net/api/maven/versions/releases/net/neoforged/neoforge"',
     '',
     'if [ "${NEOFORGE_VERSION}" = "latest" ]; then',
-    '  # Les versions bêta sont écartées : elles cassent régulièrement les mods.',
+    '  # Beta versions are skipped: they regularly break mods.',
     '  VERSION=$(curl -sSL --fail "${VERSIONS}" \\',
     '    | jq -r \'[.versions[] | select(test("-beta$") | not)] | last\')',
     'else',
@@ -307,7 +304,7 @@ export const neoforge: TemplateDefinition = {
     'fi',
     '',
     'if [ -z "${VERSION}" ] || [ "${VERSION}" = "null" ]; then',
-    '  echo "Impossible de déterminer une version de NeoForge." >&2',
+    '  echo "Could not determine a NeoForge version." >&2',
     '  exit 1',
     'fi',
     '',
@@ -319,28 +316,28 @@ export const neoforge: TemplateDefinition = {
     'java -jar installer.jar --installServer',
     'rm -f installer.jar installer.jar.log',
     '',
-    '# Copie du fichier d’arguments à un emplacement que la commande de démarrage',
-    '# peut nommer sans connaître la version installée. Les chemins qu’il contient',
-    '# sont relatifs au répertoire de travail, la copie reste donc valide.',
+    '# Copy of the argument file to a location the startup command can name',
+    '# without knowing the installed version. The paths it contains are relative',
+    '# to the working directory, so the copy stays valid.',
     'ARGS=$(find libraries/net/neoforged/neoforge -name unix_args.txt | head -n 1)',
     '',
     'if [ -z "${ARGS}" ]; then',
-    '  echo "L’installeur NeoForge n’a pas produit de fichier d’arguments." >&2',
+    '  echo "The NeoForge installer produced no argument file." >&2',
     '  exit 1',
     'fi',
     '',
     'cp "${ARGS}" hopper_args.txt',
     '',
-    '# Lu par la commande de démarrage : sans lui, le serveur démarrerait sans',
-    '# limite mémoire, quelle que soit celle fixée dans le panel.',
+    '# Read by the startup command: without it the server would start with no',
+    '# memory limit, whatever the panel says.',
     'echo "-Xms128M -Xmx${SERVER_MEMORY}M" > user_jvm_args.txt',
     '',
     'echo "eula=true" > eula.txt',
   ].join('\n'),
   variables: [
     {
-      name: 'Version de NeoForge',
-      description: 'Version exacte, ou « latest » pour la dernière stable.',
+      name: 'NeoForge version',
+      description: 'Exact version, or "latest" for the latest stable one.',
       envVariable: 'NEOFORGE_VERSION',
       defaultValue: 'latest',
       userViewable: true,

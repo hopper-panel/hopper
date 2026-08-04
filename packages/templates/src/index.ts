@@ -8,16 +8,16 @@ export { JAVA_TEMPLATES } from './catalog/java.js';
 export { PROXY_TEMPLATES } from './catalog/proxy.js';
 
 /**
- * Tous les templates livrés avec Hopper.
+ * Every template shipped with Hopper.
  *
- * Validés au chargement du module : une faute dans une définition doit faire
- * échouer les tests, pas l'amorçage d'une instance en production.
+ * Validated when the module loads: a mistake in a definition has to fail the
+ * tests, not the seeding of a production instance.
  */
 export const TEMPLATE_CATALOG: TemplateDefinition[] = [...JAVA_TEMPLATES, ...PROXY_TEMPLATES].map(
   (template) => templateDefinitionSchema.parse(template),
 );
 
-/** Groupes distincts présents dans le catalogue, dans leur ordre d'apparition. */
+/** Distinct groups present in the catalogue, in order of appearance. */
 export function catalogGroups(): string[] {
   return [...new Set(TEMPLATE_CATALOG.map((template) => template.group))];
 }

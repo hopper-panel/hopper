@@ -229,7 +229,7 @@ describe('importPterodactylEgg', () => {
     it('exposes the detail of the format problems', () => {
       try {
         importPterodactylEgg({ name: 123 }, OPTIONS);
-        expect.unreachable('l’import aurait dû échouer');
+        expect.unreachable('the import should have failed');
       } catch (error) {
         expect((error as EggImportError).issues.length).toBeGreaterThan(0);
       }
