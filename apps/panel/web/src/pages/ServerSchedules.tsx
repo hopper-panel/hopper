@@ -7,6 +7,7 @@ import { Toggle } from '../components/Toggle';
 import { Alert, Badge, Button, Card, EmptyState, Field, Input, Spinner } from '../components/ui';
 import { ApiError, api } from '../lib/api';
 import { formatDate } from '../lib/format';
+import { useTranslation, type MessageKey } from '../i18n';
 import { useServerContext } from '../lib/server-context';
 
 type Action = 'COMMAND' | 'POWER' | 'BACKUP';
@@ -32,19 +33,19 @@ interface Schedule {
   tasks: Task[];
 }
 
-const ACTION_LABELS: Record<Action, string> = {
-  COMMAND: 'Commande',
-  POWER: 'Puissance',
-  BACKUP: 'Sauvegarde',
+const ACTION_LABELS: Record<Action, MessageKey> = {
+  COMMAND: 'schedules.actionCommand',
+  POWER: 'schedules.actionPower',
+  BACKUP: 'schedules.actionBackup',
 };
 
-/** Modèles proposés : les horaires que l'on écrit réellement pour un serveur. */
+/** Offered presets: the timings one actually writes for a server. */
 const PRESETS = [
-  { label: 'Toutes les heures', cron: ['0', '*', '*', '*', '*'] },
-  { label: 'Chaque nuit à 5 h', cron: ['0', '5', '*', '*', '*'] },
-  { label: 'Chaque lundi à 5 h', cron: ['0', '5', '*', '*', '1'] },
-  { label: 'Le 1er du mois à 4 h', cron: ['0', '4', '1', '*', '*'] },
-] as const;
+  { label: 'schedules.presetHourly', cron: ['0', '*', '*', '*', '*'] },
+  { label: 'schedules.presetNightly', cron: ['0', '5', '*', '*', '*'] },
+  { label: 'schedules.presetWeekly', cron: ['0', '5', '*', '*', '1'] },
+  { label: 'schedules.presetMonthly', cron: ['0', '4', '1', '*', '*'] },
+] as const satisfies readonly { label: MessageKey; cron: readonly string[] }[];
 
 const EMPTY: Schedule = {
   uuid: '',
@@ -63,6 +64,7 @@ export function ServerSchedulesPage() {
   const { uuid = '' } = useParams();
   const queryClient = useQueryClient();
   const { can } = useServerContext();
+  const { t, locale } = useTranslation();
 
   const [draft, setDraft] = useState<Schedule | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
@@ -70,8 +72,8 @@ export function ServerSchedulesPage() {
   const schedules = useQuery({
     queryKey: ['server', uuid, 'schedules'],
     queryFn: () => api.get<{ data: Schedule[] }>(`/api/servers/${uuid}/schedules`),
-    // Une tâche en cours d'exécution se termine sans prévenir le navigateur :
-    // on suit tant qu'il en reste une, et on s'arrête ensuite.
+    // A running task finishes without telling the browser: poll while one is
+    // still running, then stop.
     refetchInterval: (query) =>
       query.state.data?.data.some((schedule) => schedule.running) ? 5000 : false,
   });
@@ -81,7 +83,7 @@ export function ServerSchedulesPage() {
   };
 
   const fail = (error: unknown): void => {
-    setFailure(error instanceof ApiError ? error.message : 'Opération impossible.');
+    setFailure(error instanceof ApiError ? error.message : t('common.operationFailed'));
   };
 
   const save = useMutation({
@@ -125,7 +127,7 @@ export function ServerSchedulesPage() {
   });
 
   if (schedules.isLoading) {
-    return <Spinner label="Chargement des tâches planifiées…" />;
+    return <Spinner label={t('common.loading')} />;
   }
 
   const list = schedules.data?.data ?? [];
@@ -133,12 +135,12 @@ export function ServerSchedulesPage() {
   return (
     <>
       <PageHeader
-        title="Planificateur"
-        description="Commandes, redémarrages et sauvegardes déclenchés automatiquement."
+        title={t('schedules.title')}
+        description={t('schedules.subtitle')}
         action={
           can('schedule.create') ? (
             <Button variant="primary" onClick={() => setDraft({ ...EMPTY })}>
-              Nouvelle tâche
+              {t('schedules.new')}
             </Button>
           ) : null
         }
@@ -151,10 +153,7 @@ export function ServerSchedulesPage() {
       ) : null}
 
       {list.length === 0 ? (
-        <EmptyState
-          title="Aucune tâche planifiée"
-          description="Une tâche exécute une suite d’étapes à un horaire donné : annoncer un redémarrage, attendre, puis redémarrer."
-        />
+        <EmptyState title={t('schedules.empty')} description={t('schedules.emptyHint')} />
       ) : (
         <div className="flex flex-col gap-2">
           {list.map((schedule) => (
@@ -166,25 +165,29 @@ export function ServerSchedulesPage() {
                     <code className="rounded bg-surface px-1.5 py-0.5 font-mono text-xs text-content-muted">
                       {schedule.expression}
                     </code>
-                    {schedule.running ? <Badge tone="warn">en cours</Badge> : null}
-                    {!schedule.active ? <Badge>inactive</Badge> : null}
-                    {schedule.onlyWhenOnline ? <Badge>si en ligne</Badge> : null}
+                    {schedule.running ? <Badge tone="warn">{t('schedules.running')}</Badge> : null}
+                    {!schedule.active ? <Badge>{t('schedules.inactive')}</Badge> : null}
+                    {schedule.onlyWhenOnline ? <Badge>{t('schedules.whenOnline')}</Badge> : null}
                   </div>
 
                   <p className="mt-1 text-xs text-content-muted">
-                    {schedule.tasks.length} étape{schedule.tasks.length > 1 ? 's' : ''}
+                    {t('schedules.stepCount', { count: schedule.tasks.length })}
                     {schedule.nextRunAt
-                      ? ` · prochaine exécution ${formatDate(schedule.nextRunAt)}`
-                      : ' · aucune exécution prévue'}
-                    {schedule.lastRunAt ? ` · dernière ${formatDate(schedule.lastRunAt)}` : null}
+                      ? ` · ${t('schedules.nextRun', { date: formatDate(schedule.nextRunAt, locale) })}`
+                      : ` · ${t('schedules.noNextRun')}`}
+                    {schedule.lastRunAt
+                      ? ` · ${t('schedules.lastRun', { date: formatDate(schedule.lastRunAt, locale) })}`
+                      : null}
                   </p>
 
                   <ol className="mt-2 flex flex-col gap-1">
                     {schedule.tasks.map((task, index) => (
                       <li key={task.uuid ?? index} className="text-xs text-content-muted">
-                        {index + 1}. {ACTION_LABELS[task.action]}
+                        {index + 1}. {t(ACTION_LABELS[task.action])}
                         {task.payload ? ` — ${task.payload.split('\n')[0]}` : null}
-                        {task.offsetSeconds > 0 ? ` (après ${task.offsetSeconds} s)` : null}
+                        {task.offsetSeconds > 0
+                          ? ` (${t('schedules.afterSeconds', { seconds: task.offsetSeconds })})`
+                          : null}
                       </li>
                     ))}
                   </ol>
@@ -197,7 +200,7 @@ export function ServerSchedulesPage() {
                       onClick={() => runNow.mutate(schedule.uuid)}
                       disabled={schedule.running || runNow.isPending}
                     >
-                      Exécuter
+                      {t('schedules.run')}
                     </Button>
                   ) : null}
                   {can('schedule.update') ? (
@@ -209,12 +212,12 @@ export function ServerSchedulesPage() {
                     <Button
                       variant="danger"
                       onClick={() => {
-                        if (window.confirm(`Supprimer la tâche « ${schedule.name} » ?`)) {
+                        if (window.confirm(t('schedules.deleteConfirm', { name: schedule.name }))) {
                           remove.mutate(schedule.uuid);
                         }
                       }}
                     >
-                      Supprimer
+                      {t('common.delete')}
                     </Button>
                   ) : null}
                 </div>
@@ -226,19 +229,19 @@ export function ServerSchedulesPage() {
 
       <Modal
         open={draft !== null}
-        title={draft?.uuid ? 'Modifier la tâche' : 'Nouvelle tâche planifiée'}
+        title={t(draft?.uuid ? 'schedules.editTitle' : 'schedules.createTitle')}
         onClose={() => setDraft(null)}
         footer={
           <>
             <Button variant="ghost" onClick={() => setDraft(null)}>
-              Annuler
+              {t('common.cancel')}
             </Button>
             <Button
               variant="primary"
               onClick={() => draft && save.mutate(draft)}
               disabled={save.isPending || !draft?.name.trim()}
             >
-              {save.isPending ? 'Enregistrement…' : 'Enregistrer'}
+              {save.isPending ? t('common.saving') : t('common.save')}
             </Button>
           </>
         }
@@ -256,6 +259,7 @@ function ScheduleForm({
   value: Schedule;
   onChange: (schedule: Schedule) => void;
 }) {
+  const { t } = useTranslation();
   const patch = (changes: Partial<Schedule>): void => onChange({ ...value, ...changes });
 
   const setTask = (index: number, changes: Partial<Task>): void => {
@@ -268,23 +272,25 @@ function ScheduleForm({
 
   return (
     <div className="flex flex-col gap-5">
-      <Field label="Nom">
+      <Field label={t('schedules.name')}>
         <Input
           value={value.name}
           onChange={(event) => patch({ name: event.target.value })}
-          placeholder="Redémarrage nocturne"
+          placeholder={t('schedules.namePlaceholder')}
         />
       </Field>
 
       <div>
-        <span className="mb-1.5 block text-sm font-medium text-content">Horaire</span>
+        <span className="mb-1.5 block text-sm font-medium text-content">
+          {t('schedules.schedule')}
+        </span>
         <div className="grid grid-cols-5 gap-2">
           {(
             [
-              ['minute', 'min'],
-              ['hour', 'heure'],
-              ['dayOfMonth', 'jour'],
-              ['month', 'mois'],
+              ['minute', 'schedules.cronMinute'],
+              ['hour', 'schedules.cronHour'],
+              ['dayOfMonth', 'schedules.cronDayOfMonth'],
+              ['month', 'schedules.cronMonth'],
               ['dayOfWeek', 'sem.'],
             ] as const
           ).map(([key, label]) => (
@@ -322,28 +328,25 @@ function ScheduleForm({
           ))}
         </div>
 
-        <p className="mt-2 text-xs text-content-muted">
-          Syntaxe crontab : <code>*</code>, <code>5</code>, <code>1,3</code>, <code>1-5</code>,{' '}
-          <code>*/15</code>. L’horaire suit le fuseau du panel.
-        </p>
+        <p className="mt-2 text-xs text-content-muted">{t('schedules.cronHint')}</p>
       </div>
 
       <Toggle
         checked={value.active}
         onChange={(active) => patch({ active })}
-        label="Active"
-        description="Une tâche inactive est conservée mais ne se déclenche plus."
+        label={t('schedules.active')}
+        description={t('schedules.activeHint')}
       />
 
       <Toggle
         checked={value.onlyWhenOnline}
         onChange={(onlyWhenOnline) => patch({ onlyWhenOnline })}
-        label="Seulement si le serveur est en ligne"
-        description="Évite qu’un redémarrage planifié ne rallume un serveur volontairement arrêté."
+        label={t('schedules.onlyWhenOnline')}
+        description={t('schedules.onlyWhenOnlineHint')}
       />
 
       <div>
-        <span className="mb-2 block text-sm font-medium text-content">Étapes</span>
+        <span className="mb-2 block text-sm font-medium text-content">{t('schedules.steps')}</span>
 
         <div className="flex flex-col gap-3">
           {value.tasks.map((task, index) => (
@@ -383,7 +386,7 @@ function ScheduleForm({
                 ) : null}
 
                 <label className="ml-auto flex items-center gap-1.5 text-xs text-content-muted">
-                  après
+                  {t('schedules.afterLabel')}
                   <Input
                     type="number"
                     min={0}
@@ -406,7 +409,7 @@ function ScheduleForm({
                       })
                     }
                   >
-                    Retirer
+                    {t('schedules.removeStep')}
                   </Button>
                 ) : null}
               </div>
@@ -416,8 +419,8 @@ function ScheduleForm({
                   className="mt-2 min-h-16 w-full rounded-lg border border-border-subtle bg-surface-raised px-3 py-2 font-mono text-xs text-content placeholder:text-content-subtle"
                   placeholder={
                     task.action === 'COMMAND'
-                      ? 'say Redémarrage dans 60 secondes'
-                      : 'Exclusions, une par ligne (facultatif)'
+                      ? t('schedules.payloadCommand')
+                      : t('schedules.payloadBackup')
                   }
                   value={task.payload}
                   onChange={(event) => setTask(index, { payload: event.target.value })}
@@ -430,7 +433,7 @@ function ScheduleForm({
                   checked={task.continueOnFailure}
                   onChange={(event) => setTask(index, { continueOnFailure: event.target.checked })}
                 />
-                Poursuivre la séquence même si cette étape échoue
+                {t('schedules.continueOnFailure')}
               </label>
             </div>
           ))}
@@ -448,13 +451,10 @@ function ScheduleForm({
             })
           }
         >
-          Ajouter une étape
+          {t('schedules.addStep')}
         </Button>
 
-        <p className="mt-2 text-xs text-content-muted">
-          Le décalage s’applique <strong>avant</strong> l’étape : annoncer, attendre 60 s, puis
-          redémarrer.
-        </p>
+        <p className="mt-2 text-xs text-content-muted">{t('schedules.offsetHint')}</p>
       </div>
     </div>
   );
