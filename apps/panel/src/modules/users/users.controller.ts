@@ -63,11 +63,11 @@ export class UsersController {
     @CurrentUser() actor: RequestUser,
     @Req() request: AuthenticatedRequest,
   ): Promise<UserView> {
-    // Un administrateur qui se retire lui-même son propre rôle perdrait l'accès
-    // au milieu de son action. La rétrogradation passe par un autre compte.
+    // An administrator removing their own role would lose access mid-action.
+    // Demotion goes through another account.
     if (uuid === actor.uuid && (body.role === 'USER' || body.suspended === true)) {
       throw new ForbiddenException(
-        'Vous ne pouvez pas retirer vos propres droits ni vous suspendre vous-même.',
+        'You cannot remove your own rights nor suspend yourself.',
       );
     }
 
@@ -75,10 +75,10 @@ export class UsersController {
   }
 
   /**
-   * Renvoie le lien de choix du mot de passe.
+   * Resends the password-choice link.
    *
-   * Utile quand le premier courriel s'est perdu, ou quand le lien a expiré :
-   * l'alternative serait de fixer un mot de passe à la place de l'utilisateur.
+   * Useful when the first email got lost, or when the link expired: the
+   * alternative would be setting a password on the user's behalf.
    */
   @Post(':uuid/invitation')
   @HttpCode(HttpStatus.OK)
@@ -94,7 +94,7 @@ export class UsersController {
     @Req() request: AuthenticatedRequest,
   ): Promise<void> {
     if (uuid === actor.uuid) {
-      throw new ForbiddenException('Vous ne pouvez pas supprimer votre propre compte.');
+      throw new ForbiddenException('You cannot delete your own account.');
     }
 
     return this.users.remove(uuid, actor.id, contextOf(request));

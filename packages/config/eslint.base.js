@@ -4,12 +4,11 @@ const prettier = require('eslint-config-prettier');
 const globals = require('globals');
 
 /**
- * Configuration ESLint partagée par tous les paquets Node du monorepo.
+ * ESLint configuration shared by every Node package in the monorepo.
  *
- * Les règles ci-dessous ne sont pas cosmétiques : elles ciblent les erreurs qui
- * font mal dans un panel qui exécute du code arbitraire (promesses non attendues
- * dans un handler de conteneur, `any` qui masque un chemin de fichier non validé).
- * Le formatage est délégué à Prettier.
+ * The rules below are not cosmetic: they target the mistakes that hurt in a
+ * panel running arbitrary code (unawaited promises in a container handler,
+ * `any` hiding an unvalidated file path). Formatting is left to Prettier.
  */
 module.exports = tseslint.config(
   {
@@ -43,7 +42,7 @@ module.exports = tseslint.config(
       'prefer-const': 'error',
       'no-restricted-globals': [
         'error',
-        { name: '__dirname', message: 'Utiliser les chemins résolus via la config.' },
+        { name: '__dirname', message: 'Use the paths resolved through the config.' },
       ],
     },
   },

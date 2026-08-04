@@ -24,13 +24,13 @@ import { createDatabaseSchema, type CreateDatabaseDto } from './databases.dto.js
 import { DatabasesService } from './databases.service.js';
 
 /**
- * Bases de données d'un serveur.
+ * A server's databases.
  *
- * La lecture expose le mot de passe : c'est son objet même, l'utilisateur doit
- * pouvoir l'écrire dans la configuration de son plugin. La permission de
- * lecture vaut donc accès complet au contenu des bases, et c'est ainsi qu'elle
- * doit être comprise au moment de l'accorder — d'où son classement parmi les
- * permissions sensibles.
+ * Reading exposes the password: that is its very purpose, the user has to be
+ * able to write it into their plugin's configuration. The read permission
+ * therefore amounts to full access to the databases' contents, and that is how
+ * it has to be understood when granting it — hence its place among the
+ * sensitive permissions.
  */
 @Controller('api/servers/:serverId/databases')
 export class DatabasesController {
@@ -62,8 +62,8 @@ export class DatabasesController {
       serverId: server.id,
       ip: request.ip,
       userAgent: request.headers['user-agent'],
-      // Ni le mot de passe, ni la chaîne de connexion : le journal d'audit est
-      // lisible par les administrateurs et conservé longtemps.
+      // Neither the password nor the connection string: the audit log is
+      // readable by administrators and kept for a long time.
       metadata: { database: created.name, remote: created.remote },
     });
 

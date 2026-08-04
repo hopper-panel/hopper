@@ -201,9 +201,9 @@ export const PERMISSION_GROUPS: Record<string, { permissions: Permission[] }> = 
 };
 
 /**
- * Permissions dangereuses : elles permettent à un sous-utilisateur d'obtenir
- * l'exécution de code sur le serveur ou d'en détruire les données. L'interface
- * doit les signaler visuellement au moment de les accorder.
+ * Dangerous permissions: they let a subuser obtain code execution on the server
+ * or destroy its data. The interface has to flag them visually at the moment
+ * they are granted.
  */
 export const DANGEROUS_PERMISSIONS: readonly Permission[] = [
   PERMISSIONS.CONTROL_CONSOLE,
@@ -215,8 +215,8 @@ export const DANGEROUS_PERMISSIONS: readonly Permission[] = [
   PERMISSIONS.STARTUP_UPDATE,
   PERMISSIONS.STARTUP_DOCKER_IMAGE,
   PERMISSIONS.SETTINGS_REINSTALL,
-  // Voir une base, c'est en voir le mot de passe, donc en lire et en écrire
-  // tout le contenu.
+  // Seeing a database means seeing its password, so reading and writing all of
+  // its contents.
   PERMISSIONS.DATABASE_READ,
   PERMISSIONS.DATABASE_DELETE,
 ];

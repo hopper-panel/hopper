@@ -20,16 +20,16 @@ describe('permissions', () => {
     }
   });
 
-  it('valide via le schéma Zod dérivé', () => {
+  it('validates through the derived Zod schema', () => {
     for (const permission of ALL_PERMISSIONS) {
       expect(permissionSchema.safeParse(permission).success).toBe(true);
     }
     expect(permissionSchema.safeParse('file.chmod').success).toBe(false);
   });
 
-  // Une permission oubliée dans PERMISSION_GROUPS serait invisible dans
-  // l'interface : impossible à accorder, et surtout impossible à retirer.
-  it('classe toute permission dans un groupe affichable', () => {
+  // A permission forgotten in PERMISSION_GROUPS would be invisible in the
+  // interface: impossible to grant, and above all impossible to revoke.
+  it('places every permission in a displayable group', () => {
     const grouped = new Set(Object.values(PERMISSION_GROUPS).flatMap((g) => g.permissions));
     const ungrouped = ALL_PERMISSIONS.filter(
       (p) => p !== PERMISSIONS.WEBSOCKET_CONNECT && !grouped.has(p),
@@ -37,7 +37,7 @@ describe('permissions', () => {
     expect(ungrouped).toEqual([]);
   });
 
-  it('ne référence que des permissions existantes dans la liste des dangereuses', () => {
+  it('references only existing permissions in the dangerous list', () => {
     for (const permission of DANGEROUS_PERMISSIONS) {
       expect(isPermission(permission)).toBe(true);
     }
@@ -52,16 +52,16 @@ describe('sanitizePermissions', () => {
     ]);
   });
 
-  // Une permission retirée du code dans une version ultérieure reste en base :
-  // le chargement du sous-utilisateur doit continuer à fonctionner.
-  it('écarte silencieusement une permission inconnue', () => {
+  // A permission removed from the code in a later version stays in the
+  // database: loading the subuser has to keep working.
+  it('silently drops an unknown permission', () => {
     expect(sanitizePermissions(['control.start', 'legacy.permission', 'file.read'])).toEqual([
       'control.start',
       'file.read',
     ]);
   });
 
-  it("n'accorde rien à partir d'une liste vide", () => {
+  it('grants nothing from an empty list', () => {
     expect(sanitizePermissions([])).toEqual([]);
   });
 });

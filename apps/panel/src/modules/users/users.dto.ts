@@ -2,9 +2,9 @@ import { z } from 'zod';
 import { passwordSchema } from '../auth/auth.dto.js';
 
 /**
- * Le nom d'utilisateur sert d'identifiant de connexion SFTP (`julien.a1b2c3d4`),
- * d'où l'absence de point : il servirait de séparateur avec l'identifiant du
- * serveur et rendrait le découpage ambigu.
+ * The username doubles as the SFTP sign-in identifier (`julien.a1b2c3d4`),
+ * hence the absence of a dot: it would act as the separator with the server
+ * identifier and make the split ambiguous.
  */
 export const usernameSchema = z
   .string()
@@ -12,17 +12,17 @@ export const usernameSchema = z
   .max(32)
   .regex(
     /^[a-zA-Z0-9_-]+$/,
-    'Le nom d’utilisateur ne peut contenir que des lettres, chiffres, tirets et tirets bas.',
+    'The username may contain only letters, digits, hyphens and underscores.',
   );
 
 export const createUserSchema = z.object({
   email: z.email().max(191),
   username: usernameSchema,
   /**
-   * Facultatif : sans mot de passe, le compte est créé inutilisable et son
-   * titulaire reçoit un lien pour en choisir un. C'est le comportement à
-   * préférer — un mot de passe choisi par l'administrateur transite par un
-   * canal qu'il ne maîtrise pas, et reste souvent inchangé.
+   * Optional: with no password, the account is created unusable and its holder
+   * receives a link to choose one. That is the behaviour to prefer — a password
+   * chosen by the administrator travels through a channel they do not control,
+   * and often stays unchanged.
    */
   password: passwordSchema.optional(),
   role: z.enum(['ADMIN', 'USER']).default('USER'),

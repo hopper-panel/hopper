@@ -2,12 +2,12 @@ import { BadRequestException, Injectable, type PipeTransform } from '@nestjs/com
 import type { ZodType } from 'zod';
 
 /**
- * Valide un corps, un paramètre ou une requête avec un schéma Zod.
+ * Validates a body, a parameter or a query with a Zod schema.
  *
- * Le panel n'utilise volontairement pas `class-validator` : les schémas qui
- * décrivent le contrat panel↔daemon vivent déjà dans `@hopper/shared` sous forme
- * Zod. Deux systèmes de validation en parallèle finiraient par diverger, et
- * c'est justement la divergence que le paquet partagé sert à empêcher.
+ * The panel deliberately does not use `class-validator`: the schemas describing
+ * the panel↔daemon contract already live in `@hopper/shared` as Zod. Two
+ * validation systems side by side would end up diverging, and divergence is
+ * exactly what the shared package exists to prevent.
  *
  * @example
  * ```ts
@@ -24,9 +24,9 @@ export class ZodValidationPipe<TOutput> implements PipeTransform<unknown, TOutpu
 
     if (!result.success) {
       throw new BadRequestException({
-        message: 'Requête invalide.',
-        // Le chemin et le message de chaque problème sont renvoyés : ils
-        // décrivent la requête envoyée par le client, jamais l'état du serveur.
+        message: 'Invalid request.',
+        // The path and message of each problem are returned: they describe the
+        // request the client sent, never the server's state.
         issues: result.error.issues.map((issue) => ({
           path: issue.path.join('.'),
           message: issue.message,

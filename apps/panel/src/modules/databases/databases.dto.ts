@@ -2,13 +2,13 @@ import { z } from 'zod';
 
 export const createDatabaseSchema = z.object({
   /**
-   * Partie du nom choisie par l'utilisateur. Le nom réel est préfixé par
-   * l'identifiant du serveur — deux serveurs ne peuvent pas se disputer
-   * « plugins ». La validation fine revient à `identifiers.ts`, qui est la
-   * barrière contre l'injection ; ce schéma n'écarte que le grossier.
+   * The part of the name chosen by the user. The real name is prefixed with
+   * the server identifier — two servers cannot fight over "plugins". The fine
+   * validation belongs to `identifiers.ts`, which is the barrier against
+   * injection; this schema only rules out the crude.
    */
   name: z.string().trim().min(1).max(32),
-  /** Vide, la base accepte les connexions de n'importe où. */
+  /** Empty, the database accepts connections from anywhere. */
   remote: z.string().trim().max(60).optional(),
 });
 
@@ -20,10 +20,10 @@ export const createDatabaseHostSchema = z.object({
   port: z.coerce.number().int().min(1).max(65535).default(3306),
   username: z.string().trim().min(1).max(64),
   password: z.string().min(1).max(255),
-  /** Adresse annoncée aux joueurs, si elle diffère de celle qu'emprunte le panel. */
+  /** Address given to players, if it differs from the one the panel uses. */
   publicHost: z.string().trim().max(255).optional(),
   publicPort: z.coerce.number().int().min(1).max(65535).optional(),
-  /** Restreint le host à un node. Absent, il est proposé à tous. */
+  /** Restricts the host to one node. When absent, it is offered to all. */
   nodeUuid: z.uuid().optional(),
 });
 

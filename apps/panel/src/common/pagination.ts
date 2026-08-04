@@ -1,17 +1,16 @@
 import { z } from 'zod';
 
 /**
- * Pagination par page/perPage, partagée par toutes les routes de liste.
+ * page/perPage pagination, shared by every list route.
  *
- * `perPage` est plafonné à 100 : sans borne, un appel `?perPage=1000000`
- * chargerait toute la table en mémoire et ferait tomber le panel — une
- * dénégation de service que n'importe quel compte authentifié pourrait
- * déclencher par accident.
+ * `perPage` is capped at 100: without a bound, a call to `?perPage=1000000`
+ * would load the whole table into memory and take the panel down — a denial of
+ * service any authenticated account could trigger by accident.
  */
 export const paginationQuerySchema = z.object({
   page: z.coerce.number().int().positive().default(1),
   perPage: z.coerce.number().int().positive().max(100).default(25),
-  /** Recherche libre. L'interprétation dépend de chaque module. */
+  /** Free-form search. Its interpretation is up to each module. */
   search: z.string().max(191).optional(),
 });
 
@@ -39,7 +38,7 @@ export function paginate<T>(data: T[], total: number, query: PaginationQuery): P
   };
 }
 
-/** Décalage SQL correspondant à la page demandée. */
+/** SQL offset matching the requested page. */
 export function skipFor(query: PaginationQuery): number {
   return (query.page - 1) * query.perPage;
 }

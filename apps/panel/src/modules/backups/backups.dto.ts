@@ -1,21 +1,21 @@
 import { z } from 'zod';
 
 /**
- * Une liste d'exclusion trop longue ne protège de rien mais rend le parcours
- * du volume coûteux : chaque règle est évaluée pour chaque fichier.
+ * An exclusion list that is too long protects nothing but makes walking the
+ * volume expensive: every rule is evaluated for every file.
  */
 const MAX_IGNORE_PATTERNS = 100;
 
 export const createBackupSchema = z.object({
-  /** Vide, le panel forge un nom daté et lisible. */
+  /** Empty, the panel forges a dated, readable name. */
   name: z.string().trim().max(120).optional(),
   ignoredFiles: z.array(z.string().max(512)).max(MAX_IGNORE_PATTERNS).optional(),
   /**
-   * Verrouiller dès la création.
+   * Lock it on creation.
    *
-   * Sans cela, une sauvegarde faite avant une opération risquée pouvait être
-   * effacée par la rétention avant même qu'on pense à la verrouiller — c'est
-   * précisément le moment où on en a besoin.
+   * Without this, a backup taken before a risky operation could be erased by
+   * retention before anyone thought to lock it — which is precisely the moment
+   * it is needed.
    */
   locked: z.boolean().default(false),
 });

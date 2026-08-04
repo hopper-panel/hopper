@@ -14,13 +14,13 @@ import { updateStartupSchema, type UpdateStartupDto } from './startup.dto.js';
 import { StartupService } from './startup.service.js';
 
 /**
- * Paramètres de démarrage d'un serveur.
+ * A server's startup settings.
  *
- * `startup.update` couvre les variables ; changer l'image Docker demande en
- * plus `startup.docker-image`. Les séparer n'est pas de la bureaucratie :
- * ajuster la version de Minecraft et choisir la version de Java qui l'exécute
- * ne sont pas la même responsabilité, et la seconde peut rendre un serveur
- * impossible à démarrer.
+ * `startup.update` covers the variables; changing the Docker image also
+ * requires `startup.docker-image`. Separating them is not bureaucracy:
+ * adjusting the Minecraft version and choosing the Java version that runs it
+ * are not the same responsibility, and the second can make a server impossible
+ * to start.
  */
 @Controller('api/servers/:serverId/startup')
 export class StartupController {

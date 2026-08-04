@@ -6,12 +6,12 @@ import { NodeClientService } from '../nodes/node-client.service.js';
 import { NodesService } from '../nodes/nodes.service.js';
 
 /**
- * Vue d'ensemble de l'instance, pour l'accueil de l'administration.
+ * Overview of the instance, for the administration's home page.
  *
- * Les compteurs viennent de la base ; l'état des nodes, lui, est demandé aux
- * daemons. Un node déclaré n'est pas un node joignable, et c'est précisément ce
- * qu'un administrateur vient vérifier ici — afficher seulement « 2 nodes »
- * laisserait croire que tout va bien alors qu'aucun ne répond.
+ * The counters come from the database; the nodes' state is asked of the
+ * daemons. A declared node is not a reachable node, and that is exactly what an
+ * administrator comes here to check — showing only "2 nodes" would suggest all
+ * is well when neither answers.
  */
 @Controller('api/admin/overview')
 @AdminOnly()
@@ -36,15 +36,15 @@ export class OverviewController {
       this.prisma.database.count(),
     ]);
 
-    // Sondés en parallèle : à la file, un node injoignable ferait attendre son
-    // délai complet avant de passer au suivant, et la page mettrait dix
-    // secondes à s'afficher pour deux machines.
+    // Probed in parallel: one after another, an unreachable node would make the
+    // next wait its full timeout, and the page would take ten seconds to render
+    // for two machines.
     const health = await Promise.all(
       nodes.map(async (node) => {
         const connection = await this.nodes.getConnection(node.uuid).catch(() => null);
 
         if (!connection) {
-          return { ...node, reachable: false as const, reason: 'Coordonnées illisibles.' };
+          return { ...node, reachable: false as const, reason: 'Unreadable address.' };
         }
 
         const probe = await this.client.fetchSystemInformation(connection);

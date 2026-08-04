@@ -6,15 +6,15 @@ import { DatabasesService } from './databases.service.js';
 import { MysqlClientService } from './mysql-client.service.js';
 
 /**
- * Bases de données par serveur.
+ * Per-server databases.
  *
- * Les **hosts** — les serveurs MySQL sur lesquels les bases sont créées — sont
- * administrés séparément : déclarer un host revient à confier au panel un
- * compte qui a tous les droits sur ce serveur SQL, ce qui n'est pas du ressort
- * de l'utilisateur d'un serveur Minecraft.
+ * The **hosts** — the MySQL servers the databases are created on — are
+ * administered separately: declaring a host means handing the panel an account
+ * with every right on that SQL server, which is not a Minecraft server user's
+ * business.
  */
 @Module({
-  // `CryptoService` vient d'`AuthModule`, qui est global.
+  // `CryptoService` comes from `AuthModule`, which is global.
   imports: [AuditModule],
   controllers: [DatabasesController, DatabaseHostsController],
   providers: [DatabasesService, MysqlClientService],
