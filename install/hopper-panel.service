@@ -7,9 +7,9 @@ Wants=network-online.target
 [Service]
 Type=simple
 
-# Le panel, lui, n'a aucune raison d'être privilégié : il ne touche ni à
-# Docker, ni aux volumes des serveurs. Il ne parle qu'à sa base de données et
-# aux daemons, par le réseau.
+# The panel, for its part, has no reason to be privileged: it touches neither
+# Docker nor the server volumes. It only talks to its database and to the
+# daemons, over the network.
 User=hopper
 Group=hopper
 
@@ -22,7 +22,7 @@ RestartSec=5
 StartLimitBurst=5
 StartLimitIntervalSec=120
 
-# Durcissement : le panel ne doit écrire nulle part sur le système de fichiers.
+# Hardening: the panel must not write anywhere on the filesystem.
 NoNewPrivileges=true
 PrivateTmp=true
 PrivateDevices=true
@@ -36,8 +36,8 @@ RestrictNamespaces=true
 LockPersonality=true
 MemoryDenyWriteExecute=false
 
-# Aucun chemin en écriture : le panel ne produit ni fichier ni journal sur
-# disque, tout passe par la base et par journald.
+# No writable path: the panel produces neither files nor logs on disk,
+# everything goes through the database and journald.
 ReadWritePaths=
 
 LimitNOFILE=16384

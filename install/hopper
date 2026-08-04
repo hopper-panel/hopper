@@ -1,18 +1,18 @@
 #!/bin/sh
 #
-# Lanceur de la ligne de commande Hopper.
+# Launcher for the Hopper command line.
 #
-# La CLI vit dans le paquet du panel : elle a besoin de son client Prisma, de
-# son .env et de son répertoire de travail. Ce script évite d'avoir à s'en
-# souvenir, et rend `hopper doctor` utilisable depuis n'importe où.
+# The CLI lives inside the panel package: it needs its Prisma client, its .env
+# and its working directory. This script saves having to remember that, and
+# makes `hopper doctor` usable from anywhere.
 set -eu
 
 HOPPER_ROOT="${HOPPER_ROOT:-/opt/hopper}"
 PANEL="$HOPPER_ROOT/apps/panel"
 
 if [ ! -f "$PANEL/dist/cli/main.js" ]; then
-  echo "Hopper est introuvable dans $HOPPER_ROOT." >&2
-  echo "Définissez HOPPER_ROOT, ou construisez le panel : pnpm --filter @hopper/panel build" >&2
+  echo "Hopper cannot be found in $HOPPER_ROOT." >&2
+  echo "Set HOPPER_ROOT, or build the panel: pnpm --filter @hopper/panel build" >&2
   exit 1
 fi
 

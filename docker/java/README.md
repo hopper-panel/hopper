@@ -1,44 +1,43 @@
-# Images Java
+# Java images
 
-Images d'exécution des serveurs Minecraft.
+Runtime images for the Minecraft servers.
 
-## Versions publiées
+## Published versions
 
-| Tag       | Java | Usage typique                          |
+| Tag       | Java | Typical use                            |
 | --------- | ---- | -------------------------------------- |
-| `java:8`  | 8    | 1.8.x — PvP, faction, réseaux legacy   |
+| `java:8`  | 8    | 1.8.x — PvP, factions, legacy networks |
 | `java:11` | 11   | 1.13 – 1.16                            |
 | `java:17` | 17   | 1.17 – 1.20.4                          |
-| `java:21` | 21   | 1.20.5 et ultérieures, Velocity, Folia |
-| `java:25` | 25   | expérimental                           |
+| `java:21` | 21   | 1.20.5 and later, Velocity, Folia      |
+| `java:25` | 25   | experimental                           |
 
-## Construction locale
+## Building locally
 
 ```bash
 docker build --build-arg JAVA_VERSION=21 -t ghcr.io/hopper-panel/java:21 docker/java
 docker build --build-arg JAVA_VERSION=8  -t ghcr.io/hopper-panel/java:8  docker/java
 ```
 
-## Pourquoi pas Alpine
+## Why not Alpine
 
-Paper et les modpacks Forge chargent des bibliothèques natives compilées contre
-la glibc. musl ne les accepte pas, et l'échec se manifeste par un
-`UnsatisfiedLinkError` au milieu du chargement d'un monde — pénible à
-diagnostiquer pour un opérateur. Les quelques dizaines de mégaoctets économisés
-ne valent pas ce risque.
+Paper and Forge modpacks load native libraries compiled against glibc. musl does
+not accept them, and the failure shows up as an `UnsatisfiedLinkError` in the
+middle of loading a world — unpleasant for an operator to diagnose. The few tens
+of megabytes saved are not worth that risk.
 
-## Pourquoi tini
+## Why tini
 
-Sans lui, la JVM devient PID 1. Un PID 1 n'adopte pas les processus orphelins :
-chaque sous-processus lancé par un plugin puis abandonné reste en zombie et
-consomme une entrée de la table des processus, jusqu'à ce que `PidsLimit` soit
-atteinte et que le serveur ne puisse plus créer de thread.
+Without it, the JVM becomes PID 1. A PID 1 does not adopt orphan processes: every
+subprocess a plugin launches and then abandons stays a zombie and consumes an
+entry in the process table, until `PidsLimit` is reached and the server can no
+longer create a thread.
 
-`tini -g` relaie aussi les signaux au groupe de processus, ce qui rend l'arrêt
-propre effectif.
+`tini -g` also relays signals to the process group, which is what makes a clean
+stop actually work.
 
-## UID et GID
+## UID and GID
 
-L'utilisateur `container` porte l'UID 988, aligné sur `system.uid` de
-`daemon.yml`. Les deux doivent concorder : sinon le serveur ne peut pas écrire
-dans son propre volume, ou écrit des fichiers que le daemon ne sait plus lire.
+The `container` user carries UID 988, aligned with `system.uid` in `daemon.yml`.
+The two have to agree: otherwise the server cannot write into its own volume, or
+writes files the daemon can no longer read.

@@ -1,18 +1,18 @@
-# Configuration de hopperd — à placer dans /etc/hopper/daemon.yml
+# hopperd configuration — to be placed in /etc/hopper/daemon.yml
 #
-# Ce fichier contient le secret du node et la clé de signature des JWT.
+# This file holds the node secret and the JWT signing key.
 #   chown root:root /etc/hopper/daemon.yml
 #   chmod 600       /etc/hopper/daemon.yml
-# Le daemon refuse de démarrer si d'autres utilisateurs peuvent le lire.
+# The daemon refuses to start if other users can read it.
 #
-# Les valeurs entre < > sont fournies par le panel au moment de la création du
-# node (Admin → Nodes → Configuration).
+# The values between < > are supplied by the panel when the node is created
+# (Admin → Nodes → Configuration).
 
 debug: false
 
-uuid: <uuid-du-node>
-tokenId: <identifiant-du-jeton>
-tokenSecret: <secret-du-jeton>
+uuid: <node-uuid>
+tokenId: <token-identifier>
+tokenSecret: <token-secret>
 
 api:
   host: 0.0.0.0
@@ -21,24 +21,24 @@ api:
     enabled: true
     certificatePath: /etc/letsencrypt/live/node.example.com/fullchain.pem
     keyPath: /etc/letsencrypt/live/node.example.com/privkey.pem
-  # 1 Go
+  # 1 GB
   uploadLimitBytes: 1073741824
-  # Origines autorisées à ouvrir un WebSocket : l'URL publique du panel.
-  # Une liste vide bloque toutes les consoles.
+  # Origins allowed to open a WebSocket: the panel's public URL.
+  # An empty list blocks every console.
   allowedOrigins:
     - https://panel.example.com
 
 panel:
   url: https://panel.example.com
-  # Secret partagé avec le panel, utilisé pour vérifier les JWT de console.
-  jwtSecret: <secret-jwt>
+  # Secret shared with the panel, used to verify the console JWTs.
+  jwtSecret: <jwt-secret>
 
 system:
   rootDirectory: /var/lib/hopper
-  # dataDirectory, backupDirectory et tmpDirectory dérivent de rootDirectory
-  # s'ils ne sont pas précisés. Pointez backupDirectory vers un autre disque si
-  # vous en avez un : une sauvegarde sur le même disque que les données ne
-  # protège que des erreurs humaines, pas d'une panne matérielle.
+  # dataDirectory, backupDirectory and tmpDirectory derive from rootDirectory
+  # when they are not given. Point backupDirectory at another disk if you have
+  # one: a backup on the same disk as the data protects only against human
+  # error, not against a hardware failure.
   uid: 988
   gid: 988
   timezone: Europe/Paris
