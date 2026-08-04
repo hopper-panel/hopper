@@ -8,7 +8,14 @@ import { es } from './messages/es';
 import { fr } from './messages/fr';
 import { ru } from './messages/ru';
 
-const CATALOGUES: Record<Locale, Messages> = { en, fr, es, de, ru };
+/**
+ * Catalogues, English first.
+ *
+ * Translations are `Partial`: a key added to English may be missing from them,
+ * and the lookup falls back to English rather than to the key itself. A screen
+ * that is half translated stays usable; one full of `console.uptime` does not.
+ */
+const CATALOGUES: Record<Locale, Partial<Messages>> = { en, fr, es, de, ru };
 
 const STORAGE_KEY = 'hopper.locale';
 
@@ -83,7 +90,7 @@ export function TranslationProvider({ children }: { children: ReactNode }) {
     (key: MessageKey, values?: Record<string, string | number>): string => {
       // English is the fallback, not the key: a half-translated screen stays
       // usable, one full of `console.uptime` does not.
-      const template = CATALOGUES[locale][key] || en[key];
+      const template = CATALOGUES[locale][key] ?? en[key];
 
       return values === undefined ? template : interpolate(template, values);
     },

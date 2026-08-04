@@ -546,6 +546,22 @@ export const en = {
   'files.selectOne': 'Select {name}',
 
   'files.symlink': 'symlink',
+
+  'subusers.title': 'Users',
+  'subusers.subtitle': 'Panel accounts allowed to act on this server, permission by permission.',
+  'subusers.add': 'Grant access',
+  'subusers.addTitle': 'Grant access',
+  'subusers.empty': 'No users',
+  'subusers.emptyHint':
+    'A subuser is an existing panel account you open this server to, with only the permissions you pick.',
+  'subusers.email': 'Account address',
+  'subusers.emailHint':
+    'The account must already exist on the panel: access is granted, not created here.',
+  'subusers.emailPlaceholder': 'moderator@example.com',
+  'subusers.permissions': 'Permissions',
+  'subusers.remove': 'Remove',
+  'subusers.removeConfirm': 'Remove {name}’s access?',
+  'subusers.checkGroup': 'Tick everything in “{group}”',
 } as const;
 
 export type MessageKey = keyof typeof en;

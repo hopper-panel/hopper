@@ -1,6 +1,6 @@
 import type { Messages } from './en.js';
 
-export const ru: Messages = {
+export const ru: Partial<Messages> = {
   'nav.search': 'Поиск',
   'nav.servers': 'Мои серверы',
   'nav.admin': 'Администрирование',
@@ -534,4 +534,21 @@ export const ru: Messages = {
   'files.selectOne': 'Выбрать {name}',
 
   'files.symlink': 'ссылка',
+
+  'subusers.title': 'Пользователи',
+  'subusers.subtitle':
+    'Учётные записи панели, которым разрешено действовать на этом сервере, право за правом.',
+  'subusers.add': 'Дать доступ',
+  'subusers.addTitle': 'Дать доступ',
+  'subusers.empty': 'Пользователей нет',
+  'subusers.emptyHint':
+    'Субпользователь — это существующая учётная запись панели, которой вы открываете этот сервер только с выбранными вами правами.',
+  'subusers.email': 'Адрес учётной записи',
+  'subusers.emailHint':
+    'Учётная запись должна уже существовать в панели: доступ выдаётся, а не создаётся здесь.',
+  'subusers.emailPlaceholder': 'moderator@example.ru',
+  'subusers.permissions': 'Права',
+  'subusers.remove': 'Убрать',
+  'subusers.removeConfirm': 'Убрать доступ для {name}?',
+  'subusers.checkGroup': 'Отметить всё в «{group}»',
 };

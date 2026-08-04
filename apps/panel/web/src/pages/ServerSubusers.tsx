@@ -6,6 +6,7 @@ import { Modal } from '../components/Modal';
 import { PageHeader } from '../components/PageHeader';
 import { Alert, Button, Card, EmptyState, Field, Input, Spinner } from '../components/ui';
 import { ApiError, api } from '../lib/api';
+import { useTranslation } from '../i18n';
 import { useServerContext } from '../lib/server-context';
 
 interface Subuser {
@@ -27,6 +28,7 @@ export function ServerSubusersPage() {
   const { uuid = '' } = useParams();
   const queryClient = useQueryClient();
   const { can, permissions: mine } = useServerContext();
+  const { t } = useTranslation();
 
   const [draft, setDraft] = useState<Draft | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
@@ -41,7 +43,7 @@ export function ServerSubusersPage() {
   };
 
   const fail = (error: unknown): void => {
-    setFailure(error instanceof ApiError ? error.message : 'Opération impossible.');
+    setFailure(error instanceof ApiError ? error.message : t('common.operationFailed'));
   };
 
   const save = useMutation({
@@ -68,7 +70,7 @@ export function ServerSubusersPage() {
   });
 
   if (subusers.isLoading) {
-    return <Spinner label="Chargement des sous-utilisateurs…" />;
+    return <Spinner label={t('common.loading')} />;
   }
 
   const list = subusers.data?.data ?? [];
@@ -76,15 +78,15 @@ export function ServerSubusersPage() {
   return (
     <>
       <PageHeader
-        title="Sous-utilisateurs"
-        description="Comptes du panel autorisés à agir sur ce serveur, permission par permission."
+        title={t('subusers.title')}
+        description={t('subusers.subtitle')}
         action={
           can('user.create') ? (
             <Button
               variant="primary"
               onClick={() => setDraft({ uuid: '', email: '', permissions: new Set() })}
             >
-              Ajouter un accès
+              {t('subusers.add')}
             </Button>
           ) : null
         }
@@ -97,10 +99,7 @@ export function ServerSubusersPage() {
       ) : null}
 
       {list.length === 0 ? (
-        <EmptyState
-          title="Aucun sous-utilisateur"
-          description="Un sous-utilisateur est un compte existant du panel à qui vous ouvrez ce serveur, avec les seules permissions que vous choisissez."
-        />
+        <EmptyState title={t('subusers.empty')} description={t('subusers.emptyHint')} />
       ) : (
         <div className="flex flex-col gap-2">
           {list.map((subuser) => (
@@ -131,19 +130,23 @@ export function ServerSubusersPage() {
                         })
                       }
                     >
-                      Permissions
+                      {t('subusers.permissions')}
                     </Button>
                   ) : null}
                   {can('user.delete') ? (
                     <Button
                       variant="danger"
                       onClick={() => {
-                        if (window.confirm(`Retirer l’accès de ${subuser.user.username} ?`)) {
+                        if (
+                          window.confirm(
+                            t('subusers.removeConfirm', { name: subuser.user.username }),
+                          )
+                        ) {
                           remove.mutate(subuser.uuid);
                         }
                       }}
                     >
-                      Retirer
+                      {t('subusers.remove')}
                     </Button>
                   ) : null}
                 </div>
@@ -161,14 +164,14 @@ export function ServerSubusersPage() {
         footer={
           <>
             <Button variant="ghost" onClick={() => setDraft(null)}>
-              Annuler
+              {t('common.cancel')}
             </Button>
             <Button
               variant="primary"
               onClick={() => draft && save.mutate(draft)}
               disabled={save.isPending || (!draft?.uuid && !draft?.email.trim())}
             >
-              {save.isPending ? 'Enregistrement…' : 'Enregistrer'}
+              {save.isPending ? t('common.saving') : t('common.save')}
             </Button>
           </>
         }
@@ -178,15 +181,12 @@ export function ServerSubusersPage() {
             {draft.uuid ? (
               <p className="text-sm text-content-muted">{draft.email}</p>
             ) : (
-              <Field
-                label="Adresse du compte"
-                hint="Le compte doit déjà exister sur le panel : un accès s’accorde, il ne se crée pas ici."
-              >
+              <Field label={t('subusers.email')} hint={t('subusers.emailHint')}>
                 <Input
                   type="email"
                   value={draft.email}
                   onChange={(event) => setDraft({ ...draft, email: event.target.value })}
-                  placeholder="moderateur@exemple.fr"
+                  placeholder={t('subusers.emailPlaceholder')}
                 />
               </Field>
             )}
@@ -225,6 +225,7 @@ function PermissionPicker({
   grantable: Permission[];
   onChange: (permissions: Set<Permission>) => void;
 }) {
+  const { t } = useTranslation();
   const toggle = (permission: Permission, checked: boolean): void => {
     const next = new Set(selected);
 
@@ -277,7 +278,7 @@ function PermissionPicker({
                 tout
                 <input
                   type="checkbox"
-                  aria-label={`Tout cocher dans « ${group.label} »`}
+                  aria-label={t('subusers.checkGroup', { group: group.label })}
                   checked={all}
                   // L'état intermédiaire n'existe pas en HTML : sans lui, un
                   // groupe à moitié coché s'afficherait comme vide.

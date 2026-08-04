@@ -1,6 +1,6 @@
 import type { Messages } from './en.js';
 
-export const es: Messages = {
+export const es: Partial<Messages> = {
   'nav.search': 'Buscar',
   'nav.servers': 'Mis servidores',
   'nav.admin': 'Administración',
@@ -536,4 +536,21 @@ export const es: Messages = {
   'files.selectOne': 'Seleccionar {name}',
 
   'files.symlink': 'enlace',
+
+  'subusers.title': 'Usuarios',
+  'subusers.subtitle':
+    'Cuentas del panel autorizadas a actuar en este servidor, permiso a permiso.',
+  'subusers.add': 'Dar acceso',
+  'subusers.addTitle': 'Dar acceso',
+  'subusers.empty': 'Sin usuarios',
+  'subusers.emptyHint':
+    'Un subusuario es una cuenta ya existente del panel a la que abres este servidor, con solo los permisos que elijas.',
+  'subusers.email': 'Dirección de la cuenta',
+  'subusers.emailHint':
+    'La cuenta debe existir ya en el panel: el acceso se concede, no se crea aquí.',
+  'subusers.emailPlaceholder': 'moderador@ejemplo.es',
+  'subusers.permissions': 'Permisos',
+  'subusers.remove': 'Quitar',
+  'subusers.removeConfirm': '¿Quitar el acceso de {name}?',
+  'subusers.checkGroup': 'Marcar todo en «{group}»',
 };
