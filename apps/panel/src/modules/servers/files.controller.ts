@@ -36,17 +36,17 @@ import { NodeClientService } from '../nodes/node-client.service.js';
 import { NodesService } from '../nodes/nodes.service.js';
 
 /**
- * Relais de l'API fichiers vers le daemon.
+ * Relay of the file API towards the daemon.
  *
- * Le partage des responsabilités est net : **le panel décide qui a le droit de
- * faire quoi, le daemon décide où**. Le panel ne valide aucun chemin — c'est le
- * jail du daemon qui détient cette vérité, et la dupliquer ici créerait deux
- * implémentations dont l'une finirait par diverger.
+ * The split of responsibilities is clean: **the panel decides who may do what,
+ * the daemon decides where**. The panel validates no path — the daemon's jail
+ * holds that truth, and duplicating it here would create two implementations,
+ * one of which would eventually drift.
  *
- * Les permissions suivent l'usage plutôt que la route : lister un dossier
- * demande `file.read`, en lire le contenu demande `file.read-content`. Un
- * membre du staff peut ainsi voir l'arborescence sans lire les configurations
- * qui contiennent des mots de passe de base de données.
+ * Permissions follow the use rather than the route: listing a folder needs
+ * `file.read`, reading its content needs `file.read-content`. A staff member
+ * can thus browse the tree without reading the configurations that hold
+ * database passwords.
  */
 @Controller('api/servers/:serverId/files')
 export class FilesController {
@@ -154,8 +154,8 @@ export class FilesController {
     @Req() request: AuthenticatedRequest,
     @Res({ passthrough: true }) reply: FastifyReply,
   ): Promise<unknown> {
-    // Journalisé systématiquement : c'est l'opération qu'on cherche à
-    // reconstituer quand un opérateur signale des fichiers disparus.
+    // Always logged: this is the operation one tries to reconstruct when an
+    // operator reports missing files.
     void this.record(server, user, request, 'file.delete', { files: body.files });
     return this.relay(server, DAEMON_FILE_ROUTES.delete(serverId), { method: 'POST', body }, reply);
   }
@@ -176,7 +176,7 @@ export class FilesController {
     return this.relay(
       server,
       DAEMON_FILE_ROUTES.compress(serverId),
-      // Compresser un monde peut prendre plusieurs minutes.
+      // Compressing a world can take several minutes.
       { method: 'POST', body, timeoutMs: 600_000 },
       reply,
     );
@@ -219,16 +219,15 @@ export class FilesController {
   }
 
   // -------------------------------------------------------------------------
-  // Transfert
+  // Transfer
   // -------------------------------------------------------------------------
 
   /**
-   * Télécharge un fichier, relayé depuis le node **en flux**.
+   * Downloads a file, relayed from the node **as a stream**.
    *
-   * `file.read-content` et non `file.read` : lister un dossier et emporter le
-   * contenu d'un fichier ne sont pas le même droit. Un membre du staff peut
-   * ainsi parcourir l'arborescence sans exfiltrer les configurations qui
-   * contiennent des mots de passe.
+   * `file.read-content` and not `file.read`: listing a folder and carrying away
+   * a file's content are not the same right. A staff member can browse the tree
+   * without exfiltrating the configurations that hold passwords.
    */
   @Get('download')
   @RequireServerPermission(PERMISSIONS.FILE_READ_CONTENT)
@@ -245,12 +244,12 @@ export class FilesController {
     if (!response.body || response.status !== 200) {
       void reply
         .status(response.status === 200 ? 502 : response.status)
-        .send({ statusCode: response.status, message: 'Ce fichier n’a pas pu être récupéré.' });
+        .send({ statusCode: response.status, message: 'This file could not be retrieved.' });
       return;
     }
 
-    // Les en-têtes viennent du daemon : lui seul connaît le nom réel du fichier
-    // une fois le chemin résolu par le jail.
+    // The headers come from the daemon: it alone knows the file's real name
+    // once the path has been resolved by the jail.
     for (const header of ['content-disposition', 'content-length']) {
       const value = response.headers.get(header);
       if (value) {
@@ -265,15 +264,15 @@ export class FilesController {
   }
 
   /**
-   * Envoi d'un fichier.
+   * File upload.
    *
-   * Le corps de la requête est retransmis au node tel quel, sans jamais tenir
-   * en mémoire dans le panel : un modpack de deux gigaoctets traverserait
-   * autrement le tas du processus, pour tous ses utilisateurs à la fois.
+   * The request body is passed on to the node as is, never held in memory in
+   * the panel: a two-gigabyte modpack would otherwise cross the process heap,
+   * for every user at once.
    *
-   * Le nom et le dossier passent en paramètres d'URL, et c'est le jail du
-   * daemon qui juge le chemin obtenu — le panel ne valide aucun chemin, ici
-   * comme ailleurs.
+   * The name and the folder travel as URL parameters, and it is the daemon's
+   * jail that judges the resulting path — the panel validates no path, here as
+   * everywhere else.
    */
   @Post('upload')
   @RequireServerPermission(PERMISSIONS.FILE_CREATE)
@@ -313,7 +312,7 @@ export class FilesController {
 
   // -------------------------------------------------------------------------
 
-  /** Coordonnées du node qui héberge ce serveur. */
+  /** Address of the node hosting this server. */
   private async connectionFor(server: RequestServer) {
     const node = await this.prisma.node.findUniqueOrThrow({
       where: { id: server.nodeId },
@@ -343,7 +342,7 @@ export class FilesController {
       reply.header('content-type', response.contentType);
     }
 
-    // 204 : Fastify refuse un corps sur une réponse sans contenu.
+    // 204: Fastify refuses a body on a no-content response.
     return response.status === 204 ? undefined : response.body;
   }
 
@@ -355,9 +354,9 @@ export class FilesController {
     metadata: Record<string, unknown>,
   ): Promise<void> {
     await this.audit.record({
-      // `event` est libre ici alors que l'audit attend une valeur connue : les
-      // actions sur fichiers sont trop nombreuses pour figurer une à une dans
-      // l'énumération, et leur granularité vit dans `metadata`.
+      // `event` is free-form here although the audit expects a known value:
+      // file actions are too numerous to list one by one in the enumeration,
+      // and their granularity lives in `metadata`.
       event: AUDIT_EVENTS.SERVER_UPDATED,
       actorId: user.id,
       serverId: server.id,
@@ -368,7 +367,7 @@ export class FilesController {
   }
 }
 
-/** Permissions requises par opération, pour information dans l'interface. */
+/** Permissions required per operation, for display in the interface. */
 export const FILE_OPERATION_PERMISSIONS: Record<string, Permission> = {
   list: PERMISSIONS.FILE_READ,
   read: PERMISSIONS.FILE_READ_CONTENT,

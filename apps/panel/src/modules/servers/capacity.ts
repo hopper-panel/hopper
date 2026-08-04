@@ -1,38 +1,38 @@
 /**
- * Contrôle de surallocation d'un node.
+ * Overallocation check for a node.
  *
- * Un node déclare une capacité (RAM, disque) et un pourcentage de dépassement
- * autorisé. La surallocation est utile : la plupart des serveurs Minecraft
- * n'utilisent jamais leur limite maximale, et refuser d'en placer un de plus
- * sur une machine à moitié vide gâcherait du matériel.
+ * A node declares a capacity (RAM, disk) and a percentage of allowed overrun.
+ * Overallocation is useful: most Minecraft servers never use their maximum
+ * limit, and refusing to place one more on a half-empty machine would waste
+ * hardware.
  *
- * Elle est aussi dangereuse : quand tous les serveurs consomment vraiment leur
- * quota, l'OOM killer du noyau tue des processus au hasard. D'où le réglage
- * explicite par node, et une valeur par défaut à 0 — pas de dépassement tant
- * qu'un administrateur ne l'a pas décidé.
+ * It is also dangerous: when every server really consumes its quota, the
+ * kernel's OOM killer kills processes at random. Hence the explicit per-node
+ * setting, and a default of 0 — no overrun until an administrator decides
+ * otherwise.
  */
 
 export interface CapacityCheck {
-  /** Capacité déclarée du node, en octets. 0 = non déclarée. */
+  /** Declared capacity of the node, in bytes. 0 = not declared. */
   declared: bigint;
-  /** Somme des limites déjà attribuées aux serveurs du node. */
+  /** Sum of the limits already assigned to the node's servers. */
   allocated: bigint;
-  /** Ce que le nouveau serveur demande. */
+  /** What the new server asks for. */
   requested: bigint;
-  /** Pourcentage de dépassement autorisé. -1 = illimité, 0 = strict. */
+  /** Percentage of overrun allowed. -1 = unlimited, 0 = strict. */
   overallocation: number;
 }
 
 export interface CapacityVerdict {
   allowed: boolean;
-  /** Plafond effectif après application du dépassement autorisé. */
+  /** Effective ceiling once the allowed overrun is applied. */
   limit: bigint;
   reason?: string;
 }
 
 export function checkCapacity(check: CapacityCheck, label: string): CapacityVerdict {
-  // Une capacité non déclarée signifie « je ne veux pas de comptabilité sur ce
-  // node ». C'est le cas d'un administrateur qui gère la place à la main.
+  // An undeclared capacity means "I do not want accounting on this node". That
+  // is the case of an administrator managing space by hand.
   if (check.declared === 0n) {
     return { allowed: true, limit: 0n };
   }
@@ -49,18 +49,18 @@ export function checkCapacity(check: CapacityCheck, label: string): CapacityVerd
       allowed: false,
       limit,
       reason:
-        `${label} : le node n'a plus la place. ` +
-        `${formatBytes(check.allocated)} déjà attribués sur ${formatBytes(limit)} disponibles, ` +
-        `${formatBytes(check.requested)} demandés.`,
+        `${label}: the node has no room left. ` +
+        `${formatBytes(check.allocated)} already assigned out of ${formatBytes(limit)} available, ` +
+        `${formatBytes(check.requested)} requested.`,
     };
   }
 
   return { allowed: true, limit };
 }
 
-/** Formatage lisible, destiné aux messages d'erreur affichés à un humain. */
+/** Readable formatting, for error messages shown to a human. */
 export function formatBytes(bytes: bigint): string {
-  const units = ['o', 'Kio', 'Mio', 'Gio', 'Tio'];
+  const units = ['B', 'KiB', 'MiB', 'GiB', 'TiB'];
   let value = Number(bytes);
   let unit = 0;
 

@@ -6,15 +6,15 @@ export const createServerSchema = z.object({
   name: z.string().min(1).max(100),
   description: z.string().max(1000).default(''),
 
-  /** UUID du propriétaire. */
+  /** Owner UUID. */
   ownerUuid: z.uuid(),
   nodeUuid: z.uuid(),
   templateUuid: z.uuid(),
 
-  /** Identifiant de l'allocation principale, libre sur le node choisi. */
+  /** Identifier of the primary allocation, free on the chosen node. */
   allocationId: z.number().int().positive(),
 
-  // Limites de ressources. 0 = illimité pour mémoire, disque et CPU.
+  // Resource limits. 0 = unlimited for memory, disk and CPU.
   memoryBytes: z
     .number()
     .int()
@@ -30,13 +30,13 @@ export const createServerSchema = z.object({
   cpuSet: z
     .string()
     .max(100)
-    .regex(/^[0-9,-]*$/, 'Format attendu : 0-3 ou 0,2,4.')
+    .regex(/^[0-9,-]*$/, 'Expected format: 0-3 or 0,2,4.')
     .default(''),
   ioWeight: z.number().int().min(10).max(1000).default(500),
   /**
-   * Sans limite de processus, un plugin qui fork en boucle fait tomber l'hôte
-   * entier, pas seulement son serveur. Le minimum est haut assez pour une JVM
-   * et ses threads de GC.
+   * Without a process limit, a plugin forking in a loop brings down the whole
+   * host, not just its own server. The minimum is high enough for a JVM and its
+   * GC threads.
    */
   pidsLimit: z.number().int().min(64).max(8192).default(512),
   oomKillDisabled: z.boolean().default(false),
@@ -45,13 +45,13 @@ export const createServerSchema = z.object({
   allocationLimit: z.number().int().min(0).max(50).default(0),
   databaseLimit: z.number().int().min(0).max(50).default(0),
 
-  /** Valeurs des variables du template, par nom de variable d'environnement. */
+  /** Template variable values, keyed by environment variable name. */
   variables: z.record(z.string(), z.string().max(2000)).default({}),
 
-  /** Image Docker choisie parmi celles proposées par le template. */
+  /** Docker image chosen among those the template offers. */
   dockerImage: z.string().min(1).max(255).optional(),
 
-  /** Démarrer le serveur dès la fin de l'installation. */
+  /** Start the server as soon as the installation finishes. */
   startOnCompletion: z.boolean().default(true),
 });
 
@@ -60,7 +60,7 @@ export const updateServerSchema = z.object({
   description: z.string().max(1000).optional(),
 });
 
-/** Modification des limites : réservé aux administrateurs. */
+/** Changing the limits: administrators only. */
 export const updateServerBuildSchema = z.object({
   memoryBytes: z
     .number()
@@ -94,10 +94,10 @@ export type UpdateServerDto = z.infer<typeof updateServerSchema>;
 export type UpdateServerBuildDto = z.infer<typeof updateServerBuildSchema>;
 
 /**
- * Action de puissance demandée en REST.
+ * Power action requested over REST.
  *
- * `kill` est accepté mais reste une opération de dernier recours : il coupe le
- * processus sans laisser au serveur le temps d'écrire son monde sur le disque.
+ * `kill` is accepted but stays a last resort: it cuts the process without
+ * leaving the server time to write its world to disk.
  */
 export const powerActionSchema = z.object({
   action: z.enum(['start', 'stop', 'restart', 'kill']),

@@ -12,24 +12,23 @@ import { NodesService } from '../nodes/nodes.service.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 
 export interface ConsoleCredentials {
-  /** URL WebSocket du daemon, à ouvrir directement depuis le navigateur. */
+  /** The daemon's WebSocket URL, to be opened straight from the browser. */
   socketUrl: string;
   token: string;
-  /** Durée de vie du jeton, en secondes. */
+  /** Token lifetime, in seconds. */
   expiresIn: number;
 }
 
 /**
- * Délivre les identifiants de connexion à la console d'un serveur.
+ * Issues the credentials to connect to a server's console.
  *
- * Le panel ne relaie **pas** la console : il se contente de signer un jeton de
- * courte durée avec le secret partagé du node, et le navigateur ouvre ensuite
- * un WebSocket directement vers le daemon. C'est ce qui permet à cinquante
- * consoles ouvertes de ne rien coûter au panel, et ce qui rend la console
- * fluide même quand le panel est occupé.
+ * The panel does **not** relay the console: it merely signs a short-lived token
+ * with the node's shared secret, and the browser then opens a WebSocket
+ * straight to the daemon. That is what lets fifty open consoles cost the panel
+ * nothing, and what keeps the console fluid even when the panel is busy.
  *
- * Le prix de ce choix : une permission retirée dans le panel ne prend effet
- * qu'au renouvellement du jeton, d'où sa durée de vie volontairement courte.
+ * The price of that choice: a permission revoked in the panel only takes effect
+ * when the token is renewed, hence its deliberately short lifetime.
  */
 @Controller('api/servers')
 export class ConsoleController {
@@ -58,14 +57,14 @@ export class ConsoleController {
       nodeJwtSecret: jwtSecret,
       userUuid: user.uuid,
       serverUuid: serverId,
-      // Les permissions sont figées dans le jeton : c'est ce qui permet au
-      // daemon de décider seul, sans rappeler le panel à chaque message.
+      // The permissions are frozen into the token: that is what lets the
+      // daemon decide on its own, without calling the panel on every message.
       permissions: server.permissions,
     });
 
-    // wss:// dès que le node est en HTTPS. Un panel servi en HTTPS qui pointe
-    // vers un daemon en ws:// verrait ses connexions bloquées par le navigateur
-    // au titre du contenu mixte.
+    // wss:// as soon as the node is on HTTPS. A panel served over HTTPS
+    // pointing at a ws:// daemon would have its connections blocked by the
+    // browser as mixed content.
     const scheme = node.scheme === 'https' ? 'wss' : 'ws';
 
     return {

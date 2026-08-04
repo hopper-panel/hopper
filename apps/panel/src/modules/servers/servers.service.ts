@@ -39,11 +39,11 @@ export interface ServerListItem {
 }
 
 /**
- * Extrait les images d'un template, dans leur ordre de déclaration.
+ * Extracts a template's images, in the order they were declared.
  *
- * Tolère l'ancien format objet `{ "Java 21": "…" }` : un template importé
- * avant le changement de format ne doit pas rendre ses serveurs impossibles à
- * créer. L'ordre y est en revanche celui que `jsonb` a bien voulu conserver.
+ * Tolerates the old object format `{ "Java 21": "…" }`: a template imported
+ * before the format change must not make its servers impossible to create. The
+ * order there is whatever `jsonb` happened to keep.
  */
 export function parseDockerImages(raw: Prisma.JsonValue): string[] {
   if (Array.isArray(raw)) {
@@ -74,12 +74,11 @@ export class ServersService {
   ) {}
 
   /**
-   * Serveurs visibles par un utilisateur.
+   * Servers visible to a user.
    *
-   * Un administrateur ne voit *pas* tous les serveurs ici : cette liste est
-   * celle de son espace personnel. La vue exhaustive est une route
-   * d'administration distincte, pour que « mes serveurs » reste lisible sur une
-   * instance qui en héberge deux cents.
+   * An administrator does *not* see every server here: this list is their own
+   * space. The exhaustive view is a separate administration route, so that "my
+   * servers" stays readable on an instance hosting two hundred of them.
    */
   async listForUser(userId: number, query: PaginationQuery): Promise<Paginated<ServerListItem>> {
     const where: Prisma.ServerWhereInput = {
@@ -92,7 +91,7 @@ export class ServersService {
     return this.queryServers(where, query, userId);
   }
 
-  /** Vue exhaustive, réservée aux administrateurs. */
+  /** Exhaustive view, for administrators only. */
   async listAll(query: PaginationQuery, viewerId: number): Promise<Paginated<ServerListItem>> {
     return this.queryServers(searchClause(query.search), query, viewerId);
   }
@@ -104,23 +103,23 @@ export class ServersService {
     });
 
     if (!server) {
-      throw new NotFoundException('Serveur introuvable.');
+      throw new NotFoundException('Server not found.');
     }
 
     return this.toListItem(server, viewerId);
   }
 
   // -------------------------------------------------------------------------
-  // Création
+  // Creation
   // -------------------------------------------------------------------------
 
   /**
-   * Crée l'enregistrement d'un serveur.
+   * Creates a server's record.
    *
-   * À ce stade, rien n'est demandé au daemon : le serveur reste `INSTALLING`
-   * jusqu'à ce que le runtime Docker prenne le relais (phase 2). La séparation
-   * est volontaire — la validation métier et la comptabilité des ressources
-   * doivent être correctes avant qu'un conteneur n'existe.
+   * Nothing is asked of the daemon at this stage: the server stays `INSTALLING`
+   * until the Docker runtime takes over. The separation is deliberate — the
+   * business validation and the resource accounting have to be right before a
+   * container exists.
    */
   async create(
     dto: CreateServerDto,
@@ -136,13 +135,13 @@ export class ServersService {
       }),
     ]);
 
-    if (!owner) throw new BadRequestException('Propriétaire introuvable.');
-    if (!node) throw new BadRequestException('Node introuvable.');
-    if (!template) throw new BadRequestException('Template introuvable.');
+    if (!owner) throw new BadRequestException('Owner not found.');
+    if (!node) throw new BadRequestException('Node not found.');
+    if (!template) throw new BadRequestException('Template not found.');
 
     if (node.maintenance) {
       throw new ConflictException(
-        'Ce node est en maintenance : aucun nouveau serveur ne peut y être créé.',
+        'This node is under maintenance: no new server can be created on it.',
       );
     }
 
@@ -151,11 +150,11 @@ export class ServersService {
     });
 
     if (!allocation) {
-      throw new BadRequestException("Cette allocation n'existe pas sur ce node.");
+      throw new BadRequestException('This allocation does not exist on this node.');
     }
 
     if (allocation.serverId !== null) {
-      throw new ConflictException(`Le port ${allocation.port} est déjà attribué à un serveur.`);
+      throw new ConflictException(`Port ${allocation.port} is already assigned to a server.`);
     }
 
     await this.assertNodeHasCapacity(node, BigInt(dto.memoryBytes), BigInt(dto.diskBytes));
@@ -184,9 +183,9 @@ export class ServersService {
           allocationLimit: dto.allocationLimit,
           databaseLimit: dto.databaseLimit,
           dockerImage,
-          // Copié depuis le template : modifier le template plus tard ne doit
-          // pas changer la commande de démarrage d'un serveur existant sans
-          // que personne ne l'ait demandé.
+          // Copied from the template: editing the template later must not
+          // change an existing server's startup command without anyone asking
+          // for it.
           startupCommand: template.startup,
           primaryAllocationId: allocation.id,
           variables: {
@@ -198,8 +197,9 @@ export class ServersService {
         },
       });
 
-      // Le port doit pointer vers le serveur des deux côtés : `primaryAllocationId`
-      // pour le port principal, `serverId` pour qu'il apparaisse comme occupé.
+      // The port has to point at the server from both sides:
+      // `primaryAllocationId` for the main port, `serverId` so it shows as
+      // taken.
       await tx.allocation.update({
         where: { id: allocation.id },
         data: { serverId: created.id },
@@ -208,19 +208,19 @@ export class ServersService {
       return created;
     });
 
-    // Le daemon est prévenu après la transaction : il ne doit pas y avoir de
-    // conteneur pour un serveur qui n'existe pas en base.
+    // The daemon is told after the transaction: there must be no container for
+    // a server that does not exist in the database.
     try {
       const configuration = await this.configurations.build(server.uuid);
       const connection = await this.nodes.getConnection(node.uuid);
 
       await this.client.createServer(connection, configuration, dto.startOnCompletion);
     } catch (error: unknown) {
-      // La création est atomique du point de vue de l'utilisateur : un node
-      // injoignable ne doit pas laisser un serveur fantôme en base, avec son
-      // port immobilisé et aucun conteneur derrière.
+      // Creation is atomic from the user's point of view: an unreachable node
+      // must not leave a phantom server in the database, with its port tied up
+      // and no container behind it.
       this.logger.error(
-        `Création refusée par le node ${node.name}, retrait de ${server.uuid} : ${String(error)}`,
+        `Creation refused by node ${node.name}, removing ${server.uuid}: ${String(error)}`,
       );
       await this.prisma.server.delete({ where: { id: server.id } }).catch(() => undefined);
       throw error;
@@ -239,11 +239,11 @@ export class ServersService {
   }
 
   /**
-   * Renvoie au daemon la configuration à jour d'un serveur.
+   * Sends a server's up-to-date configuration back to the daemon.
    *
-   * Tolérante à l'échec : un node hors ligne ne doit pas empêcher de renommer
-   * un serveur ou d'ajuster ses limites dans le panel. La réconciliation au
-   * démarrage du daemon rattrapera l'écart.
+   * Failure-tolerant: an offline node must not prevent renaming a server or
+   * adjusting its limits in the panel. Reconciliation when the daemon starts
+   * will catch up.
    */
   private async pushConfiguration(serverUuid: string, nodeUuid: string): Promise<void> {
     try {
@@ -253,18 +253,18 @@ export class ServersService {
       await this.client.syncServer(connection, configuration);
     } catch (error: unknown) {
       this.logger.warn(
-        `Synchronisation du serveur ${serverUuid} impossible, elle sera rattrapée au prochain démarrage du daemon : ${String(error)}`,
+        `Could not sync server ${serverUuid}; it will be caught up the next time the daemon starts: ${String(error)}`,
       );
     }
   }
 
   /**
-   * Applique une action de puissance via le daemon.
+   * Applies a power action through the daemon.
    *
-   * La permission requise dépend de l'action, et `kill` relève de l'arrêt : un
-   * sous-utilisateur autorisé à arrêter un serveur peut le tuer, mais celui qui
-   * ne peut que le démarrer ne le peut pas. Confondre les deux donnerait à un
-   * modérateur le pouvoir de couper le serveur en pleine écriture du monde.
+   * The permission required depends on the action, and `kill` belongs to
+   * stopping: a subuser allowed to stop a server can kill it, but one who can
+   * only start it cannot. Confusing the two would give a moderator the power to
+   * cut the server off mid-world-save.
    */
   async power(
     uuid: string,
@@ -276,7 +276,7 @@ export class ServersService {
     const required = POWER_PERMISSIONS[action];
 
     if (!server.isOwner && !server.permissions.includes(required)) {
-      throw new ForbiddenException(`Permission « ${required} » requise pour cette action.`);
+      throw new ForbiddenException(`Permission "${required}" is required for this action.`);
     }
 
     const record = await this.prisma.server.findUniqueOrThrow({
@@ -284,12 +284,12 @@ export class ServersService {
       include: { node: { select: { uuid: true } } },
     });
 
-    // Un serveur suspendu, en cours d'installation ou de suppression n'a pas de
-    // conteneur exploitable : le démarrer produirait une erreur du daemon bien
-    // moins parlante que ce refus.
+    // A suspended server, or one being installed or deleted, has no usable
+    // container: starting it would produce a daemon error far less telling than
+    // this refusal.
     if (record.status !== 'READY') {
       throw new ConflictException(
-        `Ce serveur n'est pas disponible (état : ${record.status.toLowerCase()}).`,
+        `This server is not available (state: ${record.status.toLowerCase()}).`,
       );
     }
 
@@ -318,7 +318,7 @@ export class ServersService {
     });
 
     if (!server) {
-      throw new NotFoundException('Serveur introuvable.');
+      throw new NotFoundException('Server not found.');
     }
 
     await this.prisma.server.update({
@@ -341,11 +341,11 @@ export class ServersService {
   }
 
   /**
-   * Modifie les limites de ressources.
+   * Changes the resource limits.
    *
-   * `requiresRebuild` est positionné : les limites d'un conteneur Docker ne se
-   * changent pas à chaud de façon fiable. Le daemon recréera le conteneur au
-   * prochain démarrage, sans toucher au volume de données.
+   * `requiresRebuild` is set: a Docker container's limits cannot be changed
+   * live in a reliable way. The daemon will recreate the container on the next
+   * start, without touching the data volume.
    */
   async updateBuild(
     uuid: string,
@@ -359,7 +359,7 @@ export class ServersService {
     });
 
     if (!server) {
-      throw new NotFoundException('Serveur introuvable.');
+      throw new NotFoundException('Server not found.');
     }
 
     if (dto.memoryBytes !== undefined || dto.diskBytes !== undefined) {
@@ -413,7 +413,7 @@ export class ServersService {
     });
 
     if (!server) {
-      throw new NotFoundException('Serveur introuvable.');
+      throw new NotFoundException('Server not found.');
     }
 
     await this.prisma.server.update({
@@ -421,8 +421,8 @@ export class ServersService {
       data: { status: suspended ? 'SUSPENDED' : 'READY' },
     });
 
-    // Le daemon doit apprendre la suspension : c'est lui qui refuse le
-    // démarrage et coupe l'accès SFTP.
+    // The daemon has to learn about the suspension: it is the one that refuses
+    // the start and cuts SFTP access.
     await this.pushConfiguration(uuid, server.node.uuid);
 
     await this.audit.record({
@@ -443,23 +443,23 @@ export class ServersService {
     });
 
     if (!server) {
-      throw new NotFoundException('Serveur introuvable.');
+      throw new NotFoundException('Server not found.');
     }
 
-    // Le conteneur et le volume partent d'abord : supprimer la ligne en base
-    // avant laisserait un conteneur que plus rien ne référence, et dont
-    // personne ne saurait à qui il appartenait.
+    // The container and the volume go first: deleting the database row before
+    // would leave a container nothing references any more, and that nobody
+    // could trace back to an owner.
     try {
       const connection = await this.nodes.getConnection(server.node.uuid);
       await this.client.deleteServer(connection, uuid, true);
     } catch (error: unknown) {
-      this.logger.error(`Suppression refusée par le node pour ${uuid} : ${String(error)}`);
+      this.logger.error(`Deletion refused by the node for ${uuid}: ${String(error)}`);
       throw error;
     }
 
-    // L'entrée d'audit est écrite AVANT la suppression, et sans `serverId` :
-    // la cascade effacerait sinon la trace de l'action au moment même où elle
-    // devient la plus utile.
+    // The audit entry is written BEFORE the deletion, and without `serverId`:
+    // the cascade would otherwise erase the trace of the action at the very
+    // moment it becomes most useful.
     await this.audit.record({
       event: AUDIT_EVENTS.SERVER_DELETED,
       actorId,
@@ -468,13 +468,13 @@ export class ServersService {
       metadata: { serverUuid: uuid, name: server.name },
     });
 
-    // Les allocations sont libérées par `onDelete: SetNull`, pas supprimées :
-    // ce sont des ports du node, ils restent disponibles pour un autre serveur.
+    // Allocations are released by `onDelete: SetNull`, not deleted: they are
+    // the node's ports, and stay available for another server.
     await this.prisma.server.delete({ where: { id: server.id } });
   }
 
   // -------------------------------------------------------------------------
-  // Interne
+  // Internals
   // -------------------------------------------------------------------------
 
   private async assertNodeHasCapacity(
@@ -501,7 +501,7 @@ export class ServersService {
         requested: memoryBytes,
         overallocation: node.memoryOverallocation,
       },
-      'Mémoire',
+      'Memory',
     );
 
     if (!memory.allowed) {
@@ -515,7 +515,7 @@ export class ServersService {
         requested: diskBytes,
         overallocation: node.diskOverallocation,
       },
-      'Disque',
+      'Disk',
     );
 
     if (!disk.allowed) {
@@ -524,28 +524,28 @@ export class ServersService {
   }
 
   /**
-   * Choisit l'image Docker, en refusant celles absentes du template.
+   * Picks the Docker image, refusing any absent from the template.
    *
-   * Le template les déclare dans un tableau ordonné : la première est le
-   * défaut. Un objet JSON ne conviendrait pas — `jsonb` en réordonne les clés,
-   * et « la première image » désignerait alors une entrée imprévisible.
+   * The template declares them in an ordered array: the first is the default.
+   * A JSON object would not do — `jsonb` reorders its keys, and "the first
+   * image" would then mean an unpredictable entry.
    */
   private resolveDockerImage(dockerImages: Prisma.JsonValue, requested?: string): string {
     const available = parseDockerImages(dockerImages);
 
     if (available.length === 0) {
-      throw new BadRequestException('Ce template ne déclare aucune image Docker.');
+      throw new BadRequestException('This template declares no Docker image.');
     }
 
     if (!requested) {
       return available[0]!;
     }
 
-    // Une image arbitraire serait une exécution de code choisie par
-    // l'utilisateur sur la machine hôte : seules celles du template passent.
+    // An arbitrary image would be user-chosen code execution on the host
+    // machine: only the template's own get through.
     if (!available.includes(requested)) {
       throw new BadRequestException(
-        `Image Docker non proposée par ce template. Valeurs acceptées : ${available.join(', ')}.`,
+        `Docker image not offered by this template. Accepted values: ${available.join(', ')}.`,
       );
     }
 
@@ -553,12 +553,11 @@ export class ServersService {
   }
 
   /**
-   * Construit les variables du serveur à partir du template.
+   * Builds the server's variables from the template.
    *
-   * Une variable non modifiable garde sa valeur par défaut, même si le client
-   * en envoie une autre : ces variables entrent dans la commande de démarrage,
-   * et les laisser franchir la validation reviendrait à confier le contenu de
-   * la ligne de commande à l'utilisateur.
+   * A non-editable variable keeps its default value even if the client sends
+   * another: these variables feed the startup command, and letting them past
+   * validation would amount to handing the command line's content to the user.
    */
   private resolveVariables(
     templateVariables: { envVariable: string; defaultValue: string; userEditable: boolean }[],
@@ -634,11 +633,10 @@ export class ServersService {
 }
 
 /**
- * Permission exigée par action de puissance.
+ * Permission required per power action.
  *
- * `kill` partage la permission d'arrêt : c'est un arrêt, en plus brutal. Lui
- * donner sa propre permission créerait un droit que personne ne penserait à
- * retirer.
+ * `kill` shares the stop permission: it is a stop, only more brutal. Giving it
+ * its own permission would create a right nobody would think to take away.
  */
 const POWER_PERMISSIONS: Record<PowerAction, string> = {
   start: PERMISSIONS.CONTROL_START,
@@ -648,16 +646,16 @@ const POWER_PERMISSIONS: Record<PowerAction, string> = {
 };
 
 /**
- * Critère de recherche d'un serveur.
+ * Search criterion for a server.
  *
- * Trois façons de désigner un serveur, parce que ce sont les trois qu'on a
- * sous la main : son **nom** quand on le connaît, son **identifiant** quand on
- * l'a relevé dans un journal, et son **port** quand on ne dispose que de
- * l'adresse donnée aux joueurs.
+ * Three ways to designate a server, because they are the three one has to
+ * hand: its **name** when you know it, its **identifier** when you picked it up
+ * from a log, and its **port** when all you have is the address given to
+ * players.
  *
- * Partagé entre la liste personnelle et la vue d'administration : la première
- * ne cherchait que par nom, si bien que coller un UUID dans la recherche ne
- * rendait rien — alors que le champ annonçait le contraire.
+ * Shared between the personal list and the administration view: the former only
+ * searched by name, so pasting a UUID into the search returned nothing — while
+ * the field claimed otherwise.
  */
 function searchClause(search: string | undefined): Prisma.ServerWhereInput {
   const term = search?.trim();

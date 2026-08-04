@@ -8,17 +8,16 @@ import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service.js';
 
 /**
- * Traduit un serveur de la base vers le contrat partagé.
+ * Translates a server from the database into the shared contract.
  *
- * C'est la seule frontière entre le modèle de données du panel et ce que le
- * daemon comprend. Le daemon n'accède jamais à la base : tout ce dont il a
- * besoin pour démarrer, arrêter, surveiller ou réinstaller un serveur doit
- * transiter par cet objet.
+ * This is the only boundary between the panel's data model and what the daemon
+ * understands. The daemon never touches the database: everything it needs to
+ * start, stop, watch or reinstall a server has to travel through this object.
  *
- * La sortie est validée par le schéma Zod avant d'être envoyée. Une
- * incohérence — une image Docker vide, un port hors plage — doit échouer ici,
- * du côté qui sait quoi en dire, plutôt que d'arriver au daemon sous forme de
- * conteneur impossible à créer.
+ * The output is validated by the Zod schema before being sent. An
+ * inconsistency — an empty Docker image, an out-of-range port — has to fail
+ * here, on the side that knows what to say about it, rather than reach the
+ * daemon as a container that cannot be created.
  */
 @Injectable()
 export class ServerConfigurationService {
@@ -39,7 +38,7 @@ export class ServerConfigurationService {
 
     if (!server.primaryAllocation) {
       throw new Error(
-        `Le serveur ${serverUuid} n'a pas d'allocation principale : il ne peut pas être démarré.`,
+        `Server ${serverUuid} has no primary allocation: it cannot be started.`,
       );
     }
 
@@ -50,8 +49,8 @@ export class ServerConfigurationService {
     const configuration = {
       uuid: server.uuid,
       meta: { name: server.name, description: server.description },
-      // Un serveur suspendu reste décrit au daemon : il doit connaître son
-      // existence pour refuser de le démarrer et pour couper son accès SFTP.
+      // A suspended server is still described to the daemon: it has to know it
+      // exists in order to refuse the start and cut its SFTP access.
       suspended: server.status === 'SUSPENDED',
       invocation: server.startupCommand,
       environment,
@@ -61,8 +60,8 @@ export class ServerConfigurationService {
           ip: server.primaryAllocation.ip,
           port: server.primaryAllocation.port,
         },
-        // L'allocation principale figure aussi dans `allocations` : on l'écarte
-        // pour ne pas publier deux fois le même port.
+        // The primary allocation also appears in `allocations`: it is dropped
+        // so the same port is not published twice.
         additional: server.allocations
           .filter((allocation) => allocation.id !== server.primaryAllocationId)
           .map((allocation) => ({ ip: allocation.ip, port: allocation.port })),
@@ -99,7 +98,7 @@ export class ServerConfigurationService {
     return serverConfigurationSchema.parse(configuration);
   }
 
-  /** Construit la configuration de tous les serveurs d'un node. */
+  /** Builds the configuration of every server on a node. */
   async buildForNode(nodeId: number): Promise<ServerConfiguration[]> {
     const servers = await this.prisma.server.findMany({
       where: { nodeId },
@@ -113,10 +112,10 @@ export class ServerConfigurationService {
       try {
         configurations.push(await this.build(server.uuid));
       } catch (error: unknown) {
-        // Un serveur mal formé ne doit pas empêcher les autres d'être
-        // réconciliés : le daemon repartirait alors sans aucun serveur.
+        // A malformed server must not prevent the others from being
+        // reconciled: the daemon would then come back with no servers at all.
         this.logger.error(
-          `Configuration impossible pour le serveur ${server.uuid} : ${String(error)}`,
+          `Could not build the configuration for server ${server.uuid}: ${String(error)}`,
         );
       }
     }
@@ -126,12 +125,11 @@ export class ServerConfigurationService {
 }
 
 /**
- * Décode la commande d'arrêt d'un template, stockée sous forme
- * `command:stop` ou `signal:SIGTERM`.
+ * Decodes a template's stop command, stored as `command:stop` or
+ * `signal:SIGTERM`.
  *
- * Une valeur inconnue retombe sur `SIGTERM` plutôt que de faire échouer le
- * démarrage : mieux vaut un arrêt moins gracieux qu'un serveur qu'on ne peut
- * plus lancer du tout.
+ * An unknown value falls back to `SIGTERM` rather than failing the start: a
+ * less graceful stop beats a server that cannot be launched at all.
  */
 export function parseStopCommand(raw: string): StopConfiguration {
   const separator = raw.indexOf(':');
@@ -150,11 +148,11 @@ export function parseStopCommand(raw: string): StopConfiguration {
 }
 
 /**
- * Décode les fichiers de configuration d'un template.
+ * Decodes a template's configuration files.
  *
- * Ils sont stockés en JSON libre : un template importé depuis un « egg »
- * Pterodactyl mal formé ne doit pas rendre le serveur impossible à démarrer.
- * Une entrée invalide est écartée et signalée.
+ * They are stored as free-form JSON: a template imported from a malformed
+ * Pterodactyl egg must not make the server impossible to start. An invalid
+ * entry is dropped and reported.
  */
 function parseConfigFiles(raw: unknown, serverUuid: string, logger: Logger): ConfigFile[] {
   if (!Array.isArray(raw)) {
@@ -172,7 +170,7 @@ function parseConfigFiles(raw: unknown, serverUuid: string, logger: Logger): Con
       !Array.isArray(candidate.replacements)
     ) {
       logger.warn(
-        `Fichier de configuration ignoré pour le serveur ${serverUuid} : entrée invalide.`,
+        `Configuration file ignored for server ${serverUuid}: invalid entry.`,
       );
       continue;
     }

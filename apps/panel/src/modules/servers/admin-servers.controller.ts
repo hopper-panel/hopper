@@ -29,12 +29,12 @@ import {
 import { ServersService, type ServerListItem } from './servers.service.js';
 
 /**
- * Administration des serveurs : création, limites, suspension, suppression.
+ * Server administration: creation, limits, suspension, deletion.
  *
- * Séparé de `ServersController` parce que les règles d'accès n'ont rien à voir.
- * Ici, seul le rôle compte ; là-bas, les permissions par serveur. Les mélanger
- * dans un même contrôleur mènerait tôt ou tard à une route protégée par le
- * mauvais garde.
+ * Separate from `ServersController` because the access rules have nothing in
+ * common. Here only the role matters; there, the per-server permissions. Mixing
+ * them in one controller would sooner or later leave a route behind the wrong
+ * guard.
  */
 @Controller('api/admin/servers')
 @AdminOnly()

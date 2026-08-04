@@ -4,40 +4,40 @@ import { checkCapacity, formatBytes } from './capacity.js';
 const GIB = BigInt(1024 ** 3);
 
 describe('checkCapacity', () => {
-  it('autorise tant que la capacité déclarée suffit', () => {
+  it('allows as long as the declared capacity is enough', () => {
     const verdict = checkCapacity(
       { declared: 32n * GIB, allocated: 16n * GIB, requested: 8n * GIB, overallocation: 0 },
-      'Mémoire',
+      'Memory',
     );
 
     expect(verdict.allowed).toBe(true);
   });
 
-  it('refuse le serveur qui ferait déborder le node', () => {
+  it('refuses the server that would overflow the node', () => {
     const verdict = checkCapacity(
       { declared: 32n * GIB, allocated: 30n * GIB, requested: 8n * GIB, overallocation: 0 },
-      'Mémoire',
+      'Memory',
     );
 
     expect(verdict.allowed).toBe(false);
-    expect(verdict.reason).toContain('Mémoire');
-    // Le message doit donner les trois chiffres, sinon l'administrateur ne sait
-    // pas de combien il dépasse.
-    expect(verdict.reason).toContain('30 Gio');
-    expect(verdict.reason).toContain('32 Gio');
-    expect(verdict.reason).toContain('8 Gio');
+    expect(verdict.reason).toContain('Memory');
+    // The message has to give all three figures, otherwise the administrator
+    // does not know by how much they are over.
+    expect(verdict.reason).toContain('30 GiB');
+    expect(verdict.reason).toContain('32 GiB');
+    expect(verdict.reason).toContain('8 GiB');
   });
 
-  it('accepte pile la capacité restante', () => {
+  it('accepts exactly the remaining capacity', () => {
     const verdict = checkCapacity(
       { declared: 32n * GIB, allocated: 24n * GIB, requested: 8n * GIB, overallocation: 0 },
-      'Mémoire',
+      'Memory',
     );
 
     expect(verdict.allowed).toBe(true);
   });
 
-  it('applique le pourcentage de dépassement autorisé', () => {
+  it('applies the allowed overrun percentage', () => {
     const check = {
       declared: 32n * GIB,
       allocated: 32n * GIB,
@@ -45,43 +45,43 @@ describe('checkCapacity', () => {
       overallocation: 50,
     };
 
-    expect(checkCapacity(check, 'Mémoire').allowed).toBe(true);
-    expect(checkCapacity(check, 'Mémoire').limit).toBe(48n * GIB);
+    expect(checkCapacity(check, 'Memory').allowed).toBe(true);
+    expect(checkCapacity(check, 'Memory').limit).toBe(48n * GIB);
   });
 
-  it('refuse au-delà du dépassement autorisé', () => {
+  it('refuses beyond the allowed overrun', () => {
     const verdict = checkCapacity(
       { declared: 32n * GIB, allocated: 47n * GIB, requested: 8n * GIB, overallocation: 50 },
-      'Mémoire',
+      'Memory',
     );
 
     expect(verdict.allowed).toBe(false);
   });
 
-  // Un administrateur qui gère la place à la main ne veut pas être bloqué par
-  // une comptabilité qu'il n'a pas renseignée.
-  it('ne compte rien si la capacité du node n’est pas déclarée', () => {
+  // An administrator managing space by hand does not want to be blocked by
+  // accounting they never filled in.
+  it('counts nothing when the node capacity is not declared', () => {
     const verdict = checkCapacity(
       { declared: 0n, allocated: 999n * GIB, requested: 64n * GIB, overallocation: 0 },
-      'Mémoire',
+      'Memory',
     );
 
     expect(verdict.allowed).toBe(true);
   });
 
-  it('autorise sans limite quand la surallocation vaut -1', () => {
+  it('allows without limit when overallocation is -1', () => {
     const verdict = checkCapacity(
       { declared: 32n * GIB, allocated: 500n * GIB, requested: 64n * GIB, overallocation: -1 },
-      'Mémoire',
+      'Memory',
     );
 
     expect(verdict.allowed).toBe(true);
   });
 
-  it('accepte un serveur sans limite de mémoire', () => {
+  it('accepts a server with no memory limit', () => {
     const verdict = checkCapacity(
       { declared: 32n * GIB, allocated: 8n * GIB, requested: 0n, overallocation: 0 },
-      'Mémoire',
+      'Memory',
     );
 
     expect(verdict.allowed).toBe(true);
@@ -90,14 +90,14 @@ describe('checkCapacity', () => {
 
 describe('formatBytes', () => {
   it.each([
-    [0n, '0 o'],
-    [512n, '512 o'],
-    [1024n, '1 Kio'],
-    [BigInt(1024 ** 2), '1 Mio'],
-    [GIB, '1 Gio'],
-    [BigInt(1024 ** 4), '1 Tio'],
-    [GIB + GIB / 2n, '1.5 Gio'],
-  ])('formate %s en %s', (bytes, expected) => {
+    [0n, '0 B'],
+    [512n, '512 B'],
+    [1024n, '1 KiB'],
+    [BigInt(1024 ** 2), '1 MiB'],
+    [GIB, '1 GiB'],
+    [BigInt(1024 ** 4), '1 TiB'],
+    [GIB + GIB / 2n, '1.5 GiB'],
+  ])('formats %s as %s', (bytes, expected) => {
     expect(formatBytes(bytes)).toBe(expected);
   });
 });

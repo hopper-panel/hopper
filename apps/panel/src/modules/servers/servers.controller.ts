@@ -35,10 +35,10 @@ import {
 import { ServersService, type ServerListItem } from './servers.service.js';
 
 /**
- * Espace client : les serveurs auxquels l'utilisateur connecté a accès.
+ * Client area: the servers the signed-in user has access to.
  *
- * Le paramètre de route s'appelle `serverId` — c'est ce nom que
- * `ServerPermissionGuard` cherche pour résoudre le serveur et les permissions.
+ * The route parameter is called `serverId` — that is the name
+ * `ServerPermissionGuard` looks for to resolve the server and the permissions.
  */
 @Controller('api/servers')
 export class ServersController {
@@ -61,7 +61,7 @@ export class ServersController {
     return this.servers.findByUuid(serverId, user.id);
   }
 
-  /** Permissions effectives de l'appelant sur ce serveur, pour l'interface. */
+  /** The caller's effective permissions on this server, for the interface. */
   @Get(':serverId/permissions')
   @RequireServerPermission()
   permissions(@CurrentServer() server: RequestServer): Record<string, unknown> {
@@ -69,17 +69,16 @@ export class ServersController {
   }
 
   /**
-   * Action de puissance en REST.
+   * Power action over REST.
    *
-   * L'interface pilote le serveur par le WebSocket du daemon, ce qui donne un
-   * retour immédiat dans la console. Mais tout ce qui n'est pas un navigateur a
-   * besoin d'un point d'entrée ordinaire : le planificateur qui redémarre à
-   * 5 h du matin, une restauration qui doit d'abord arrêter le serveur, un
-   * script d'exploitation. Faire passer ces cas par un WebSocket reviendrait à
-   * leur demander de simuler un navigateur.
+   * The interface drives the server through the daemon's WebSocket, which gives
+   * immediate feedback in the console. But anything that is not a browser needs
+   * an ordinary entry point: the scheduler restarting at 5am, a restore that
+   * has to stop the server first, an operations script. Routing those through a
+   * WebSocket would amount to asking them to impersonate a browser.
    *
-   * La permission dépend de l'action : arrêter un serveur n'est pas le même
-   * droit que le démarrer, et `kill` relève de l'arrêt — en plus brutal.
+   * The permission depends on the action: stopping a server is not the same
+   * right as starting it, and `kill` belongs to stopping — only more brutal.
    */
   @Post(':serverId/power')
   @HttpCode(HttpStatus.NO_CONTENT)
