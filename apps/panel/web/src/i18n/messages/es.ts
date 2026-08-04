@@ -383,4 +383,69 @@ export const es: Messages = {
   'startup.commandHint':
     'La define la plantilla. Las {{VARIABLES}} de abajo se sustituyen al arrancar.',
   'activity.count': '{count} entradas',
+
+  'databases.title': 'Bases de datos',
+  'databases.subtitle': 'Bases MySQL asignadas a este servidor.',
+  'databases.new': 'Nueva base',
+  'databases.createTitle': 'Crear una base de datos',
+  'databases.creating': 'Creando…',
+  'databases.create': 'Crear la base',
+  'databases.empty': 'Sin bases de datos',
+  'databases.emptyHint':
+    'Una base MySQL sirve a los plugins que guardan datos: permisos, protecciones, economía.',
+  'databases.notAllowed':
+    'Este servidor no puede tener bases de datos. Pide a un administrador que suba el límite.',
+  'databases.noHost':
+    'No hay ningún servidor de bases declarado para este nodo. Un administrador debe añadir uno antes de que puedas crear una base.',
+  'databases.name': 'Nombre de la base',
+  'databases.nameHint':
+    'Letras, números y guiones bajos. El nombre real llevará el identificador del servidor como prefijo, para que no choque con el de otro.',
+  'databases.namePlaceholder': 'plugins',
+  'databases.remote': 'Conexiones permitidas desde',
+  'databases.remoteHint':
+    'Una dirección, un patrón como 192.168.1.%, o vacío para permitir cualquier origen.',
+  'databases.remoteLabel': 'Conexiones desde',
+  'databases.host': 'Servidor',
+  'databases.user': 'Usuario',
+  'databases.password': 'Contraseña',
+  'databases.show': 'mostrar',
+  'databases.hide': 'ocultar',
+  'databases.rotate': 'Cambiar la contraseña',
+  'databases.rotateConfirm':
+    'La nueva contraseña surte efecto de inmediato. Los plugins configurados con la anterior perderán la conexión. ¿Continuar?',
+  'serverSettings.title': 'Ajustes',
+  'serverSettings.subtitle': 'Acceso SFTP, información técnica y reinstalación.',
+  'serverSettings.sftpTitle': 'Acceso SFTP',
+  'serverSettings.sftpAddress': 'Dirección del servidor',
+  'serverSettings.sftpUsername': 'Nombre de usuario',
+  'serverSettings.sftpPasswordNote':
+    'La contraseña SFTP es la de tu cuenta en este panel. Nunca se muestra aquí.',
+  'serverSettings.sftpOpen': 'Abrir el SFTP',
+  'serverSettings.identityTitle': 'Nombre y descripción',
+  'serverSettings.name': 'Nombre del servidor',
+  'serverSettings.description': 'Descripción',
+  'serverSettings.saved': 'Guardado.',
+  'serverSettings.saveFailed': 'No se pudo guardar.',
+  'serverSettings.technicalTitle': 'Información técnica',
+  'serverSettings.identifier': 'Identificador',
+  'serverSettings.node': 'Nodo',
+  'serverSettings.nodeAddress': 'Dirección del nodo',
+  'serverSettings.address': 'Dirección del servidor',
+  'serverSettings.template': 'Plantilla',
+  'serverSettings.reinstallTitle': 'Reinstalar el servidor',
+  'serverSettings.reinstallWarning':
+    'El servidor se detiene y luego se vuelve a ejecutar el script de instalación de la plantilla. Según la plantilla, pueden sobrescribirse archivos — haz una copia antes de continuar.',
+  'serverSettings.reinstall': 'Reinstalar',
+  'serverSettings.reinstalling': 'Iniciando…',
+  'serverSettings.reinstallPrompt':
+    'Para confirmar la reinstalación, escribe el nombre del servidor: {name}',
+  'serverSettings.reinstallMismatch': 'El nombre no coincide: reinstalación cancelada.',
+  'serverSettings.reinstallStarted': 'Reinstalación iniciada. Sigue su avance en la consola.',
+  'serverSettings.reinstallFailed': 'No se pudo reinstalar.',
+
+  'databases.count': '{used} de {limit} base(s) permitida(s).',
+  'databases.deletePrompt':
+    'Esta base y todo su contenido se eliminarán. Escribe su nombre para confirmar: {name}',
+  'serverSettings.identifierNote':
+    'El identificador es lo que te pedirán para un diagnóstico: designa este servidor sin ambigüedad.',
 };

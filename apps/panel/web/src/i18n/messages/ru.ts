@@ -382,4 +382,69 @@ export const ru: Messages = {
   'startup.commandHint':
     'Задаётся шаблоном. Значения {{VARIABLES}} ниже подставляются при запуске.',
   'activity.count': 'Записей: {count}',
+
+  'databases.title': 'Базы данных',
+  'databases.subtitle': 'Базы MySQL, выделенные этому серверу.',
+  'databases.new': 'Новая база',
+  'databases.createTitle': 'Создать базу данных',
+  'databases.creating': 'Создание…',
+  'databases.create': 'Создать базу',
+  'databases.empty': 'Баз данных нет',
+  'databases.emptyHint':
+    'База MySQL нужна плагинам, которые хранят данные: права, защита территорий, экономика.',
+  'databases.notAllowed':
+    'Этому серверу не разрешены базы данных. Попросите администратора поднять лимит.',
+  'databases.noHost':
+    'Для этой ноды не объявлен сервер баз данных. Администратор должен добавить его, прежде чем вы сможете создать базу.',
+  'databases.name': 'Название базы',
+  'databases.nameHint':
+    'Буквы, цифры и подчёркивания. К настоящему имени добавится идентификатор сервера, чтобы оно не совпало с чужим.',
+  'databases.namePlaceholder': 'plugins',
+  'databases.remote': 'Подключения разрешены с',
+  'databases.remoteHint':
+    'Адрес, шаблон вида 192.168.1.% или пусто, чтобы разрешить любое происхождение.',
+  'databases.remoteLabel': 'Подключения с',
+  'databases.host': 'Хост',
+  'databases.user': 'Пользователь',
+  'databases.password': 'Пароль',
+  'databases.show': 'показать',
+  'databases.hide': 'скрыть',
+  'databases.rotate': 'Сменить пароль',
+  'databases.rotateConfirm':
+    'Новый пароль вступит в силу сразу. Плагины, настроенные со старым, потеряют соединение. Продолжить?',
+  'serverSettings.title': 'Настройки',
+  'serverSettings.subtitle': 'Доступ по SFTP, технические сведения и переустановка.',
+  'serverSettings.sftpTitle': 'Доступ по SFTP',
+  'serverSettings.sftpAddress': 'Адрес сервера',
+  'serverSettings.sftpUsername': 'Имя пользователя',
+  'serverSettings.sftpPasswordNote':
+    'Пароль SFTP — это пароль вашей учётной записи в панели. Здесь он никогда не показывается.',
+  'serverSettings.sftpOpen': 'Открыть SFTP',
+  'serverSettings.identityTitle': 'Название и описание',
+  'serverSettings.name': 'Название сервера',
+  'serverSettings.description': 'Описание',
+  'serverSettings.saved': 'Сохранено.',
+  'serverSettings.saveFailed': 'Не удалось сохранить.',
+  'serverSettings.technicalTitle': 'Технические сведения',
+  'serverSettings.identifier': 'Идентификатор',
+  'serverSettings.node': 'Нода',
+  'serverSettings.nodeAddress': 'Адрес ноды',
+  'serverSettings.address': 'Адрес сервера',
+  'serverSettings.template': 'Шаблон',
+  'serverSettings.reinstallTitle': 'Переустановить сервер',
+  'serverSettings.reinstallWarning':
+    'Сервер останавливается, затем заново выполняется скрипт установки шаблона. В зависимости от шаблона файлы могут быть перезаписаны — сделайте копию заранее.',
+  'serverSettings.reinstall': 'Переустановить',
+  'serverSettings.reinstalling': 'Запуск…',
+  'serverSettings.reinstallPrompt':
+    'Чтобы подтвердить переустановку, введите название сервера: {name}',
+  'serverSettings.reinstallMismatch': 'Название не совпадает: переустановка отменена.',
+  'serverSettings.reinstallStarted': 'Переустановка запущена. Следите за ней в консоли.',
+  'serverSettings.reinstallFailed': 'Не удалось переустановить.',
+
+  'databases.count': 'Использовано {used} из {limit} разрешённых баз.',
+  'databases.deletePrompt':
+    'Эта база и всё её содержимое будут удалены. Введите её название для подтверждения: {name}',
+  'serverSettings.identifierNote':
+    'Идентификатор спросят при разборе проблемы: он однозначно называет этот сервер.',
 };

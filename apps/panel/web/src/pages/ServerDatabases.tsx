@@ -6,6 +6,7 @@ import { Modal } from '../components/Modal';
 import { PageHeader } from '../components/PageHeader';
 import { Alert, Badge, Button, Card, EmptyState, Field, Input, Spinner } from '../components/ui';
 import { ApiError, api } from '../lib/api';
+import { useTranslation } from '../i18n';
 import { useServerContext } from '../lib/server-context';
 
 interface Database {
@@ -28,6 +29,7 @@ export function ServerDatabasesPage() {
   const { uuid = '' } = useParams();
   const queryClient = useQueryClient();
   const { can } = useServerContext();
+  const { t } = useTranslation();
 
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState('');
@@ -44,7 +46,7 @@ export function ServerDatabasesPage() {
   };
 
   const fail = (error: unknown): void => {
-    setFailure(error instanceof ApiError ? error.message : 'Opération impossible.');
+    setFailure(error instanceof ApiError ? error.message : t('common.operationFailed'));
   };
 
   const create = useMutation({
@@ -84,7 +86,7 @@ export function ServerDatabasesPage() {
   });
 
   if (databases.isLoading) {
-    return <Spinner label="Chargement des bases de données…" />;
+    return <Spinner label={t('common.loading')} />;
   }
 
   const list = databases.data?.data ?? [];
@@ -94,11 +96,11 @@ export function ServerDatabasesPage() {
   return (
     <>
       <PageHeader
-        title="Bases de données"
+        title={t('databases.title')}
         description={
           meta && meta.limit > 0
-            ? `${meta.used} sur ${meta.limit} base${meta.limit > 1 ? 's' : ''} autorisée${meta.limit > 1 ? 's' : ''}.`
-            : 'Bases MySQL attribuées à ce serveur.'
+            ? t('databases.count', { used: meta.used, limit: meta.limit })
+            : t('databases.subtitle')
         }
         action={
           can('database.create') && meta && meta.limit > 0 ? (
@@ -107,7 +109,7 @@ export function ServerDatabasesPage() {
               onClick={() => setCreating(true)}
               disabled={full || meta.hostsAvailable === 0}
             >
-              Nouvelle base
+              {t('databases.new')}
             </Button>
           ) : null
         }
@@ -121,20 +123,15 @@ export function ServerDatabasesPage() {
 
       {meta && meta.limit > 0 && meta.hostsAvailable === 0 ? (
         <div className="mb-4">
-          <Alert tone="info">
-            Aucun serveur de bases de données n’est déclaré pour ce node. Un administrateur doit en
-            ajouter un avant que vous puissiez créer une base.
-          </Alert>
+          <Alert tone="info">{t('databases.noHost')}</Alert>
         </div>
       ) : null}
 
       {list.length === 0 ? (
         <EmptyState
-          title="Aucune base de données"
+          title={t('databases.empty')}
           description={
-            meta && meta.limit > 0
-              ? 'Une base MySQL sert aux plugins qui gardent des données : permissions, protections, économie.'
-              : 'Ce serveur n’est pas autorisé à disposer de bases de données. Demandez à un administrateur d’en relever la limite.'
+            meta && meta.limit > 0 ? t('databases.emptyHint') : t('databases.notAllowed')
           }
         />
       ) : (
@@ -155,7 +152,7 @@ export function ServerDatabasesPage() {
 
       <Modal
         open={creating}
-        title="Créer une base de données"
+        title={t('databases.createTitle')}
         onClose={() => setCreating(false)}
         footer={
           <>
@@ -167,27 +164,21 @@ export function ServerDatabasesPage() {
               onClick={() => create.mutate()}
               disabled={create.isPending || name.trim() === ''}
             >
-              {create.isPending ? 'Création…' : 'Créer la base'}
+              {create.isPending ? t('databases.creating') : t('databases.create')}
             </Button>
           </>
         }
       >
         <div className="flex flex-col gap-5">
-          <Field
-            label="Nom de la base"
-            hint="Lettres, chiffres et soulignés. Le nom réel sera préfixé par l’identifiant du serveur, pour qu’il ne puisse pas entrer en conflit avec celui d’un autre."
-          >
+          <Field label={t('databases.name')} hint={t('databases.nameHint')}>
             <Input
               value={name}
               onChange={(event) => setName(event.target.value)}
-              placeholder="plugins"
+              placeholder={t('databases.namePlaceholder')}
             />
           </Field>
 
-          <Field
-            label="Connexions autorisées depuis"
-            hint="Une adresse, un motif comme 192.168.1.%, ou vide pour autoriser n’importe quelle provenance."
-          >
+          <Field label={t('databases.remote')} hint={t('databases.remoteHint')}>
             <Input
               value={remote}
               onChange={(event) => setRemote(event.target.value)}
@@ -216,9 +207,10 @@ function DatabaseCard({
   onRotate: () => void;
   onRemove: () => void;
 }) {
-  // Le mot de passe est masqué par défaut : il est en clair dans la réponse —
-  // il le faut, pour être recopié dans un plugin — mais l'afficher d'office le
-  // livrerait à quiconque passe derrière l'écran.
+  const { t } = useTranslation();
+  // The password is hidden by default: it comes in clear in the response — it
+  // has to, so it can be pasted into a plugin — but showing it outright would
+  // hand it to whoever walks past the screen.
   const [revealed, setRevealed] = useState(false);
 
   return (
@@ -235,20 +227,14 @@ function DatabaseCard({
               variant="ghost"
               disabled={busy}
               onClick={() => {
-                // Le changement est immédiat côté MySQL : un plugin encore
-                // configuré avec l'ancien mot de passe perd la connexion à sa
-                // prochaine requête.
-                if (
-                  window.confirm(
-                    'Le nouveau mot de passe prend effet aussitôt. Les plugins configurés avec ' +
-                      'l’ancien perdront la connexion. Continuer ?',
-                  )
-                ) {
+                // The change is immediate on the MySQL side: a plugin still
+                // holding the old password loses its next connection.
+                if (window.confirm(t('databases.rotateConfirm'))) {
                   onRotate();
                 }
               }}
             >
-              Changer le mot de passe
+              {t('databases.rotate')}
             </Button>
           ) : null}
 
@@ -257,28 +243,29 @@ function DatabaseCard({
               variant="danger"
               disabled={busy}
               onClick={() => {
-                const typed = window.prompt(
-                  `Cette base et tout son contenu seront supprimés. Saisissez son nom pour confirmer : ${database.name}`,
-                );
+                const typed = window.prompt(t('databases.deletePrompt', { name: database.name }));
 
                 if (typed?.trim() === database.name) {
                   onRemove();
                 }
               }}
             >
-              Supprimer
+              {t('common.delete')}
             </Button>
           ) : null}
         </div>
       </div>
 
       {/* Champs en ligne, sur toute la largeur : en colonnes, ils
-          s'entassaient à gauche et laissaient la moitié de la carte vide. */}
+          piled up on the left and left half the card empty. */}
       <dl className="mt-3 flex flex-wrap gap-x-8 gap-y-2 text-sm">
-        <InlineField label="Hôte" value={`${database.host.address}:${database.host.port}`} />
-        <InlineField label="Utilisateur" value={database.username} copyable />
         <InlineField
-          label="Mot de passe"
+          label={t('databases.host')}
+          value={`${database.host.address}:${database.host.port}`}
+        />
+        <InlineField label={t('databases.user')} value={database.username} copyable />
+        <InlineField
+          label={t('databases.password')}
           value={revealed ? database.password : '••••••••••••'}
           copyValue={database.password}
           copyable
@@ -288,11 +275,11 @@ function DatabaseCard({
               className="text-xs text-accent hover:underline"
               onClick={() => setRevealed((previous) => !previous)}
             >
-              {revealed ? 'masquer' : 'afficher'}
+              {t(revealed ? 'databases.hide' : 'databases.show')}
             </button>
           }
         />
-        <InlineField label="Connexions depuis" value={database.remote} />
+        <InlineField label={t('databases.remoteLabel')} value={database.remote} />
       </dl>
 
       <div className="mt-3 flex items-center gap-2 rounded-lg bg-surface px-3 py-2">
@@ -306,10 +293,10 @@ function DatabaseCard({
 }
 
 /**
- * Un champ sur une seule ligne : libellé, valeur, et de quoi la copier.
+ * A one-line field: label, value, and a way to copy it.
  *
- * Le libellé et la valeur partagent la ligne au lieu d'être empilés — sur une
- * carte large, quatre blocs de deux lignes créent surtout du vide.
+ * Label and value share the line rather than stacking — on a wide card, four
+ * two-line blocks mostly create emptiness.
  */
 function InlineField({
   label,
@@ -320,7 +307,7 @@ function InlineField({
 }: {
   label: string;
   value: string;
-  /** Valeur réellement copiée, si l'affichage est masqué. */
+  /** The value actually copied, when the display is masked. */
   copyValue?: string;
   copyable?: boolean;
   action?: React.ReactNode;

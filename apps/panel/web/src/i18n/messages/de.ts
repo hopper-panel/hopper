@@ -387,4 +387,68 @@ export const de: Messages = {
   'startup.commandHint':
     'Von der Vorlage vorgegeben. Die {{VARIABLES}} unten werden beim Start ersetzt.',
   'activity.count': '{count} Einträge',
+
+  'databases.title': 'Datenbanken',
+  'databases.subtitle': 'MySQL-Datenbanken, die diesem Server zugewiesen sind.',
+  'databases.new': 'Neue Datenbank',
+  'databases.createTitle': 'Datenbank erstellen',
+  'databases.creating': 'Wird erstellt…',
+  'databases.create': 'Datenbank erstellen',
+  'databases.empty': 'Keine Datenbanken',
+  'databases.emptyHint':
+    'Eine MySQL-Datenbank dient den Plugins, die Daten speichern: Rechte, Schutz, Wirtschaft.',
+  'databases.notAllowed':
+    'Dieser Server darf keine Datenbanken haben. Bitte einen Administrator, das Limit zu erhöhen.',
+  'databases.noHost':
+    'Für diesen Node ist kein Datenbankserver eingetragen. Ein Administrator muss erst einen hinzufügen, bevor du eine Datenbank anlegen kannst.',
+  'databases.name': 'Name der Datenbank',
+  'databases.nameHint':
+    'Buchstaben, Ziffern und Unterstriche. Dem echten Namen wird die Serverkennung vorangestellt, damit er nicht mit einem anderen kollidiert.',
+  'databases.namePlaceholder': 'plugins',
+  'databases.remote': 'Verbindungen erlaubt von',
+  'databases.remoteHint':
+    'Eine Adresse, ein Muster wie 192.168.1.% oder leer, um jede Herkunft zu erlauben.',
+  'databases.remoteLabel': 'Verbindungen von',
+  'databases.host': 'Host',
+  'databases.user': 'Benutzer',
+  'databases.password': 'Passwort',
+  'databases.show': 'anzeigen',
+  'databases.hide': 'verbergen',
+  'databases.rotate': 'Passwort ändern',
+  'databases.rotateConfirm':
+    'Das neue Passwort gilt sofort. Plugins, die mit dem alten eingerichtet sind, verlieren die Verbindung. Fortfahren?',
+  'serverSettings.title': 'Einstellungen',
+  'serverSettings.subtitle': 'SFTP-Zugang, technische Angaben und Neuinstallation.',
+  'serverSettings.sftpTitle': 'SFTP-Zugang',
+  'serverSettings.sftpAddress': 'Serveradresse',
+  'serverSettings.sftpUsername': 'Benutzername',
+  'serverSettings.sftpPasswordNote':
+    'Das SFTP-Passwort ist das deines Kontos in diesem Panel. Es wird hier nie angezeigt.',
+  'serverSettings.sftpOpen': 'SFTP öffnen',
+  'serverSettings.identityTitle': 'Name und Beschreibung',
+  'serverSettings.name': 'Servername',
+  'serverSettings.description': 'Beschreibung',
+  'serverSettings.saved': 'Gespeichert.',
+  'serverSettings.saveFailed': 'Speichern nicht möglich.',
+  'serverSettings.technicalTitle': 'Technische Angaben',
+  'serverSettings.identifier': 'Kennung',
+  'serverSettings.node': 'Node',
+  'serverSettings.nodeAddress': 'Node-Adresse',
+  'serverSettings.address': 'Serveradresse',
+  'serverSettings.template': 'Vorlage',
+  'serverSettings.reinstallTitle': 'Server neu installieren',
+  'serverSettings.reinstallWarning':
+    'Der Server wird gestoppt, dann läuft das Installationsskript der Vorlage erneut. Je nach Vorlage können Dateien überschrieben werden — sichere sie vorher.',
+  'serverSettings.reinstall': 'Neu installieren',
+  'serverSettings.reinstalling': 'Wird gestartet…',
+  'serverSettings.reinstallPrompt': 'Gib zur Bestätigung den Servernamen ein: {name}',
+  'serverSettings.reinstallMismatch': 'Der Name stimmt nicht: Neuinstallation abgebrochen.',
+  'serverSettings.reinstallStarted': 'Neuinstallation gestartet. Verfolge sie in der Konsole.',
+  'serverSettings.reinstallFailed': 'Neuinstallation nicht möglich.',
+
+  'databases.count': '{used} von {limit} erlaubten Datenbanken.',
+  'databases.deletePrompt':
+    'Diese Datenbank und ihr gesamter Inhalt werden gelöscht. Gib zur Bestätigung ihren Namen ein: {name}',
+  'serverSettings.identifierNote':
+    'Die Kennung wird bei einer Fehlersuche abgefragt: sie benennt diesen Server eindeutig.',
 };

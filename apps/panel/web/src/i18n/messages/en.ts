@@ -395,6 +395,70 @@ export const en = {
     'No free port on this node. An administrator has to add some to the machine.',
   'startup.commandHint': 'Set by the template. The {{VARIABLES}} below are substituted at launch.',
   'activity.count': '{count} entries',
+
+  'databases.title': 'Databases',
+  'databases.subtitle': 'MySQL databases assigned to this server.',
+  'databases.new': 'New database',
+  'databases.createTitle': 'Create a database',
+  'databases.creating': 'Creating…',
+  'databases.create': 'Create the database',
+  'databases.empty': 'No databases',
+  'databases.emptyHint':
+    'A MySQL database serves the plugins that keep data: permissions, protections, economy.',
+  'databases.notAllowed':
+    'This server is not allowed to have databases. Ask an administrator to raise the limit.',
+  'databases.noHost':
+    'No database server is declared for this node. An administrator has to add one before you can create a database.',
+  'databases.name': 'Database name',
+  'databases.nameHint':
+    'Letters, digits and underscores. The real name is prefixed with the server identifier, so it cannot collide with another one.',
+  'databases.namePlaceholder': 'plugins',
+  'databases.remote': 'Connections allowed from',
+  'databases.remoteHint':
+    'An address, a pattern such as 192.168.1.%, or empty to allow any origin.',
+  'databases.remoteLabel': 'Connections from',
+  'databases.host': 'Host',
+  'databases.user': 'User',
+  'databases.password': 'Password',
+  'databases.show': 'show',
+  'databases.hide': 'hide',
+  'databases.rotate': 'Change the password',
+  'databases.rotateConfirm':
+    'The new password takes effect at once. Plugins configured with the old one will lose the connection. Continue?',
+  'serverSettings.title': 'Settings',
+  'serverSettings.subtitle': 'SFTP access, technical information and reinstall.',
+  'serverSettings.sftpTitle': 'SFTP access',
+  'serverSettings.sftpAddress': 'Server address',
+  'serverSettings.sftpUsername': 'Username',
+  'serverSettings.sftpPasswordNote':
+    'The SFTP password is the one of your account on this panel. It is never shown here.',
+  'serverSettings.sftpOpen': 'Open SFTP',
+  'serverSettings.identityTitle': 'Name and description',
+  'serverSettings.name': 'Server name',
+  'serverSettings.description': 'Description',
+  'serverSettings.saved': 'Saved.',
+  'serverSettings.saveFailed': 'Could not save.',
+  'serverSettings.technicalTitle': 'Technical information',
+  'serverSettings.identifier': 'Identifier',
+  'serverSettings.node': 'Node',
+  'serverSettings.nodeAddress': 'Node address',
+  'serverSettings.address': 'Server address',
+  'serverSettings.template': 'Template',
+  'serverSettings.reinstallTitle': 'Reinstall the server',
+  'serverSettings.reinstallWarning':
+    'The server is stopped, then the template install script runs again. Depending on the template, files may be overwritten — back up before continuing.',
+  'serverSettings.reinstall': 'Reinstall',
+  'serverSettings.reinstalling': 'Starting…',
+  'serverSettings.reinstallPrompt': 'To confirm the reinstall, type the server name: {name}',
+  'serverSettings.reinstallMismatch': 'The name does not match: reinstall cancelled.',
+  'serverSettings.reinstallStarted': 'Reinstall started. Follow it in the console.',
+  'serverSettings.reinstallFailed': 'Could not reinstall.',
+
+  'databases.count': '{used} of {limit} database(s) allowed.',
+  'databases.deletePrompt':
+    'This database and everything in it will be deleted. Type its name to confirm: {name}',
+  'serverSettings.identifierNote':
+    'The identifier is what you will be asked for when reporting a problem: it names this server without ambiguity.',
 } as const;
 
 export type MessageKey = keyof typeof en;

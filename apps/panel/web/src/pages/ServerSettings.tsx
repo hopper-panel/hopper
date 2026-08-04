@@ -4,6 +4,7 @@ import { useParams } from 'react-router-dom';
 import { PageHeader } from '../components/PageHeader';
 import { Alert, Badge, Button, Card, Field, Input, Spinner } from '../components/ui';
 import { ApiError, api } from '../lib/api';
+import { useTranslation } from '../i18n';
 import { useServerContext } from '../lib/server-context';
 
 interface Settings {
@@ -20,6 +21,7 @@ export function ServerSettingsPage() {
   const { uuid = '' } = useParams();
   const queryClient = useQueryClient();
   const { can } = useServerContext();
+  const { t } = useTranslation();
 
   const [name, setName] = useState<string | null>(null);
   const [description, setDescription] = useState<string | null>(null);
@@ -37,27 +39,27 @@ export function ServerSettingsPage() {
       api.patch<unknown>(`/api/servers/${uuid}`, body),
     onSuccess: () => {
       setFailure(null);
-      setNotice('Enregistré.');
+      setNotice(t('serverSettings.saved'));
       void queryClient.invalidateQueries({ queryKey: ['server', uuid] });
       void queryClient.invalidateQueries({ queryKey: ['server', uuid, 'settings'] });
     },
     onError: (error: unknown) =>
-      setFailure(error instanceof ApiError ? error.message : 'Enregistrement impossible.'),
+      setFailure(error instanceof ApiError ? error.message : t('serverSettings.saveFailed')),
   });
 
   const reinstall = useMutation({
     mutationFn: () => api.post<void>(`/api/servers/${uuid}/settings/reinstall`),
     onSuccess: () => {
       setFailure(null);
-      setNotice('Réinstallation lancée. Suivez son avancement dans la console.');
+      setNotice(t('serverSettings.reinstallStarted'));
       void queryClient.invalidateQueries({ queryKey: ['server', uuid] });
     },
     onError: (error: unknown) =>
-      setFailure(error instanceof ApiError ? error.message : 'Réinstallation impossible.'),
+      setFailure(error instanceof ApiError ? error.message : t('serverSettings.reinstallFailed')),
   });
 
   if (settings.isLoading || !settings.data) {
-    return <Spinner label="Chargement des paramètres…" />;
+    return <Spinner label={t('common.loading')} />;
   }
 
   const data = settings.data;
@@ -67,10 +69,7 @@ export function ServerSettingsPage() {
 
   return (
     <>
-      <PageHeader
-        title="Paramètres"
-        description="Accès SFTP, informations techniques et réinstallation."
-      />
+      <PageHeader title={t('serverSettings.title')} description={t('serverSettings.subtitle')} />
 
       {failure ? (
         <div className="mb-4">
@@ -88,32 +87,28 @@ export function ServerSettingsPage() {
         {can('file.sftp') ? (
           <Card>
             <h2 className="mb-4 text-sm font-semibold uppercase tracking-wide text-content">
-              Accès SFTP
+              {t('serverSettings.sftpTitle')}
             </h2>
 
             <div className="flex flex-col gap-4">
-              <Field label="Adresse du serveur">
+              <Field label={t('serverSettings.sftpAddress')}>
                 <Input value={data.sftp.address} readOnly className="font-mono" />
               </Field>
 
-              <Field label="Nom d’utilisateur">
+              <Field label={t('serverSettings.sftpUsername')}>
                 <Input value={data.sftp.username} readOnly className="font-mono" />
               </Field>
             </div>
 
             <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border-l-2 border-accent bg-surface px-3 py-2">
-              <p className="text-xs text-content-muted">
-                Le mot de passe SFTP est celui de votre compte sur ce panel. Il n’est jamais affiché
-                ici.
-              </p>
-              {/* Lien `sftp://` : le système ouvre le client configuré. Aucun
-                  mot de passe n'y figure — le mettre dans une URL le ferait
-                  apparaître dans l'historique et les journaux. */}
+              <p className="text-xs text-content-muted">{t('serverSettings.sftpPasswordNote')}</p>
+              {/* An `sftp://` link opens the configured client. No password
+                  goes in it — a password in a URL ends up in history and logs. */}
               <a
                 href={`${data.sftp.address.replace('sftp://', `sftp://${data.sftp.username}@`)}`}
                 className="whitespace-nowrap text-sm font-medium text-accent hover:underline"
               >
-                Ouvrir le SFTP
+                {t('serverSettings.sftpOpen')}
               </a>
             </div>
           </Card>
@@ -121,11 +116,11 @@ export function ServerSettingsPage() {
 
         <Card>
           <h2 className="mb-4 text-sm font-semibold uppercase tracking-wide text-content">
-            Nom et description
+            {t('serverSettings.identityTitle')}
           </h2>
 
           <div className="flex flex-col gap-4">
-            <Field label="Nom du serveur">
+            <Field label={t('serverSettings.name')}>
               <Input
                 value={currentName}
                 disabled={!can('settings.rename')}
@@ -133,7 +128,7 @@ export function ServerSettingsPage() {
               />
             </Field>
 
-            <Field label="Description">
+            <Field label={t('serverSettings.description')}>
               <textarea
                 className="min-h-24 w-full rounded-lg border border-border-subtle bg-surface px-3 py-2 text-sm text-content focus:border-accent focus:outline-none disabled:opacity-60"
                 value={currentDescription}
@@ -152,7 +147,7 @@ export function ServerSettingsPage() {
                   rename.mutate({ name: currentName.trim(), description: currentDescription })
                 }
               >
-                {rename.isPending ? 'Enregistrement…' : 'Enregistrer'}
+                {rename.isPending ? t('common.saving') : t('common.save')}
               </Button>
             </div>
           ) : null}
@@ -160,62 +155,56 @@ export function ServerSettingsPage() {
 
         <Card>
           <h2 className="mb-4 text-sm font-semibold uppercase tracking-wide text-content">
-            Informations techniques
+            {t('serverSettings.technicalTitle')}
           </h2>
 
           <dl className="flex flex-col gap-3 text-sm">
-            <Row label="Node" value={<Badge>{data.node.name}</Badge>} />
+            <Row label={t('serverSettings.node')} value={<Badge>{data.node.name}</Badge>} />
             <Row
-              label="Adresse du node"
+              label={t('serverSettings.nodeAddress')}
               value={<span className="font-mono">{data.node.fqdn}</span>}
             />
-            <Row label="Template" value={data.template} />
+            <Row label={t('serverSettings.template')} value={data.template} />
             <Row
-              label="Identifiant"
+              label={t('serverSettings.identifier')}
               value={
                 <code className="rounded bg-surface px-2 py-1 font-mono text-xs">{data.uuid}</code>
               }
             />
           </dl>
 
-          <p className="mt-3 text-xs text-content-muted">
-            L’identifiant est ce qu’on vous demandera pour un diagnostic : il désigne ce serveur
-            dans les journaux du node.
-          </p>
+          <p className="mt-3 text-xs text-content-muted">{t('serverSettings.identifierNote')}</p>
         </Card>
 
         {can('settings.reinstall') ? (
           <Card>
             <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-content">
-              Réinstaller le serveur
+              {t('serverSettings.reinstallTitle')}
             </h2>
 
-            <p className="text-sm text-content-muted">
-              Le serveur est arrêté, puis le script d’installation du template est rejoué. Selon le
-              template, <strong>des fichiers peuvent être écrasés</strong> — sauvegardez avant de
-              continuer.
-            </p>
+            <p className="text-sm text-content-muted">{t('serverSettings.reinstallWarning')}</p>
 
             <div className="mt-4 flex justify-end">
               <Button
                 variant="danger"
                 disabled={reinstall.isPending}
                 onClick={() => {
-                  // Confirmation par le nom du serveur : un « êtes-vous sûr ? »
-                  // se valide sans lire, et cette action peut effacer des
-                  // fichiers.
+                  // Confirmed by typing the server name: an "are you sure?"
+                  // gets clicked through, and this action can erase files.
                   const typed = window.prompt(
-                    `Pour confirmer la réinstallation, saisissez le nom du serveur : ${data.name}`,
+                    t('serverSettings.reinstallPrompt', { name: data.name }),
                   );
 
                   if (typed?.trim() === data.name) {
                     reinstall.mutate();
                   } else if (typed !== null) {
-                    setFailure('Le nom saisi ne correspond pas : réinstallation annulée.');
+                    setFailure(t('serverSettings.reinstallMismatch'));
                   }
                 }}
               >
-                {reinstall.isPending ? 'Lancement…' : 'Réinstaller'}
+                {reinstall.isPending
+                  ? t('serverSettings.reinstalling')
+                  : t('serverSettings.reinstall')}
               </Button>
             </div>
           </Card>
