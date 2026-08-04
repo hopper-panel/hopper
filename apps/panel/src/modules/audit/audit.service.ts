@@ -53,6 +53,10 @@ export const AUDIT_EVENTS = {
   SCHEDULE_DELETED: 'schedule.deleted',
   SCHEDULE_RUN: 'schedule.run',
 
+  WEBHOOK_CREATED: 'webhook.created',
+  WEBHOOK_UPDATED: 'webhook.updated',
+  WEBHOOK_DELETED: 'webhook.deleted',
+
   SUBUSER_CREATED: 'subuser.created',
   SUBUSER_UPDATED: 'subuser.updated',
   SUBUSER_DELETED: 'subuser.deleted',

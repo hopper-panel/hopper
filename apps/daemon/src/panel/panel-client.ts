@@ -6,6 +6,7 @@ import {
   type ServerConfiguration,
   type SftpAuthRequest,
   type SftpAuthResponse,
+  type StatusReport,
 } from '@hopper/shared';
 import type { DaemonConfig } from '../config/schema.js';
 import type { Logger } from '../logger.js';
@@ -98,6 +99,34 @@ export class PanelClient {
 
     if (!response.ok) {
       throw new Error(`Le panel a répondu ${response.status} au rapport d'installation.`);
+    }
+  }
+
+  /**
+   * Signale au panel un changement d'état.
+   *
+   * Le panel ne stocke pas cet état — il ne saurait pas le tenir à jour — mais
+   * il en a besoin au vol pour les notifications sortantes. L'échec de cet
+   * appel n'a donc aucune conséquence sur le serveur : il est journalisé, pas
+   * réessayé, et le délai est court pour ne pas retenir le daemon sur un panel
+   * indisponible.
+   */
+  async reportStatus(serverUuid: string, report: StatusReport): Promise<void> {
+    const response = await fetch(
+      new URL(REMOTE_ROUTES.serverStatus(serverUuid), this.config.panel.url),
+      {
+        method: 'POST',
+        headers: {
+          authorization: `Bearer ${this.token}`,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify(report),
+        signal: AbortSignal.timeout(5000),
+      },
+    );
+
+    if (!response.ok) {
+      throw new Error(`Le panel a répondu ${response.status} au rapport d'état.`);
     }
   }
 

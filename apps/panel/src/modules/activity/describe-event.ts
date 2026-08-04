@@ -117,6 +117,16 @@ export function describeEvent(event: string, metadata: Metadata): string {
     case AUDIT_EVENTS.DATABASE_DELETED:
       return 'A supprimé une base de données.';
 
+    // -- Notifications sortantes --------------------------------------------
+    case AUDIT_EVENTS.WEBHOOK_CREATED:
+      // L'URL figure dans le message : c'est une requête que le panel émettra
+      // désormais tout seul, et savoir vers où compte autant que savoir qui.
+      return `A ajouté une notification vers${quoted(text(metadata, 'url'))}.`;
+    case AUDIT_EVENTS.WEBHOOK_UPDATED:
+      return `A modifié une notification vers${quoted(text(metadata, 'url'))}.`;
+    case AUDIT_EVENTS.WEBHOOK_DELETED:
+      return 'A supprimé une notification.';
+
     // -- Tâches planifiées --------------------------------------------------
     case AUDIT_EVENTS.SCHEDULE_CREATED:
       return `A créé la tâche planifiée${quoted(text(metadata, 'name'))}.`;

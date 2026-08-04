@@ -399,6 +399,7 @@ model Server {
   backups      Backup[]
   databases    Database[]
   schedules    Schedule[]
+  webhooks     Webhook[]
   auditEntries AuditLog[]       @relation("AuditServer")
 
   @@index([ownerId])
@@ -406,6 +407,44 @@ model Server {
   @@index([templateId])
   @@index([status])
   @@map("servers")
+}
+
+/// Notification sortante, déclenchée par un événement d'un serveur.
+///
+/// Attachée à un serveur et non à l'instance : c'est le propriétaire du serveur
+/// qui veut être prévenu de ses redémarrages, et lui seul doit pouvoir diriger
+/// une requête sortante depuis le panel.
+model Webhook {
+  id       Int    @id @default(autoincrement())
+  uuid     String @unique @default(uuid())
+  serverId Int
+  server   Server @relation(fields: [serverId], references: [id], onDelete: Cascade)
+
+  url         String
+  description String @default("")
+
+  /// Événements souscrits. Vide = aucun envoi.
+  events String[]
+
+  /// Clé de signature HMAC, chiffrée au repos. Le destinataire s'en sert pour
+  /// vérifier que la requête vient bien de ce panel.
+  secretEncrypted String
+
+  active Boolean @default(true)
+
+  /// Dernière tentative : code HTTP, ou message d'erreur réseau.
+  lastStatus      Int?
+  lastError       String?
+  lastAttemptAt   DateTime?
+  lastSuccessAt   DateTime?
+  /// Échecs consécutifs. Au-delà du seuil, le webhook se désactive seul.
+  failureCount    Int       @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([serverId])
+  @@map("webhooks")
 }
 
 model ServerVariable {

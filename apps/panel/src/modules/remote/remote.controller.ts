@@ -2,6 +2,7 @@ import {
   backupReportSchema,
   installReportSchema,
   remoteServersQuerySchema,
+  statusReportSchema,
   sftpAuthRequestSchema,
   type BackupReport,
   type InstallReport,
@@ -9,6 +10,7 @@ import {
   type ServerConfiguration,
   type SftpAuthRequest,
   type SftpAuthResponse,
+  type StatusReport,
 } from '@hopper/shared';
 import {
   Body,
@@ -30,6 +32,8 @@ import { AUDIT_EVENTS, AuditService } from '../audit/audit.service.js';
 import { BackupsService } from '../backups/backups.service.js';
 import { Public } from '../auth/decorators.js';
 import { ServerConfigurationService } from '../servers/server-configuration.service.js';
+import { WEBHOOK_EVENTS } from '../webhooks/events.js';
+import { WebhooksService } from '../webhooks/webhooks.service.js';
 import { RemoteNodeGuard, type RemoteRequest } from './remote-node.guard.js';
 import { SftpAuthService } from './sftp-auth.service.js';
 
@@ -53,6 +57,7 @@ export class RemoteController {
     private readonly audit: AuditService,
     private readonly sftp: SftpAuthService,
     private readonly backups: BackupsService,
+    private readonly webhooks: WebhooksService,
   ) {}
 
   /**
@@ -145,6 +150,17 @@ export class RemoteController {
         error: body.error ?? null,
       },
     });
+
+    this.webhooks.dispatch(
+      backup.serverId,
+      body.successful ? WEBHOOK_EVENTS.BACKUP_COMPLETED : WEBHOOK_EVENTS.BACKUP_FAILED,
+      {
+        Sauvegarde: backup.name,
+        ...(body.successful
+          ? { Taille: formatBytes(body.sizeBytes) }
+          : { Erreur: body.error ?? 'cause inconnue' }),
+      },
+    );
   }
 
   /**
@@ -188,5 +204,76 @@ export class RemoteController {
       serverId: server.id,
       metadata: { successful: body.successful, node: request.node!.name },
     });
+
+    this.webhooks.dispatch(
+      server.id,
+      body.successful ? WEBHOOK_EVENTS.INSTALL_COMPLETED : WEBHOOK_EVENTS.INSTALL_FAILED,
+      { Réinstallation: body.reinstall ? 'oui' : 'non' },
+    );
   }
+
+  /**
+   * Changement d'état d'un serveur, rapporté par le daemon.
+   *
+   * Le panel ne stocke pas cet état — il vient du daemon, qui seul le connaît —
+   * mais il en a besoin au passage pour prévenir les destinataires abonnés. Un
+   * arrêt que personne n'a demandé est signalé comme un plantage : c'est la
+   * seule notification qui justifie de réveiller quelqu'un.
+   */
+  @Post('servers/:uuid/status')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async reportStatus(
+    @Param('uuid') uuid: string,
+    @Body(new ZodValidationPipe(statusReportSchema)) body: StatusReport,
+    @Req() request: RemoteRequest,
+  ): Promise<void> {
+    const server = await this.prisma.server.findFirst({
+      where: { uuid, nodeId: request.node!.id },
+      select: { id: true },
+    });
+
+    if (!server) {
+      throw new NotFoundException("Ce serveur n'appartient pas à ce node.");
+    }
+
+    if (body.state === 'running') {
+      this.webhooks.dispatch(server.id, WEBHOOK_EVENTS.SERVER_STARTED);
+      return;
+    }
+
+    // Les états intermédiaires — démarrage, arrêt en cours, installation — ne
+    // produisent rien : ils doubleraient chaque événement utile d'un message
+    // sans intérêt.
+    if (body.state !== 'offline') {
+      return;
+    }
+
+    if (body.expected) {
+      this.webhooks.dispatch(server.id, WEBHOOK_EVENTS.SERVER_STOPPED);
+      return;
+    }
+
+    // La cause quand le daemon la connaît : « tué faute de mémoire » explique à
+    // lui seul un arrêt que personne ne comprend.
+    this.webhooks.dispatch(server.id, WEBHOOK_EVENTS.SERVER_CRASHED, {
+      Cause: body.oomKilled
+        ? 'tué par le noyau, mémoire insuffisante'
+        : 'le processus s’est arrêté seul',
+      ...(body.exitCode === undefined ? {} : { 'Code de sortie': body.exitCode }),
+    });
+  }
+}
+
+/** Taille lisible, pour le message envoyé au destinataire. */
+function formatBytes(bytes: number): string {
+  const units = ['o', 'Kio', 'Mio', 'Gio', 'Tio'];
+  let value = bytes;
+  let unit = 0;
+
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024;
+    unit += 1;
+  }
+
+  return `${value % 1 === 0 ? value : value.toFixed(1)} ${units[unit]}`;
 }

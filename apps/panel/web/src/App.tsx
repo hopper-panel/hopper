@@ -18,6 +18,7 @@ import { ServerSchedulesPage } from './pages/ServerSchedules';
 import { ServerSettingsPage } from './pages/ServerSettings';
 import { ServerStartupPage } from './pages/ServerStartup';
 import { ServerSubusersPage } from './pages/ServerSubusers';
+import { ServerWebhooksPage } from './pages/ServerWebhooks';
 import { AdminLayout } from './pages/admin/AdminLayout';
 import { AdminDatabaseHostsPage } from './pages/admin/DatabaseHosts';
 import { AdminNodeDetailPage } from './pages/admin/NodeDetail';
@@ -77,6 +78,7 @@ export function App() {
           <Route path="network" element={<ServerNetworkPage />} />
           <Route path="startup" element={<ServerStartupPage />} />
           <Route path="settings" element={<ServerSettingsPage />} />
+          <Route path="webhooks" element={<ServerWebhooksPage />} />
           <Route path="activity" element={<ServerActivityPage />} />
         </Route>
 

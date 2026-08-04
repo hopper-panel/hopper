@@ -48,6 +48,7 @@ const TABS: Tab[] = [
   { path: 'subusers', label: 'Utilisateurs', permission: 'user.read' },
   { path: 'network', label: 'Réseau', permission: 'allocation.read' },
   { path: 'startup', label: 'Démarrage', permission: 'startup.read' },
+  { path: 'webhooks', label: 'Notifications', permission: 'webhook.read' },
   { path: 'settings', label: 'Paramètres' },
   { path: 'activity', label: 'Activité', permission: 'activity.read' },
 ];

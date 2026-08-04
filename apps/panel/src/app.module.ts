@@ -17,6 +17,7 @@ import { StartupModule } from './modules/startup/startup.module.js';
 import { SubusersModule } from './modules/subusers/subusers.module.js';
 import { TemplatesModule } from './modules/templates/templates.module.js';
 import { UsersModule } from './modules/users/users.module.js';
+import { WebhooksModule } from './modules/webhooks/webhooks.module.js';
 import { PrismaModule } from './prisma/prisma.module.js';
 import { WebModule } from './web/web.module.js';
 
@@ -45,6 +46,7 @@ import { WebModule } from './web/web.module.js';
     SettingsModule,
     DatabasesModule,
     ActivityModule,
+    WebhooksModule,
     RemoteModule,
     HealthModule,
     // En dernier : sa route générique sert de repli à l'interface et ne doit

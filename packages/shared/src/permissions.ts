@@ -59,6 +59,11 @@ export const PERMISSIONS = {
   SCHEDULE_UPDATE: 'schedule.update',
   SCHEDULE_DELETE: 'schedule.delete',
 
+  WEBHOOK_READ: 'webhook.read',
+  WEBHOOK_CREATE: 'webhook.create',
+  WEBHOOK_UPDATE: 'webhook.update',
+  WEBHOOK_DELETE: 'webhook.delete',
+
   SETTINGS_RENAME: 'settings.rename',
   SETTINGS_REINSTALL: 'settings.reinstall',
 
@@ -188,6 +193,18 @@ export const PERMISSION_GROUPS: Record<
       PERMISSIONS.SCHEDULE_CREATE,
       PERMISSIONS.SCHEDULE_UPDATE,
       PERMISSIONS.SCHEDULE_DELETE,
+    ],
+  },
+  webhook: {
+    label: 'Notifications',
+    description:
+      'Déclarer des adresses prévenues des événements du serveur — Discord, ou n’importe quel ' +
+      'service qui accepte une requête entrante.',
+    permissions: [
+      PERMISSIONS.WEBHOOK_READ,
+      PERMISSIONS.WEBHOOK_CREATE,
+      PERMISSIONS.WEBHOOK_UPDATE,
+      PERMISSIONS.WEBHOOK_DELETE,
     ],
   },
   settings: {
@@ -403,6 +420,25 @@ export const PERMISSION_DETAILS: Record<Permission, { label: string; description
   [PERMISSIONS.ACTIVITY_READ]: {
     label: "Voir l'activité",
     description: 'Consulter le journal des actions menées sur ce serveur et par qui.',
+  },
+
+  [PERMISSIONS.WEBHOOK_READ]: {
+    label: 'Voir les notifications',
+    description: 'Consulter les adresses prévenues des événements du serveur.',
+  },
+  [PERMISSIONS.WEBHOOK_CREATE]: {
+    label: 'Ajouter une notification',
+    description:
+      'Déclarer une adresse que le panel appellera. Le panel émet alors une requête sortante vers ' +
+      'une adresse choisie par le titulaire de cette permission.',
+  },
+  [PERMISSIONS.WEBHOOK_UPDATE]: {
+    label: 'Modifier une notification',
+    description: 'Changer l’adresse, les événements souscrits ou l’état d’une notification.',
+  },
+  [PERMISSIONS.WEBHOOK_DELETE]: {
+    label: 'Supprimer une notification',
+    description: 'Retirer une adresse prévenue.',
   },
 };
 

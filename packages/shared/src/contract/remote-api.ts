@@ -71,6 +71,18 @@ export const statusReportSchema = z.object({
   state: serverStateSchema,
   /** Millisecondes epoch de la transition, pour ordonner des rapports arrivés en désordre. */
   at: z.number().int().positive(),
+  /**
+   * Faux quand l'arrêt n'a été demandé par personne.
+   *
+   * C'est toute la différence entre « le serveur est éteint » et « le serveur
+   * s'est éteint tout seul » — la seconde mérite une notification, la première
+   * non.
+   */
+  expected: z.boolean().default(true),
+  /** Code de sortie du conteneur, quand le daemon a pu le lire. */
+  exitCode: z.number().int().optional(),
+  /** Vrai si le noyau a tué le conteneur faute de mémoire. */
+  oomKilled: z.boolean().default(false),
 });
 
 export type StatusReport = z.infer<typeof statusReportSchema>;

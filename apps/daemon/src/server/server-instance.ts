@@ -1,7 +1,13 @@
 import { EventEmitter } from 'node:events';
 import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
-import type { PowerAction, ResourceUsage, ServerConfiguration, ServerState } from '@hopper/shared';
+import type {
+  PowerAction,
+  ResourceUsage,
+  ServerConfiguration,
+  ServerState,
+  StatusReport,
+} from '@hopper/shared';
 import type Dockerode from 'dockerode';
 import type { Duplex } from 'node:stream';
 import type { DockerClient } from '../docker/client.js';
@@ -175,6 +181,7 @@ export class ServerInstance extends EventEmitter {
 
     if (state === 'running' && this.startedAt === null) {
       this.startedAt = Date.now();
+      this.reportStatus({ state: 'running', at: this.startedAt, expected: true, oomKilled: false });
     } else if (state === 'offline') {
       this.startedAt = null;
     }
@@ -286,7 +293,18 @@ export class ServerInstance extends EventEmitter {
       // cause : un serveur qui disparaît sans explication est le pire cas pour
       // celui qui l'exploite.
       const wasStopping = this.state === 'stopping';
-      void this.explainExit(wasStopping);
+
+      void this.explainExit(wasStopping).then((exit) => {
+        this.reportStatus({
+          state: 'offline',
+          at: Date.now(),
+          // Un arrêt demandé, ou un `/stop` tapé par un joueur — code 0 — est
+          // attendu. Tout le reste ne l'est pas, et mérite d'être signalé.
+          expected: wasStopping || exit.exitCode === 0,
+          exitCode: exit.exitCode,
+          oomKilled: exit.oomKilled,
+        });
+      });
 
       this.setState('offline');
       this.stopStatsStream();
@@ -303,7 +321,9 @@ export class ServerInstance extends EventEmitter {
    * phrase, et rien n'indique ce qui s'est passé. L'opérateur conclut à un
    * plantage de son plugin et cherche des heures au mauvais endroit.
    */
-  private async explainExit(wasStopping: boolean): Promise<void> {
+  private async explainExit(
+    wasStopping: boolean,
+  ): Promise<{ oomKilled: boolean; exitCode: number | undefined }> {
     let info: Awaited<ReturnType<Dockerode.Container['inspect']>> | null = null;
 
     try {
@@ -326,19 +346,35 @@ export class ServerInstance extends EventEmitter {
         { server: this.uuid, limitMib },
         'Serveur tué par le noyau pour dépassement mémoire',
       );
-      return;
-    }
-
-    if (wasStopping) {
-      return;
+      return { oomKilled: true, exitCode: info.State.ExitCode };
     }
 
     const code = info?.State.ExitCode;
+
+    if (wasStopping) {
+      return { oomKilled: false, exitCode: code };
+    }
+
     this.emitDaemonLine(
       code === undefined || code === 0
         ? 'Le processus du serveur s’est arrêté.'
         : `Le processus du serveur s’est arrêté (code ${code}).`,
     );
+
+    return { oomKilled: false, exitCode: code };
+  }
+
+  /**
+   * Signale un changement d'état au panel.
+   *
+   * Sans attente ni reprise : cette information sert aux notifications
+   * sortantes, et un panel momentanément injoignable ne doit ni retarder ni
+   * empêcher quoi que ce soit sur cette machine.
+   */
+  private reportStatus(report: StatusReport): void {
+    void this.options.panel.reportStatus(this.uuid, report).catch((error: unknown) => {
+      this.logger.debug({ server: this.uuid, err: error }, "Rapport d'état non remis");
+    });
   }
 
   // -------------------------------------------------------------------------
