@@ -4,18 +4,20 @@ import { serverStateSchema } from '../server-state.js';
 import { serverConfigurationSchema } from './server-configuration.js';
 
 /**
- * Contrat des appels **daemon → panel**, exposés par le panel sous `/api/remote/*`.
+ * Contract of the **daemon → panel** calls, exposed by the panel under
+ * `/api/remote/*`.
  *
- * Le daemon s'authentifie avec le même jeton de node que celui qu'il accepte en
- * entrée, envoyé en `Authorization: Bearer <tokenId>.<tokenSecret>`. Le panel
- * identifie le node à partir de `tokenId` et compare le secret au hash stocké.
+ * The daemon authenticates with the same node token as the one it accepts on
+ * input, sent as `Authorization: Bearer <tokenId>.<tokenSecret>`. The panel
+ * identifies the node from `tokenId` and compares the secret to the stored
+ * hash.
  *
- * Ces routes ne sont jamais appelées par un navigateur : elles doivent être
- * refusées si la requête porte un cookie de session au lieu d'un jeton de node.
+ * These routes are never called by a browser: they have to be refused if the
+ * request carries a session cookie instead of a node token.
  */
 
 export const REMOTE_ROUTES = {
-  /** Réconciliation au démarrage du daemon : la liste des serveurs qu'il doit héberger. */
+  /** Reconciliation at daemon startup: the list of servers it has to host. */
   servers: '/api/remote/servers',
   server: (uuid: string) => `/api/remote/servers/${uuid}`,
   serverInstall: (uuid: string) => `/api/remote/servers/${uuid}/install`,
@@ -30,10 +32,10 @@ export const REMOTE_ROUTES = {
 // ---------------------------------------------------------------------------
 
 /**
- * Le daemon pagine cette liste au démarrage pour savoir quels conteneurs doivent
- * exister. Tout conteneur Hopper présent sur l'hôte mais absent de cette liste
- * est signalé à l'opérateur, jamais supprimé automatiquement : une erreur de
- * configuration ne doit pas détruire les données d'un serveur.
+ * The daemon pages through this list at startup to learn which containers have
+ * to exist. Any Hopper container present on the host but absent from this list
+ * is reported to the operator, never deleted automatically: a configuration
+ * mistake must not destroy a server's data.
  */
 export const remoteServersQuerySchema = z.object({
   page: z.coerce.number().int().positive().default(1),
@@ -57,7 +59,7 @@ export type RemoteServersResponse = z.infer<typeof remoteServersResponseSchema>;
 
 export const installReportSchema = z.object({
   successful: z.boolean(),
-  /** Vrai s'il s'agissait d'une réinstallation, pas d'une première installation. */
+  /** True if this was a reinstall, not a first installation. */
   reinstall: z.boolean().default(false),
 });
 
@@ -69,19 +71,19 @@ export type InstallReport = z.infer<typeof installReportSchema>;
 
 export const statusReportSchema = z.object({
   state: serverStateSchema,
-  /** Millisecondes epoch de la transition, pour ordonner des rapports arrivés en désordre. */
+  /** Epoch milliseconds of the transition, to order reports that arrive out of order. */
   at: z.number().int().positive(),
   /**
-   * Faux quand l'arrêt n'a été demandé par personne.
+   * False when nobody asked for the stop.
    *
-   * C'est toute la différence entre « le serveur est éteint » et « le serveur
-   * s'est éteint tout seul » — la seconde mérite une notification, la première
-   * non.
+   * That is the whole difference between "the server is off" and "the server
+   * went off on its own" — the second deserves a notification, the first does
+   * not.
    */
   expected: z.boolean().default(true),
-  /** Code de sortie du conteneur, quand le daemon a pu le lire. */
+  /** Exit code of the container, when the daemon could read it. */
   exitCode: z.number().int().optional(),
-  /** Vrai si le noyau a tué le conteneur faute de mémoire. */
+  /** True if the kernel killed the container for lack of memory. */
   oomKilled: z.boolean().default(false),
 });
 
@@ -92,14 +94,14 @@ export type StatusReport = z.infer<typeof statusReportSchema>;
 // ---------------------------------------------------------------------------
 
 /**
- * Le daemon délègue au panel l'authentification SFTP : lui seul connaît les
- * comptes. Le nom d'utilisateur porte le serveur visé, sous la forme
- * `<username>.<8 premiers caractères de l'UUID du serveur>`.
+ * The daemon delegates SFTP authentication to the panel: it alone knows the
+ * accounts. The username carries the target server, in the form
+ * `<username>.<first 8 characters of the server UUID>`.
  */
 export const sftpAuthRequestSchema = z.object({
   username: z.string().min(1).max(191),
   password: z.string().min(1).max(1024),
-  /** IP source, journalisée et soumise au rate-limit côté panel. */
+  /** Source IP, logged and rate-limited on the panel side. */
   ip: z.string().min(1),
 });
 
@@ -119,9 +121,9 @@ export type SftpAuthResponse = z.infer<typeof sftpAuthResponseSchema>;
 export const backupReportSchema = z.object({
   successful: z.boolean(),
   sizeBytes: z.number().int().nonnegative(),
-  /** SHA-256 de l'archive, vérifié à la restauration. */
+  /** SHA-256 of the archive, checked on restore. */
   checksum: z.string().regex(/^[a-f0-9]{64}$/),
-  /** Renseigné en cas d'échec, affiché à l'utilisateur. */
+  /** Filled in on failure, shown to the user. */
   error: z.string().optional(),
 });
 
@@ -132,8 +134,8 @@ export type BackupReport = z.infer<typeof backupReportSchema>;
 // ---------------------------------------------------------------------------
 
 /**
- * Événements d'audit produits par le daemon (upload de fichier, connexion SFTP,
- * suppression). Envoyés par lots pour ne pas générer une requête par action.
+ * Audit events produced by the daemon (file upload, SFTP sign-in, deletion).
+ * Sent in batches so as not to generate one request per action.
  */
 export const remoteActivityEntrySchema = z.object({
   serverUuid: z.uuid(),

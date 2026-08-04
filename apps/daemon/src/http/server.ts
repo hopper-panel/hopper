@@ -23,9 +23,9 @@ import { createNodeTokenGuard } from './auth.js';
 const PUBLIC_ROUTES = new Set(['/healthz']);
 
 /**
- * Le WebSocket de console porte sa propre authentification, par JWT signé du
- * panel : le hook de jeton de node ne doit donc pas s'y appliquer. C'est la
- * seule route dans ce cas, et elle est identifiée par son suffixe.
+ * The console WebSocket carries its own authentication, by a JWT signed by the
+ * panel: the node-token hook must therefore not apply to it. It is the only
+ * route in that case, and it is identified by its suffix.
  */
 function isConsoleWebsocket(url: string): boolean {
   return /^\/api\/servers\/[^/]+\/ws$/.test(url.split('?')[0] ?? '');
@@ -52,9 +52,9 @@ export async function buildHttpServer(
       }
     : null;
 
-  // Annoté en FastifyBaseLogger : passer directement le type Logger de pino
-  // spécialiserait le générique de FastifyInstance et rendrait le type
-  // incompatible avec celui attendu par les modules de routes.
+  // Annotated as FastifyBaseLogger: passing pino's Logger type directly would
+  // specialise FastifyInstance's generic and make the type incompatible with
+  // the one the route modules expect.
   const baseLogger: FastifyBaseLogger = logger;
 
   const app = Fastify({
@@ -62,29 +62,28 @@ export async function buildHttpServer(
     https,
     trustProxy: true,
     bodyLimit: config.api.uploadLimitBytes,
-    // Les identifiants de requête apparaissent dans les réponses d'erreur : ils
-    // sont ce qu'un opérateur cherche dans les journaux pour retrouver la trace.
+    // Request identifiers appear in the error responses: they are what an
+    // operator looks for in the logs to find the trace.
     genReqId: () => crypto.randomUUID(),
-    // En mode normal, une ligne par requête HTTP noierait les journaux : le
-    // daemon reçoit un appel de statut par serveur et par minute. Les erreurs
-    // continuent d'être journalisées par le gestionnaire dédié.
-    // Fastify attend une instance de LogController, pas la classe.
+    // In normal mode, one line per HTTP request would drown the logs: the
+    // daemon receives one status call per server per minute. Errors are still
+    // logged by the dedicated handler.
+    // Fastify expects an instance of LogController, not the class.
     logController: new LogController({ disableRequestLogging: !config.debug }),
   });
 
-  // Fastify refuse par défaut un type de contenu qu'il ne sait pas analyser :
-  // l'envoi d'un fichier échouerait en 415 avant d'atteindre la route. Ce
-  // parseur générique ne lit rien et laisse le flux intact, pour que l'envoi le
-  // consomme lui-même — un fichier de plusieurs gigaoctets ne doit jamais être
-  // assemblé en mémoire.
+  // Fastify refuses by default a content type it cannot parse: a file upload
+  // would fail with a 415 before reaching the route. This generic parser reads
+  // nothing and leaves the stream intact, so the upload consumes it itself — a
+  // file of several gigabytes must never be assembled in memory.
   app.addContentTypeParser('*', (_request, _payload, done) => {
     done(null, undefined);
   });
 
   await app.register(websocket, {
     options: {
-      // Une ligne de console dépasse rarement quelques kilooctets ; au-delà,
-      // c'est un client qui tente de saturer la mémoire du daemon.
+      // A console line rarely exceeds a few kilobytes; beyond that, it is a
+      // client trying to saturate the daemon's memory.
       maxPayload: 64 * 1024,
     },
   });
@@ -100,16 +99,16 @@ export async function buildHttpServer(
     }
 
     if (!authenticateNode(request, reply)) {
-      // La réponse 401 a déjà été envoyée : ne pas appeler done(), sinon Fastify
-      // poursuit le cycle et tente d'écrire une seconde réponse.
+      // The 401 has already been sent: do not call done(), or Fastify carries
+      // on with the cycle and tries to write a second response.
       return;
     }
 
     done();
   });
 
-  // Sonde de vitalité pour systemd et les orchestrateurs. Volontairement
-  // muette : elle ne révèle ni version, ni configuration, ni état des serveurs.
+  // Liveness probe for systemd and orchestrators. Deliberately mute: it
+  // reveals neither version, nor configuration, nor the state of the servers.
   app.get('/healthz', (_request, reply) => reply.send({ status: 'ok' }));
 
   registerSystemRoutes(app, docker, manager);
@@ -131,14 +130,14 @@ export async function buildHttpServer(
     const status = error.statusCode && error.statusCode >= 400 ? error.statusCode : 500;
 
     if (status >= 500) {
-      request.log.error({ err: error }, 'Erreur non gérée');
+      request.log.error({ err: error }, 'Unhandled error');
     }
 
     return reply.code(status).send({
       error: {
         code: status === 500 ? 'internal_error' : (error.code ?? 'request_error'),
-        // Un 500 ne doit jamais renvoyer le message d'origine : il contient
-        // parfois un chemin de fichier ou une portion de configuration.
+        // A 500 must never return the original message: it sometimes contains
+        // a file path or a fragment of configuration.
         message: status === 500 ? 'Erreur interne du daemon.' : error.message,
         requestId: request.id,
       },

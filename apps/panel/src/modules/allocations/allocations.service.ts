@@ -11,17 +11,16 @@ import { NodesService } from '../nodes/nodes.service.js';
 import { ServerConfigurationService } from '../servers/server-configuration.service.js';
 
 /**
- * Ports attribués à un serveur.
+ * Ports assigned to a server.
  *
- * Une allocation appartient au **node** et lui est prêtée : la retirer d'un
- * serveur la rend au pool, elle n'est jamais supprimée. C'est ce qui permet à
- * un administrateur de garder la maîtrise des ports ouverts sur sa machine,
- * pendant que l'utilisateur du serveur en dispose librement dans la limite
- * qu'on lui a fixée.
+ * An allocation belongs to the **node** and is lent to the server: taking it
+ * away returns it to the pool, it is never deleted. That is what lets an
+ * administrator keep control of the ports open on their machine while the
+ * server's user disposes of them freely within the limit they were given.
  *
- * Le port principal est celui injecté dans `server.properties` au démarrage :
- * en changer impose de renvoyer la configuration au daemon, faute de quoi le
- * panel afficherait un port et le serveur en écouterait un autre.
+ * The primary port is the one injected into `server.properties` at startup:
+ * changing it means sending the configuration back to the daemon, failing which
+ * the panel would show one port and the server would listen on another.
  */
 @Injectable()
 export class AllocationsService {
@@ -57,13 +56,13 @@ export class AllocationsService {
       meta: {
         limit: server.allocationLimit,
         used: allocations.length,
-        /** Ports libres sur le node : sans eux, « ajouter » ne mène nulle part. */
+        /** Free ports on the node: without them, "add" leads nowhere. */
         availableOnNode: available,
       },
     };
   }
 
-  /** Change la note affichée à côté d'un port. */
+  /** Changes the note shown beside a port. */
   async setAlias(serverUuid: string, allocationId: number, alias: string | null) {
     const server = await this.requireServer(serverUuid);
     await this.requireAllocation(server.id, allocationId);
@@ -83,12 +82,12 @@ export class AllocationsService {
   }
 
   /**
-   * Désigne le port principal.
+   * Designates the primary port.
    *
-   * Prend effet au **prochain démarrage** : le port est écrit dans la
-   * configuration du serveur, que le daemon applique au lancement. Le changer
-   * sur un serveur en marche ne déplace pas son écoute, et le dire vaut mieux
-   * que de laisser croire à une panne.
+   * Takes effect on the **next start**: the port is written into the server's
+   * configuration, which the daemon applies at launch. Changing it on a running
+   * server does not move what it listens on, and saying so beats letting it
+   * look like a breakage.
    */
   async setPrimary(serverUuid: string, allocationId: number) {
     const server = await this.requireServer(serverUuid);
@@ -109,18 +108,18 @@ export class AllocationsService {
   }
 
   /**
-   * Attribue un port libre du node.
+   * Assigns a free port from the node.
    *
-   * Le choix est fait par le panel et non par l'utilisateur : lui laisser
-   * désigner un port reviendrait à le laisser demander n'importe quel port de
-   * la machine, dont ceux réservés à d'autres serveurs.
+   * The choice is made by the panel, not by the user: letting them name a port
+   * would amount to letting them ask for any port on the machine, including
+   * those reserved for other servers.
    */
   async add(serverUuid: string) {
     const server = await this.requireServer(serverUuid);
 
     if (server.allocationLimit <= 0) {
       throw new BadRequestException(
-        "Ce serveur n'est pas autorisé à disposer de ports supplémentaires.",
+        'This server is not allowed to hold additional ports.',
       );
     }
 
@@ -128,7 +127,7 @@ export class AllocationsService {
 
     if (used >= server.allocationLimit) {
       throw new ConflictException(
-        `Ce serveur utilise déjà ses ${server.allocationLimit} port(s) autorisés.`,
+        `This server already uses its ${server.allocationLimit} allowed port(s).`,
       );
     }
 
@@ -139,20 +138,19 @@ export class AllocationsService {
 
     if (!free) {
       throw new ConflictException(
-        'Aucun port libre sur ce node. Un administrateur doit en ajouter à la machine.',
+        'No free port on this node. An administrator has to add some to the machine.',
       );
     }
 
-    // `updateMany` avec la condition `serverId: null` : deux demandes
-    // simultanées ne peuvent pas se voir attribuer le même port, c'est la base
-    // qui tranche.
+    // `updateMany` with the `serverId: null` condition: two simultaneous
+    // requests cannot be given the same port, the database decides.
     const claimed = await this.prisma.allocation.updateMany({
       where: { id: free.id, serverId: null },
       data: { serverId: server.id },
     });
 
     if (claimed.count === 0) {
-      throw new ConflictException('Ce port vient d’être attribué ailleurs, réessayez.');
+      throw new ConflictException('This port has just been assigned elsewhere, try again.');
     }
 
     await this.pushConfiguration(serverUuid, server.nodeId);
@@ -160,14 +158,14 @@ export class AllocationsService {
     return { id: free.id, ip: free.ip, port: free.port, alias: free.alias, primary: false };
   }
 
-  /** Rend un port au node. Le port principal ne peut pas être retiré. */
+  /** Returns a port to the node. The primary port cannot be taken away. */
   async remove(serverUuid: string, allocationId: number): Promise<void> {
     const server = await this.requireServer(serverUuid);
     await this.requireAllocation(server.id, allocationId);
 
     if (server.primaryAllocationId === allocationId) {
       throw new ConflictException(
-        'Le port principal ne peut pas être retiré. Désignez-en un autre auparavant.',
+        'The primary port cannot be taken away. Designate another one first.',
       );
     }
 
@@ -180,12 +178,12 @@ export class AllocationsService {
   }
 
   /**
-   * Renvoie la configuration au daemon.
+   * Sends the configuration back to the daemon.
    *
-   * Un échec n'annule pas le changement : il est enregistré en base, et le
-   * daemon le récupérera à sa prochaine réconciliation. Refuser l'opération
-   * parce que le node est momentanément injoignable laisserait le panel et la
-   * machine durablement désaccordés.
+   * A failure does not undo the change: it is recorded in the database, and the
+   * daemon will pick it up at its next reconciliation. Refusing the operation
+   * because the node is momentarily unreachable would leave the panel and the
+   * machine lastingly out of tune.
    */
   private async pushConfiguration(serverUuid: string, nodeId: number): Promise<void> {
     try {
@@ -200,8 +198,8 @@ export class AllocationsService {
       await this.client.syncServer(connection, configuration);
     } catch (error: unknown) {
       this.logger.warn(
-        `Synchronisation du serveur ${serverUuid} impossible, elle sera rattrapée au prochain ` +
-          `démarrage du daemon : ${String(error)}`,
+        `Could not sync server ${serverUuid}; it will be caught up the next time ` +
+          `the daemon starts: ${String(error)}`,
       );
     }
   }
@@ -222,7 +220,7 @@ export class AllocationsService {
     });
 
     if (!allocation) {
-      throw new NotFoundException("Ce port n'est pas attribué à ce serveur.");
+      throw new NotFoundException('This port is not assigned to this server.');
     }
 
     return allocation;

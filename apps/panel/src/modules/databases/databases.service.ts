@@ -17,17 +17,18 @@ import {
 import { MysqlClientService, type HostCredentials } from './mysql-client.service.js';
 
 /**
- * Bases de données attribuées aux serveurs.
+ * Databases assigned to servers.
  *
- * Une base vit sur un **host** déclaré par un administrateur : un serveur
- * MySQL ou MariaDB dont le panel connaît un compte d'administration. Le panel y
- * crée la base, un compte dédié, et n'accorde à ce compte que les droits sur
- * cette base — un serveur Minecraft ne doit rien pouvoir lire des autres.
+ * A database lives on a **host** declared by an administrator: a MySQL or
+ * MariaDB server the panel holds an administration account for. The panel
+ * creates the database there, a dedicated account, and grants that account
+ * rights on that database only — a Minecraft server must be able to read
+ * nothing of the others.
  *
- * Le mot de passe généré est **chiffré et non haché** : l'utilisateur doit
- * pouvoir le relire pour l'écrire dans la configuration de son plugin. C'est le
- * même compromis que pour les jetons de node, et il est assumé — un secret
- * qu'on doit présenter ne peut pas être à sens unique.
+ * The generated password is **encrypted, not hashed**: the user has to read it
+ * back to write it into their plugin's configuration. It is the same trade-off
+ * as for node tokens, and it is accepted — a secret one has to present cannot
+ * be one-way.
  */
 @Injectable()
 export class DatabasesService {
@@ -55,7 +56,7 @@ export class DatabasesService {
       meta: {
         limit: server.databaseLimit,
         used: databases.length,
-        /** Sans host déclaré, le bouton de création ne mènerait nulle part. */
+        /** With no host declared, the create button would lead nowhere. */
         hostsAvailable: hosts.length,
       },
     };
@@ -66,7 +67,7 @@ export class DatabasesService {
 
     if (server.databaseLimit <= 0) {
       throw new BadRequestException(
-        "Ce serveur n'est pas autorisé à disposer de bases de données.",
+        'This server is not allowed to hold databases.',
       );
     }
 
@@ -74,7 +75,7 @@ export class DatabasesService {
 
     if (used >= server.databaseLimit) {
       throw new ConflictException(
-        `Ce serveur utilise déjà ses ${server.databaseLimit} base(s) autorisée(s).`,
+        `This server already uses its ${server.databaseLimit} allowed database(s).`,
       );
     }
 
@@ -83,7 +84,7 @@ export class DatabasesService {
 
     if (!host) {
       throw new ConflictException(
-        "Aucun serveur de bases de données n'est déclaré pour ce node. " +
+        'No database server is declared for this node. ' +
           'Un administrateur doit en ajouter un.',
       );
     }
@@ -94,9 +95,9 @@ export class DatabasesService {
 
     try {
       database = databaseNameFor(server.id, input.name);
-      // Huit octets hexadécimaux : assez pour que deux bases d'un même serveur
-      // ne se disputent jamais un compte, assez court pour la limite de 32
-      // caractères de MySQL.
+      // Eight hexadecimal bytes: enough that two databases of the same server
+      // never fight over an account, short enough for MySQL's 32-character
+      // limit.
       username = userNameFor(server.id, randomBytes(4).toString('hex'));
       remote = assertSafeHostPattern(input.remote ?? '');
     } catch (error: unknown) {
@@ -112,11 +113,11 @@ export class DatabasesService {
     });
 
     if (existing) {
-      throw new ConflictException('Une base porte déjà ce nom sur ce serveur.');
+      throw new ConflictException('A database already bears this name on this server.');
     }
 
-    // 24 octets : le mot de passe n'est jamais tapé à la main, autant le rendre
-    // hors de portée d'une attaque hors ligne.
+    // 24 bytes: the password is never typed by hand, so it may as well be out
+    // of reach of an offline attack.
     const password = randomBytes(24).toString('base64url');
 
     await this.mysql.createDatabase(this.credentialsOf(host), {
@@ -141,9 +142,9 @@ export class DatabasesService {
 
       return this.toPublic(created);
     } catch (error: unknown) {
-      // La base existe sur le serveur SQL mais pas dans le panel : sans ce
-      // retrait, elle deviendrait invisible et personne ne pourrait plus ni
-      // l'utiliser ni la supprimer.
+      // The database exists on the SQL server but not in the panel: without
+      // this removal it would become invisible and nobody could use or delete
+      // it any more.
       this.logger.error(`Enregistrement de ${database} impossible, retrait : ${String(error)}`);
 
       await this.mysql
@@ -154,7 +155,7 @@ export class DatabasesService {
     }
   }
 
-  /** Régénère le mot de passe. L'ancien cesse aussitôt de fonctionner. */
+  /** Regenerates the password. The old one stops working at once. */
   async rotatePassword(serverUuid: string, databaseUuid: string) {
     const entry = await this.requireDatabase(serverUuid, databaseUuid);
     const password = randomBytes(24).toString('base64url');
@@ -187,11 +188,11 @@ export class DatabasesService {
   }
 
   /**
-   * Hosts utilisables par un serveur.
+   * Hosts a server can use.
    *
-   * Ceux rattachés à son node d'abord, puis les hosts généraux : une base
-   * gagne à vivre près du serveur qui l'interroge, chaque requête d'un plugin
-   * traversant le réseau à chaque tick.
+   * Those attached to its node first, then the general hosts: a database is
+   * better off close to the server querying it, since a plugin's every query
+   * crosses the network on every tick.
    */
   private async availableHosts(nodeId: number) {
     return this.prisma.databaseHost.findMany({
@@ -229,9 +230,9 @@ export class DatabasesService {
       publicPort: number | null;
     };
   }) {
-    // L'adresse annoncée est celle par laquelle le **joueur** joint le serveur
-    // SQL, souvent différente de celle qu'emprunte le panel : celui-ci passe
-    // volontiers par un réseau interne inaccessible de l'extérieur.
+    // The announced address is the one by which the **player** reaches the SQL
+    // server, often different from the panel's: the panel happily goes through
+    // an internal network unreachable from outside.
     const host = entry.host.publicHost ?? entry.host.host;
     const port = entry.host.publicPort ?? entry.host.port;
 
@@ -242,7 +243,7 @@ export class DatabasesService {
       password: this.crypto.decrypt(entry.passwordEncrypted),
       remote: entry.remote,
       host: { name: entry.host.name, address: host, port },
-      /** Chaîne prête à coller dans la configuration d'un plugin. */
+      /** String ready to paste into a plugin's configuration. */
       connectionString: `mysql://${entry.username}@${host}:${port}/${entry.database}`,
       createdAt: entry.createdAt,
     };
@@ -267,7 +268,7 @@ export class DatabasesService {
     });
 
     if (!entry) {
-      throw new NotFoundException('Base de données introuvable.');
+      throw new NotFoundException('Database not found.');
     }
 
     return entry;

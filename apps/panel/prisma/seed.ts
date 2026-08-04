@@ -5,14 +5,14 @@ import { TEMPLATE_CATALOG } from '@hopper/templates';
 import { ENCRYPTION_INFO, deriveKey, encryptWithKey } from '../src/common/crypto/cipher.js';
 
 /**
- * Amorçage de la base.
+ * Seeding the database.
  *
- * Idempotent : relancer le seed sur une instance existante ne doit rien casser
- * ni réinitialiser un mot de passe. C'est ce qui permet de l'appeler sans
- * réfléchir après une migration.
+ * Idempotent: rerunning the seed on an existing instance must break nothing and
+ * reset no password. That is what makes it safe to call without thinking after
+ * a migration.
  *
- * Le compte administrateur peut être fourni par variables d'environnement, ce
- * dont l'installeur se sert pour créer le compte sans interaction :
+ * The administrator account can be supplied through environment variables,
+ * which is how the installer creates the account without interaction:
  *   HOPPER_ADMIN_EMAIL, HOPPER_ADMIN_USERNAME, HOPPER_ADMIN_PASSWORD
  */
 
@@ -26,7 +26,7 @@ const ARGON2_OPTIONS = {
   outputLen: 32,
 } as const;
 
-/** Mot de passe aléatoire lisible, affiché une seule fois. */
+/** Readable random password, shown once only. */
 function generatePassword(): string {
   return randomBytes(18).toString('base64url');
 }
@@ -35,7 +35,7 @@ async function seedAdmin(): Promise<void> {
   const existing = await prisma.user.findFirst({ where: { role: 'ADMIN' } });
 
   if (existing) {
-    console.log(`✓ Compte administrateur déjà présent (${existing.email}) — inchangé.`);
+    console.log(`✓ Administrator account already present (${existing.email}) — unchanged.`);
     return;
   }
 
@@ -53,23 +53,23 @@ async function seedAdmin(): Promise<void> {
     },
   });
 
-  console.log('\n✓ Compte administrateur créé');
+  console.log('\n✓ Administrator account created');
   console.log(`   e-mail       : ${email}`);
   console.log(`   utilisateur  : ${username}`);
 
   if (generated) {
     console.log(`   mot de passe : ${password}`);
-    console.log('\n   ⚠ Ce mot de passe ne sera plus affiché. Notez-le maintenant.\n');
+    console.log('\n   ⚠ This password will not be shown again. Write it down now.\n');
   }
 }
 
 /**
- * Installe le catalogue livré avec Hopper.
+ * Installs the catalogue shipped with Hopper.
  *
- * Réplique la logique de `TemplateSyncService` : le seed tourne hors du
- * conteneur d'injection de NestJS et ne peut donc pas réutiliser le service.
- * Les deux doivent rester d'accord — c'est pourquoi les définitions viennent
- * toutes deux de `@hopper/templates`, jamais d'une copie locale.
+ * Replicates `TemplateSyncService`'s logic: the seed runs outside NestJS's
+ * injection container and therefore cannot reuse the service. The two have to
+ * stay in agreement — which is why both take their definitions from
+ * `@hopper/templates`, never from a local copy.
  */
 async function seedTemplates(): Promise<void> {
   let created = 0;
@@ -122,8 +122,8 @@ async function seedTemplates(): Promise<void> {
       continue;
     }
 
-    // Un template retouché par un administrateur n'est jamais écrasé : sa
-    // personnalisation survit aux mises à jour de Hopper.
+    // A template edited by an administrator is never overwritten: their
+    // customisation survives Hopper's updates.
     if (existing.modifiedByAdmin) {
       skipped += 1;
       continue;
@@ -140,21 +140,21 @@ async function seedTemplates(): Promise<void> {
   }
 
   console.log(
-    `✓ Catalogue : ${created} template(s) créé(s), ${updated} mis à jour, ${skipped} conservé(s).`,
+    `✓ Catalogue: ${created} template(s) created, ${updated} updated, ${skipped} kept.`,
   );
 }
 
 /**
- * Node de développement, aligné sur `apps/daemon/daemon.dev.yml`.
+ * Development node, aligned with `apps/daemon/daemon.dev.yml`.
  *
- * Sans lui, le panel signe les jetons de console avec un secret aléatoire tiré
- * à la création du node, tandis que le daemon de développement en attend un
- * fixe : la console échoue en boucle sur « Jeton invalide ou expiré », sans que
- * rien n'indique d'où vient le désaccord.
+ * Without it, the panel signs console tokens with a random secret drawn when
+ * the node is created, while the development daemon expects a fixed one: the
+ * console fails in a loop on "Invalid or expired token", with nothing to say
+ * where the disagreement comes from.
  *
- * Ces valeurs sont publiques et sans danger — elles ne servent qu'à un daemon
- * qui écoute sur la boucle locale. En production, c'est l'inverse : le panel
- * génère les secrets et l'installeur écrit le `daemon.yml` correspondant.
+ * These values are public and harmless — they only serve a daemon listening on
+ * the loopback. In production it is the other way round: the panel generates
+ * the secrets and the installer writes the matching `daemon.yml`.
  */
 async function seedDevNode(): Promise<void> {
   if (process.env.NODE_ENV === 'production') {
@@ -169,7 +169,7 @@ async function seedDevNode(): Promise<void> {
   const appSecret = process.env.APP_SECRET;
 
   if (!appSecret) {
-    console.log('• APP_SECRET absent : node de développement ignoré.');
+    console.log('• APP_SECRET missing: development node skipped.');
     return;
   }
 
@@ -178,8 +178,8 @@ async function seedDevNode(): Promise<void> {
   const node = await prisma.node.upsert({
     where: { uuid: DEV_NODE_UUID },
     update: {
-      // Réappliqué à chaque amorçage : si APP_SECRET a changé, les secrets
-      // chiffrés en base sont devenus illisibles et doivent être réécrits.
+      // Reapplied on every seed: if APP_SECRET changed, the secrets encrypted
+      // in the database have become unreadable and have to be rewritten.
       daemonTokenId: DEV_TOKEN_ID,
       daemonTokenEncrypted: encryptWithKey(key, DEV_TOKEN_SECRET),
       jwtSecret: encryptWithKey(key, DEV_JWT_SECRET),
@@ -187,7 +187,7 @@ async function seedDevNode(): Promise<void> {
     create: {
       uuid: DEV_NODE_UUID,
       name: 'node-dev',
-      description: 'Node local de développement, défini par apps/daemon/daemon.dev.yml.',
+      description: 'Local development node, defined by apps/daemon/daemon.dev.yml.',
       fqdn: '127.0.0.1',
       scheme: 'http',
       port: 8443,
@@ -207,7 +207,7 @@ async function seedDevNode(): Promise<void> {
     skipDuplicates: true,
   });
 
-  console.log(`✓ Node de développement « ${node.name} » prêt, ports 25565-25574.`);
+  console.log(`✓ Development node "${node.name}" ready, ports 25565-25574.`);
 }
 
 async function main(): Promise<void> {
@@ -218,7 +218,7 @@ async function main(): Promise<void> {
 
 main()
   .catch((error: unknown) => {
-    console.error("✖ Échec de l'amorçage :", error);
+    console.error('✖ Seeding failed:', error);
     process.exitCode = 1;
   })
   .finally(() => {

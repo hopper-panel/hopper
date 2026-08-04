@@ -6,16 +6,16 @@ import { InstanceSettingsService } from './instance-settings.service.js';
 import type { InstanceSettings } from './definitions.js';
 
 /**
- * Envoi de courriels.
+ * Sending emails.
  *
- * Le transport est construit à la demande à partir des paramètres en base, et
- * non au démarrage : changer le serveur SMTP dans l'administration doit prendre
- * effet sans redémarrer le panel. Il est mis en cache tant que la configuration
- * ne bouge pas, pour ne pas rouvrir une connexion TLS à chaque message.
+ * The transport is built on demand from the settings in the database, not at
+ * startup: changing the SMTP server in the administration has to take effect
+ * without restarting the panel. It is cached as long as the configuration does
+ * not move, so as not to reopen a TLS connection for every message.
  *
- * Aucun envoi ne fait échouer l'action qui l'a déclenché : créer un compte doit
- * réussir même si le serveur SMTP est mal réglé. L'échec est journalisé, et
- * l'administration propose un envoi de test pour le diagnostiquer.
+ * No send makes the action that triggered it fail: creating an account has to
+ * succeed even if the SMTP server is misconfigured. The failure is logged, and
+ * the administration offers a test send to diagnose it.
  */
 @Injectable()
 export class MailService {
@@ -36,11 +36,11 @@ export class MailService {
   }
 
   /**
-   * Envoi de vérification, déclenché depuis l'administration.
+   * Verification send, triggered from the administration.
    *
-   * Celui-ci **lève** en cas d'échec, contrairement aux envois ordinaires :
-   * c'est tout l'objet du bouton, et un message d'erreur précis vaut mieux
-   * qu'un « envoyé » qui n'apprend rien.
+   * This one **throws** on failure, unlike ordinary sends: that is the whole
+   * point of the button, and a precise error message beats a "sent" that
+   * teaches nothing.
    */
   async sendTest(to: string): Promise<void> {
     const settings = await this.settings.all();
@@ -51,7 +51,7 @@ export class MailService {
 
     if (settings.mailHost === '' || settings.mailFromAddress === '') {
       throw new BadRequestException(
-        'Renseignez au moins le serveur SMTP et l’adresse d’expédition.',
+        'Fill in at least the SMTP server and the sending address.',
       );
     }
 
@@ -59,11 +59,11 @@ export class MailService {
       await this.transport(settings).sendMail({
         from: this.from(settings),
         to,
-        subject: `${settings.panelName} — courriel de vérification`,
+        subject: `${settings.panelName} — verification email`,
         text: [
-          'Ce message confirme que votre serveur SMTP est correctement configuré.',
+          'This message confirms your SMTP server is correctly configured.',
           '',
-          `Envoyé par ${settings.panelName} depuis ${this.panelUrl()}.`,
+          `Sent by ${settings.panelName} from ${this.panelUrl()}.`,
         ].join('\n'),
       });
     } catch (error: unknown) {
@@ -74,12 +74,11 @@ export class MailService {
   }
 
   /**
-   * Souhaite la bienvenue à un compte créé par un administrateur.
+   * Welcomes an account created by an administrator.
    *
-   * Le message ne contient **pas** de mot de passe : un mot de passe envoyé par
-   * courriel reste lisible dans la boîte du destinataire, sur le serveur de son
-   * fournisseur et dans les sauvegardes de celui-ci. Il porte un lien à usage
-   * unique qui permet d'en choisir un.
+   * The message contains **no** password: a password sent by email stays
+   * readable in the recipient's mailbox, on their provider's server and in that
+   * provider's backups. It carries a single-use link to choose one instead.
    */
   async sendWelcome(input: {
     to: string;
@@ -91,7 +90,7 @@ export class MailService {
 
     if (!(await this.isConfigured())) {
       this.logger.log(
-        `Courriel de bienvenue non envoyé à ${input.to} : aucun serveur SMTP configuré.`,
+        `Welcome email not sent to ${input.to}: no SMTP server configured.`,
       );
       return;
     }
@@ -102,26 +101,26 @@ export class MailService {
       await this.transport(settings).sendMail({
         from: this.from(settings),
         to: input.to,
-        subject: `${settings.panelName} — votre compte a été créé`,
+        subject: `${settings.panelName} — your account has been created`,
         text: [
           `Bonjour ${input.username},`,
           '',
-          `Un compte vient d'être créé pour vous sur ${settings.panelName} (${url}).`,
+          `An account has just been created for you on ${settings.panelName} (${url}).`,
           '',
           'Choisissez votre mot de passe en suivant ce lien :',
           input.setupUrl,
           '',
-          `Ce lien est valable ${input.expiresInHours} heures et ne fonctionne qu'une fois.`,
-          'Passé ce délai, demandez à un administrateur de vous en envoyer un nouveau.',
+          `This link is valid for ${input.expiresInHours} hours and works only once.`,
+          'After that, ask an administrator to send you a new one.',
           '',
-          "Si vous n'attendiez pas ce message, ignorez-le : sans mot de passe, le compte reste inutilisable.",
+          'If you were not expecting this message, ignore it: without a password the account stays unusable.',
         ].join('\n'),
       });
     } catch (error: unknown) {
-      // Journalisé, jamais propagé : la création du compte a réussi, et la
-      // faire échouer après coup laisserait un compte sans son courriel.
+      // Logged, never propagated: creating the account succeeded, and failing
+      // it after the fact would leave an account without its email.
       this.logger.error(
-        `Courriel de bienvenue non remis à ${input.to} : ${error instanceof Error ? error.message : String(error)}`,
+        `Welcome email not delivered to ${input.to}: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
   }
@@ -135,11 +134,11 @@ export class MailService {
   }
 
   /**
-   * Transport courant, reconstruit dès qu'un paramètre change.
+   * Current transport, rebuilt as soon as a setting changes.
    *
-   * La signature sert de témoin : comparer les valeurs une à une reviendrait au
-   * même, mais il faudrait penser à ajouter chaque nouveau champ — et l'oubli
-   * se manifesterait par une configuration modifiée qui n'a pas d'effet.
+   * The signature acts as the witness: comparing the values one by one would
+   * amount to the same, but each new field would have to be remembered — and
+   * forgetting one would show up as an edited configuration with no effect.
    */
   private transport(settings: InstanceSettings): Transporter {
     const signature = JSON.stringify([
@@ -159,9 +158,9 @@ export class MailService {
     this.transporter = createTransport({
       host: settings.mailHost,
       port: settings.mailPort,
-      // `secure` vaut vrai pour du TLS implicite (port 465). En STARTTLS, la
-      // connexion s'ouvre en clair puis bascule : `secure` doit rester faux,
-      // sinon la poignée de main échoue sans message compréhensible.
+      // `secure` is true for implicit TLS (port 465). With STARTTLS the
+      // connection opens in the clear then switches: `secure` has to stay
+      // false, or the handshake fails with no comprehensible message.
       secure: settings.mailEncryption === 'tls',
       requireTLS: settings.mailEncryption === 'starttls',
       auth:

@@ -13,26 +13,26 @@ import type { ServerInstance } from '../server/server-instance.js';
 import type { ServerManager } from '../server/server-manager.js';
 
 /**
- * Routes de sauvegarde, appelées par le panel.
+ * Backup routes, called by the panel.
  *
- * Le panel a déjà enregistré la sauvegarde et vérifié les permissions ; il
- * fournit l'identifiant. Le daemon ne choisit ni le nom, ni le moment, ni la
- * rétention — il sait seulement où sont les volumes, et c'est la seule chose
- * que le panel ne peut pas savoir.
+ * The panel has already recorded the backup and checked the permissions; it
+ * supplies the identifier. The daemon chooses neither the name, nor the moment,
+ * nor the retention — it only knows where the volumes are, and that is the one
+ * thing the panel cannot know.
  *
- * L'identifiant reçu n'est jamais concaténé tel quel dans un chemin : il est
- * validé comme UUID par le schéma, ce qui exclut le `../` avant même que le
- * chemin ne soit construit.
+ * The identifier received is never concatenated into a path as is: it is
+ * validated as a UUID by the schema, which rules out `../` before the path is
+ * even built.
  */
-/** Nom du fichier d'exclusions déposé à la racine du serveur. */
+/** Name of the exclusions file dropped at the server's root. */
 const IGNORE_FILE = '.hopperignore';
 
 /**
- * Lit les exclusions du serveur, s'il en a déclaré.
+ * Reads the server's exclusions, if it declared any.
  *
- * Le chemin est une constante résolue par le jail — aucune valeur venue d'une
- * requête n'entre ici. Un fichier absent est le cas normal, pas une erreur :
- * la plupart des serveurs n'en ont pas.
+ * The path is a constant resolved by the jail — no value from a request enters
+ * here. A missing file is the normal case, not an error: most servers have
+ * none.
  */
 async function readIgnoreFile(jail: JailedFilesystem, request: FastifyRequest): Promise<string[]> {
   try {
@@ -41,7 +41,7 @@ async function readIgnoreFile(jail: JailedFilesystem, request: FastifyRequest): 
 
     return content.split(/\r?\n/);
   } catch {
-    request.log.debug(`Aucun ${IGNORE_FILE} lisible pour ce serveur`);
+    request.log.debug(`No readable ${IGNORE_FILE} for this server`);
     return [];
   }
 }
@@ -70,7 +70,7 @@ export function registerBackupRoutes(
     return reply.code(500).send({
       error: {
         code: 'backup_failed',
-        message: 'La sauvegarde a échoué. Consultez les journaux du node.',
+        message: 'The backup failed. Check the node logs.',
         requestId: request.id,
       },
     });
@@ -92,17 +92,18 @@ export function registerBackupRoutes(
 
     const server = manager.require(uuid);
 
-    // Sans liste explicite, celle du serveur fait foi. C'est ce qui permet de
-    // versionner ses exclusions avec le reste de sa configuration, au lieu de
-    // les retaper à chaque sauvegarde.
+    // With no explicit list, the server's own prevails. That is what lets one
+    // version their exclusions along with the rest of their configuration,
+    // instead of retyping them on every backup.
     const ignoredFiles =
       body.data.ignoredFiles.length > 0
         ? body.data.ignoredFiles
         : await readIgnoreFile(jailFor(server), request);
 
     try {
-      // Rend la main tout de suite : l'archivage se poursuit en arrière-plan et
-      // le verdict arrive au panel par `/api/remote/backups/:uuid/status`.
+      // Returns at once: archiving carries on in the background and the
+      // verdict reaches the panel through
+      // `/api/remote/backups/:uuid/status`.
       const response = backups.start({
         backupUuid: body.data.uuid,
         serverUuid: server.uuid,
@@ -124,14 +125,14 @@ export function registerBackupRoutes(
       return reply.code(409).send({
         error: {
           code: 'backup_running',
-          message: 'Cette sauvegarde est en cours : elle ne peut pas être supprimée.',
+          message: 'This backup is running: it cannot be deleted.',
           requestId: request.id,
         },
       });
     }
 
-    // Silencieux si l'archive manque déjà : la suppression est idempotente, et
-    // le panel doit pouvoir retirer une entrée dont le fichier a disparu.
+    // Silent if the archive is already gone: deletion is idempotent, and the
+    // panel has to be able to remove an entry whose file has vanished.
     await backups.delete(backupUuid);
 
     return reply.code(204).send();
@@ -143,21 +144,21 @@ export function registerBackupRoutes(
 
     if (!body.success) {
       return reply.code(400).send({
-        error: { code: 'invalid_body', message: 'Requête invalide.', requestId: request.id },
+        error: { code: 'invalid_body', message: 'Invalid request.', requestId: request.id },
       });
     }
 
     const server = manager.require(uuid);
 
-    // Extraire sous un serveur en fonctionnement mélangerait les fichiers de
-    // l'archive et ceux que le serveur réécrit : le résultat ne serait ni l'un
-    // ni l'autre. C'est au panel d'arrêter le serveur avant d'appeler ici, et
-    // au daemon de refuser si ce n'est pas fait.
+    // Extracting under a running server would mix the archive's files with
+    // those the server rewrites: the result would be neither one nor the other.
+    // It is the panel's job to stop the server before calling here, and the
+    // daemon's to refuse if that was not done.
     if (server.currentState !== 'offline') {
       return reply.code(409).send({
         error: {
           code: 'server_running',
-          message: 'Le serveur doit être arrêté avant une restauration.',
+          message: 'The server has to be stopped before a restore.',
           requestId: request.id,
         },
       });
@@ -175,7 +176,7 @@ export function registerBackupRoutes(
 
       request.log.info(
         { server: server.uuid, backup: backupUuid, files: result.restoredFiles },
-        'Sauvegarde restaurée',
+        'Backup restored',
       );
 
       return reply.send(result);

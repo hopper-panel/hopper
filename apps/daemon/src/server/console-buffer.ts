@@ -1,35 +1,34 @@
 import { CONSOLE_BUFFER_LINES } from '@hopper/shared';
 
 /**
- * Longueur maximale d'une ligne de console conservée.
+ * Longest console line kept.
  *
- * Un plugin qui journalise une stack trace concaténée, ou un `cat` d'un fichier
- * binaire, produit des lignes de plusieurs mégaoctets. Sans borne, elles
- * s'accumuleraient dans le tampon et seraient rediffusées à chaque connexion
- * d'un navigateur.
+ * A plugin logging a concatenated stack trace, or a `cat` of a binary file,
+ * produces lines several megabytes long. Without a bound they would pile up in
+ * the buffer and be replayed on every browser connection.
  */
 export const MAX_LINE_LENGTH = 8192;
 
-const TRUNCATION_SUFFIX = '… [ligne tronquée]';
+const TRUNCATION_SUFFIX = '… [line truncated]';
 
 /**
- * Reconstitue des lignes complètes à partir d'un flux d'octets.
+ * Reassembles complete lines from a stream of bytes.
  *
- * Docker livre la sortie d'un conteneur par paquets qui ne s'alignent pas sur
- * les fins de ligne : une même ligne peut arriver en trois morceaux, et un
- * paquet peut contenir dix lignes. Sans ce ré-assemblage, la console afficherait
- * des fragments et les regex de détection de démarrage ne matcheraient jamais.
+ * Docker delivers a container's output in packets that do not align with line
+ * endings: one line can arrive in three pieces, and one packet can hold ten
+ * lines. Without this reassembly the console would show fragments and the
+ * startup detection regexes would never match.
  */
 export class LineAssembler {
   private pending = '';
 
-  /** Consomme un fragment et retourne les lignes complètes qu'il termine. */
+  /** Consumes a chunk and returns the complete lines it finishes. */
   push(chunk: string): string[] {
     this.pending += chunk;
 
     if (!this.pending.includes('\n')) {
-      // Un flux sans retour à la ligne ne doit pas faire croître le tampon
-      // indéfiniment : au-delà de la limite, on coupe et on repart.
+      // A stream with no newline must not grow the buffer forever: past the
+      // limit, it is cut and started over.
       if (this.pending.length > MAX_LINE_LENGTH) {
         const line = this.pending.slice(0, MAX_LINE_LENGTH) + TRUNCATION_SUFFIX;
         this.pending = '';
@@ -39,14 +38,14 @@ export class LineAssembler {
     }
 
     const parts = this.pending.split('\n');
-    // Le dernier élément est incomplet — sauf si le fragment finissait par un
-    // retour à la ligne, auquel cas c'est une chaîne vide qu'on garde en attente.
+    // The last element is incomplete — unless the chunk ended with a newline,
+    // in which case it is an empty string held in wait.
     this.pending = parts.pop() ?? '';
 
     return parts.map((line) => normalizeLine(line));
   }
 
-  /** Vide le tampon et retourne l'éventuelle ligne partielle restante. */
+  /** Empties the buffer and returns whatever partial line is left. */
   flush(): string[] {
     if (this.pending === '') {
       return [];
@@ -59,8 +58,8 @@ export class LineAssembler {
 }
 
 function normalizeLine(line: string): string {
-  // Les serveurs Minecraft émettent des CRLF ; le \r final passerait pour un
-  // caractère de contrôle dans xterm.js et décalerait l'affichage.
+  // Minecraft servers emit CRLF; the trailing \r would pass for a control
+  // character in xterm.js and shift the display.
   const trimmed = line.replace(/\r+$/, '');
 
   return trimmed.length > MAX_LINE_LENGTH
@@ -69,26 +68,25 @@ function normalizeLine(line: string): string {
 }
 
 /**
- * Tampon circulaire des dernières lignes de console.
+ * Ring buffer of the latest console lines.
  *
- * Rejoué à chaque connexion d'un navigateur pour qu'un utilisateur qui ouvre la
- * console voie ce qui vient de se passer, plutôt qu'un écran noir jusqu'à la
- * prochaine ligne du serveur.
+ * Replayed on every browser connection so that a user opening the console sees
+ * what just happened, rather than a black screen until the server's next line.
  */
 export class ConsoleBuffer {
   private readonly lines: string[] = [];
 
   constructor(private readonly capacity: number = CONSOLE_BUFFER_LINES) {
     if (capacity < 1) {
-      throw new Error('La capacité du tampon de console doit être positive.');
+      throw new Error('The console buffer capacity has to be positive.');
     }
   }
 
   push(line: string): void {
     this.lines.push(line);
 
-    // `shift` sur un tableau de 500 éléments est négligeable comparé au coût
-    // d'une structure circulaire plus astucieuse mais plus facile à casser.
+    // `shift` on a 500-element array is negligible next to the cost of a
+    // cleverer ring structure that is also easier to break.
     while (this.lines.length > this.capacity) {
       this.lines.shift();
     }
@@ -98,7 +96,7 @@ export class ConsoleBuffer {
     lines.forEach((line) => this.push(line));
   }
 
-  /** Copie du contenu, de la plus ancienne à la plus récente. */
+  /** Copy of the contents, oldest to newest. */
   snapshot(): string[] {
     return [...this.lines];
   }
