@@ -1,18 +1,17 @@
 import { z } from 'zod';
 
 /**
- * Contrat des sauvegardes.
+ * Backup contract.
  *
- * Le partage des rôles suit celui du reste du panel : **le panel décide, le
- * daemon exécute**. Le panel tient le registre des sauvegardes, applique la
- * rétention et vérifie les permissions ; le daemon sait seul où vivent les
- * volumes et ne fait jamais confiance à un chemin qu'on lui donne.
+ * The division of roles follows the rest of the panel: **the panel decides, the
+ * daemon executes**. The panel keeps the register of backups, applies retention
+ * and checks permissions; the daemon alone knows where the volumes live and
+ * never trusts a path it is handed.
  *
- * Une sauvegarde est asynchrone : la requête rend la main tout de suite, et le
- * daemon rappelle `POST /api/remote/backups/:uuid/status` quand l'archive est
- * close. Archiver plusieurs gigaoctets ne peut pas tenir dans une requête HTTP,
- * et un serveur qui redémarre pendant l'opération ne doit pas laisser le panel
- * en attente indéfinie.
+ * A backup is asynchronous: the request returns at once, and the daemon calls
+ * `POST /api/remote/backups/:uuid/status` when the archive is closed. Archiving
+ * several gigabytes cannot fit in an HTTP request, and a server restarting
+ * mid-operation must not leave the panel waiting forever.
  */
 
 export const BACKUP_ROUTES = {
@@ -26,12 +25,12 @@ export const BACKUP_ROUTES = {
 } as const;
 
 /**
- * Format de compression de l'archive.
+ * Compression format of the archive.
  *
- * zstd compresse un monde Minecraft nettement plus vite que gzip à taux égal,
- * mais n'est disponible dans `node:zlib` qu'à partir de Node 22.15. Le format
- * retenu est donc décidé à l'exécution et inscrit dans le nom du fichier, pour
- * qu'une archive produite par une version reste restaurable par une autre.
+ * zstd compresses a Minecraft world markedly faster than gzip at an equal
+ * ratio, but is only available in `node:zlib` from Node 22.15 on. The format
+ * used is therefore decided at runtime and written into the file name, so that
+ * an archive produced by one version stays restorable by another.
  */
 export const backupCompressionSchema = z.enum(['gzip', 'zstd']);
 export type BackupCompression = z.infer<typeof backupCompressionSchema>;
@@ -46,13 +45,13 @@ export const BACKUP_EXTENSIONS: Record<BackupCompression, string> = {
 // ---------------------------------------------------------------------------
 
 export const createBackupRequestSchema = z.object({
-  /** Identifiant de la sauvegarde, choisi par le panel qui l'a déjà enregistrée. */
+  /** Backup identifier, chosen by the panel that already recorded it. */
   uuid: z.uuid(),
   /**
-   * Motifs à exclure, syntaxe `.gitignore`.
+   * Patterns to exclude, `.gitignore` syntax.
    *
-   * Exclure les journaux et les caches divise couramment la taille par deux, et
-   * surtout évite d'archiver des fichiers que le serveur réécrit en permanence.
+   * Excluding logs and caches routinely halves the size, and above all avoids
+   * archiving files the server rewrites constantly.
    */
   ignoredFiles: z.array(z.string()).default([]),
 });
@@ -79,12 +78,12 @@ export type BackupResponse = z.infer<typeof backupResponseSchema>;
 
 export const restoreBackupRequestSchema = z.object({
   /**
-   * Vider le volume avant extraction.
+   * Empty the volume before extracting.
    *
-   * Sans cela, l'archive est superposée aux fichiers présents : les fichiers
-   * ajoutés depuis la sauvegarde survivent. C'est parfois voulu — récupérer un
-   * monde sans perdre des plugins installés depuis — mais ce n'est pas le sens
-   * habituel de « restaurer », d'où le défaut à `true`.
+   * Without it, the archive is laid over the files present: files added since
+   * the backup survive. That is sometimes wanted — recovering a world without
+   * losing plugins installed since — but it is not the usual meaning of
+   * "restore", hence the default of `true`.
    */
   truncate: z.boolean().default(true),
 });

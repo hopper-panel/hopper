@@ -22,7 +22,7 @@ import { AuthService, type RequestContext } from '../auth/auth.service.js';
 import { PasswordService } from '../auth/password.service.js';
 import type { CreateUserDto, UpdateUserDto } from './users.dto.js';
 
-/** Vue publique d'un utilisateur. Ne contient jamais de champ sensible. */
+/** Public view of a user. Never holds a sensitive field. */
 export interface UserView {
   uuid: string;
   email: string;
@@ -47,7 +47,7 @@ export function toUserView(user: User): UserView {
   };
 }
 
-/** Durée de validité d'un lien d'invitation, en heures. */
+/** How long an invitation link stays valid, in hours. */
 const INVITATION_TTL_HOURS = 24;
 
 @Injectable()
@@ -101,17 +101,17 @@ export class UsersService {
 
   async create(
     dto: CreateUserDto,
-    /** Nul quand la création vient de la ligne de commande, sans session. */
+    /** Null when the creation comes from the command line, with no session. */
     actorId: number | null,
     context: RequestContext,
   ): Promise<UserView & { invitationSent: boolean }> {
     await this.assertAvailable(dto.email, dto.username);
 
-    // Sans mot de passe fourni, on en pose un aléatoire que personne ne
-    // connaîtra jamais : le compte existe mais reste inutilisable jusqu'à ce
-    // que son titulaire en choisisse un par le lien reçu. Laisser le champ
-    // vide en base serait pire — un hash vide finit toujours par croiser une
-    // comparaison qui l'accepte.
+    // With no password supplied, a random one nobody will ever know is set:
+    // the account exists but stays unusable until its holder chooses one
+    // through the link they received. Leaving the field empty in the database
+    // would be worse — an empty hash always ends up meeting a comparison that
+    // accepts it.
     const password = dto.password ?? randomBytes(48).toString('base64url');
 
     const user = await this.prisma.user.create({
@@ -137,10 +137,10 @@ export class UsersService {
   }
 
   /**
-   * Envoie le lien de choix du mot de passe.
+   * Sends the password-choice link.
    *
-   * Rend vrai si le courriel est parti. L'échec n'interrompt rien : le compte
-   * est créé, et un administrateur peut renvoyer l'invitation.
+   * Returns true if the email left. A failure interrupts nothing: the account
+   * is created, and an administrator can resend the invitation.
    */
   async sendInvitation(user: {
     uuid: string;
@@ -168,7 +168,7 @@ export class UsersService {
     return true;
   }
 
-  /** Renvoie une invitation à un compte existant. */
+  /** Resends an invitation to an existing account. */
   async resendInvitation(uuid: string): Promise<{ sent: boolean }> {
     const user = await this.prisma.user.findUnique({
       where: { uuid },
@@ -195,7 +195,7 @@ export class UsersService {
     }
 
     if (dto.role === 'USER' && existing.role === 'ADMIN') {
-      await this.assertNotLastAdmin(existing.id, 'rétrograder');
+      await this.assertNotLastAdmin(existing.id, 'demote');
     }
 
     if (dto.suspended === true && existing.role === 'ADMIN') {
@@ -215,9 +215,9 @@ export class UsersService {
       },
     });
 
-    // Un changement de mot de passe, une suspension ou une rétrogradation
-    // doivent prendre effet tout de suite, pas à l'expiration des sessions en
-    // cours. Les autres modifications sont sans conséquence sur les droits.
+    // A password change, a suspension or a demotion has to take effect at
+    // once, not when the current sessions expire. The other changes have no
+    // consequence on rights.
     if (dto.password || dto.suspended === true || dto.role === 'USER') {
       await this.auth.revokeAllSessions(existing.id);
     }
@@ -229,8 +229,8 @@ export class UsersService {
       userAgent: context.userAgent,
       metadata: {
         targetUuid: user.uuid,
-        // Les valeurs ne sont pas journalisées, seuls les champs touchés : un
-        // mot de passe n'a rien à faire dans un journal d'audit.
+        // The values are not logged, only the fields touched: a password has
+        // no business in an audit log.
         changed: Object.keys(dto),
       },
     });
@@ -248,11 +248,11 @@ export class UsersService {
       throw new NotFoundException('Utilisateur introuvable.');
     }
 
-    // Le schéma protège déjà la relation (`onDelete: Restrict`), mais l'erreur
-    // Prisma brute serait incompréhensible pour un administrateur.
+    // The schema already protects the relation (`onDelete: Restrict`), but the
+    // raw Prisma error would be incomprehensible to an administrator.
     if (user._count.ownedServers > 0) {
       throw new BadRequestException(
-        `Cet utilisateur possède ${user._count.ownedServers} serveur(s). Transférez-les ou supprimez-les d'abord.`,
+        `This user owns ${user._count.ownedServers} server(s). Transfer or delete them first.`,
       );
     }
 
@@ -272,11 +272,11 @@ export class UsersService {
   }
 
   /**
-   * Empêche de se retrouver sans aucun administrateur actif.
+   * Stops the instance from ending up with no active administrator.
    *
-   * Sans ce garde-fou, une instance devient irrécupérable depuis l'interface :
-   * il faut alors éditer la base à la main. C'est un accident vite arrivé quand
-   * on nettoie de vieux comptes.
+   * Without this guard, an instance becomes unrecoverable from the interface:
+   * the database then has to be edited by hand. It is an accident easily had
+   * while cleaning up old accounts.
    */
   private async assertNotLastAdmin(userId: number, action: string): Promise<void> {
     const remaining = await this.prisma.user.count({
@@ -285,7 +285,7 @@ export class UsersService {
 
     if (remaining === 0) {
       throw new BadRequestException(
-        `Impossible de ${action} le dernier administrateur actif : plus personne ne pourrait administrer le panel.`,
+        `Cannot ${action} the last active administrator: nobody would be left to administer the panel.`,
       );
     }
   }
@@ -298,19 +298,19 @@ export class UsersService {
     if (email) {
       const existing = await this.prisma.user.findUnique({ where: { email: email.toLowerCase() } });
       if (existing && existing.id !== excludeId) {
-        throw new ConflictException('Cette adresse e-mail est déjà utilisée.');
+        throw new ConflictException('This email address is already in use.');
       }
     }
 
     if (username) {
-      // Comparaison insensible à la casse : la connexion l'est aussi, donc
-      // `Julien` et `julien` seraient deux comptes qu'on ne saurait pas
-      // distinguer au moment de s'authentifier.
+      // A case-insensitive comparison: signing in is too, so `Julien` and
+      // `julien` would be two accounts nobody could tell apart at
+      // authentication time.
       const existing = await this.prisma.user.findFirst({
         where: { username: { equals: username, mode: 'insensitive' } },
       });
       if (existing && existing.id !== excludeId) {
-        throw new ConflictException("Ce nom d'utilisateur est déjà pris.");
+        throw new ConflictException('This username is already taken.');
       }
     }
   }

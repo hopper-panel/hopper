@@ -1,9 +1,9 @@
 import type { ResourceUsage, ServerState } from '@hopper/shared';
 
 /**
- * Extrait de la réponse `docker stats` ce dont on a besoin.
- * Le type complet de Dockerode est très large et surtout optionnel partout :
- * on ne déclare que les champs lus, avec leurs valeurs éventuellement absentes.
+ * The part of the `docker stats` response we need.
+ * Dockerode's full type is very wide and, above all, optional everywhere: only
+ * the fields read are declared, with their possibly absent values.
  */
 export interface DockerStats {
   read?: string;
@@ -25,19 +25,19 @@ export interface DockerStats {
 }
 
 /**
- * Pourcentage de CPU consommé, exprimé en pourcentage d'un cœur.
+ * CPU consumed, expressed as a percentage of one core.
  *
- * Docker ne donne pas un pourcentage mais des compteurs cumulés : il faut la
- * différence entre deux relevés. Le premier relevé après le démarrage n'a pas
- * de précédent et vaut donc 0 — c'est normal, pas un bug.
+ * Docker gives no percentage but cumulative counters: the difference between
+ * two samples is what is needed. The first sample after startup has no
+ * predecessor and is therefore 0 — that is normal, not a bug.
  */
 export function calculateCpuPercent(stats: DockerStats): number {
   const previousSystem = stats.precpu_stats?.system_cpu_usage ?? 0;
 
-  // Sans relevé précédent, la différence se ferait contre zéro : on
-  // comparerait le temps CPU du conteneur depuis son lancement au temps CPU de
-  // la machine depuis son démarrage. Le rapport a l'air d'un pourcentage mais
-  // n'en est pas un — mieux vaut afficher 0 que d'inventer une valeur.
+  // With no previous sample, the difference would be taken against zero: the
+  // container's CPU time since launch would be compared to the machine's CPU
+  // time since boot. The ratio looks like a percentage but is not one — better
+  // to show 0 than to invent a value.
   if (previousSystem === 0) {
     return 0;
   }
@@ -55,18 +55,18 @@ export function calculateCpuPercent(stats: DockerStats): number {
   const cores =
     stats.cpu_stats?.online_cpus ?? stats.cpu_stats?.cpu_usage?.percpu_usage?.length ?? 1;
 
-  // × cores pour que 100 % désigne un cœur saturé : sur une machine à 16 cœurs,
-  // un serveur qui en occupe un entier doit afficher 100, pas 6,25.
+  // × cores so that 100% means one saturated core: on a 16-core machine, a
+  // server occupying a whole one has to show 100, not 6.25.
   return Math.round((cpuDelta / systemDelta) * cores * 10000) / 100;
 }
 
 /**
- * Mémoire réellement utilisée.
+ * Memory actually used.
  *
- * `memory_stats.usage` inclut le cache de pages, qui peut représenter plusieurs
- * gigaoctets après la lecture d'une map Minecraft. L'afficher tel quel donnerait
- * un serveur perpétuellement « à 100 % de sa RAM » alors que le noyau libérerait
- * ce cache à la moindre pression.
+ * `memory_stats.usage` includes the page cache, which can amount to several
+ * gigabytes after reading a Minecraft map. Showing it as is would give a server
+ * perpetually "at 100% of its RAM" when the kernel would release that cache at
+ * the slightest pressure.
  */
 export function calculateMemoryBytes(stats: DockerStats): number {
   const usage = stats.memory_stats?.usage ?? 0;
@@ -108,10 +108,10 @@ export function buildResourceUsage(
 }
 
 /**
- * Relevé nul, émis quand le serveur est arrêté.
+ * Empty sample, emitted when the server is stopped.
  *
- * Le disque fait exception : un serveur éteint continue d'occuper sa place, et
- * l'annoncer à zéro laisserait croire que l'arrêt a libéré le volume.
+ * Disk is the exception: a stopped server still takes up its space, and
+ * announcing zero would suggest stopping it had freed the volume.
  */
 export function emptyUsage(state: ServerState, diskBytes = 0): ResourceUsage {
   return {

@@ -7,26 +7,25 @@ import { extract, pack } from 'tar-stream';
 import type { JailedFilesystem } from './jailed-filesystem.js';
 
 /**
- * Compression et extraction d'archives, sous contrôle du jail.
+ * Compressing and extracting archives, under the jail's control.
  *
- * `tar-stream` est utilisé plutôt qu'une bibliothèque de plus haut niveau
- * précisément parce qu'il **n'écrit rien tout seul** : chaque entrée nous est
- * remise et c'est nous qui décidons où elle va. Les extracteurs « clés en main »
- * écrivent l'entrée là où son nom l'indique, ce qui rend l'attaque zip-slip
- * triviale — une entrée nommée `../../etc/cron.d/backdoor` atterrit dans
- * `/etc/cron.d`.
+ * `tar-stream` is used rather than a higher-level library precisely because it
+ * **writes nothing on its own**: every entry is handed to us and we decide
+ * where it goes. Turnkey extractors write the entry where its name says, which
+ * makes the zip-slip attack trivial — an entry named
+ * `../../etc/cron.d/backdoor` lands in `/etc/cron.d`.
  */
 
 /**
- * Nombre maximal d'entrées extraites d'une archive.
+ * Largest number of entries extracted from an archive.
  *
- * Une archive de quelques kilooctets peut contenir des millions d'entrées
- * vides : c'est la « bombe de décompression », qui remplit la table d'inodes
- * de l'hôte sans jamais dépasser la limite de taille du volume.
+ * An archive of a few kilobytes can hold millions of empty entries: that is the
+ * "decompression bomb", which fills the host's inode table without ever
+ * exceeding the volume's size limit.
  */
 const MAX_ARCHIVE_ENTRIES = 100_000;
 
-/** Taille maximale extraite, tous fichiers confondus. */
+/** Largest total extracted size, across all files. */
 const MAX_EXTRACTED_BYTES = 8 * 1024 ** 3;
 
 export class ArchiveError extends Error {
@@ -36,7 +35,7 @@ export class ArchiveError extends Error {
   }
 }
 
-/** Crée une archive `.tar.gz` à partir d'une liste de chemins. */
+/** Creates a `.tar.gz` archive from a list of paths. */
 export async function createArchive(
   jail: JailedFilesystem,
   files: string[],
@@ -63,8 +62,8 @@ async function addToArchive(
   const entry = await jail.stat(userPath);
 
   if (entry.symlink) {
-    // Un lien vers l'extérieur ferait sortir son contenu du volume par le biais
-    // de l'archive, puis d'un téléchargement.
+    // A link pointing outside would carry its content out of the volume by way
+    // of the archive, then of a download.
     return;
   }
 
@@ -84,12 +83,12 @@ async function addToArchive(
 }
 
 /**
- * Extrait une archive `.tar.gz` dans un dossier.
+ * Extracts a `.tar.gz` archive into a folder.
  *
- * Chaque entrée passe par `jail.resolveArchiveEntry`, qui refuse toute
- * destination hors du dossier demandé. Les liens symboliques contenus dans
- * l'archive sont ignorés : recréer un lien vers `/etc` donnerait à
- * l'utilisateur, au prochain accès, une lecture hors du volume.
+ * Every entry goes through `jail.resolveArchiveEntry`, which refuses any
+ * destination outside the requested folder. Symlinks held in the archive are
+ * ignored: recreating a link to `/etc` would give the user, on their next
+ * access, a read outside the volume.
  */
 export async function extractArchive(
   jail: JailedFilesystem,
@@ -109,7 +108,7 @@ export async function extractArchive(
 
         if (entries > MAX_ARCHIVE_ENTRIES) {
           throw new ArchiveError(
-            `Archive refusée : plus de ${MAX_ARCHIVE_ENTRIES} entrées. Une archive légitime en contient rarement autant.`,
+            `Archive refused: more than ${MAX_ARCHIVE_ENTRIES} entries. A legitimate archive rarely holds that many.`,
           );
         }
 
@@ -117,12 +116,12 @@ export async function extractArchive(
 
         if (bytes > MAX_EXTRACTED_BYTES) {
           throw new ArchiveError(
-            'Archive refusée : le contenu décompressé dépasse la taille autorisée.',
+            'Archive refused: the decompressed content exceeds the allowed size.',
           );
         }
 
-        // Ni lien symbolique, ni lien physique, ni périphérique : seuls les
-        // fichiers et les dossiers sont extraits.
+        // Neither symlink, nor hard link, nor device: only files and folders
+        // are extracted.
         if (header.type !== 'file' && header.type !== 'directory') {
           stream.resume();
           stream.on('end', next);
