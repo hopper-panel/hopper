@@ -1,22 +1,22 @@
 #!/usr/bin/env bash
 #
-# Installeur de Hopper Panel.
+# Hopper Panel installer.
 #
 #   bash install.sh
 #
-# Installe le panel, le daemon et leurs dépendances sur une machine neuve, puis
-# rend une instance joignable. Prévu pour Debian 12+, Ubuntu 22.04+, Rocky et
-# AlmaLinux 9+.
+# Installs the panel, the daemon and their dependencies on a fresh machine, then
+# leaves a reachable instance behind. Built for Debian 12+, Ubuntu 22.04+, Rocky
+# and AlmaLinux 9+.
 #
-# Le script est **interactif par défaut** mais entièrement pilotable par
-# variables d'environnement, pour un déploiement automatisé :
+# The script is **interactive by default** but entirely drivable through
+# environment variables, for an automated deployment:
 #
 #   HOPPER_DOMAIN=panel.example.com HOPPER_WEBSERVER=nginx HOPPER_TLS=yes \
-#   HOPPER_ADMIN_EMAIL=moi@example.com HOPPER_ADMIN_USERNAME=moi \
+#   HOPPER_ADMIN_EMAIL=me@example.com HOPPER_ADMIN_USERNAME=me \
 #   HOPPER_NONINTERACTIVE=1 bash install.sh
 #
-# Relancer le script sur une installation existante met à jour le code sans
-# toucher à la base, au fichier .env ni aux vhosts déjà écrits.
+# Rerunning the script on an existing installation updates the code without
+# touching the database, the .env file or the vhosts already written.
 
 set -euo pipefail
 
@@ -30,7 +30,7 @@ REPOSITORY="${HOPPER_REPOSITORY:-https://github.com/hopper-panel/hopper.git}"
 NODE_MAJOR=22
 
 # ---------------------------------------------------------------------------
-# Affichage
+# Output
 # ---------------------------------------------------------------------------
 
 if [ -t 1 ] && [ -z "${NO_COLOR:-}" ]; then
@@ -48,22 +48,22 @@ warn()  { printf '  %s!%s %s\n' "$YELLOW" "$RESET" "$1"; }
 die()   { printf '\n%s✗ %s%s\n' "$RED" "$1" "$RESET" >&2; exit 1; }
 
 # ---------------------------------------------------------------------------
-# Préalables
+# Prerequisites
 # ---------------------------------------------------------------------------
 
-[ "$(id -u)" -eq 0 ] || die "Ce script doit être lancé en root : sudo bash install.sh"
+[ "$(id -u)" -eq 0 ] || die "This script has to run as root: sudo bash install.sh"
 
 # shellcheck disable=SC1091
-[ -r /etc/os-release ] || die "/etc/os-release introuvable : distribution non reconnue."
+[ -r /etc/os-release ] || die "/etc/os-release not found: unrecognised distribution."
 . /etc/os-release
 
 case "${ID:-} ${ID_LIKE:-}" in
   *debian*|*ubuntu*) FAMILY=debian ;;
   *rhel*|*fedora*|*centos*) FAMILY=rhel ;;
-  *) die "Distribution non prise en charge : ${PRETTY_NAME:-inconnue}. Debian, Ubuntu, Rocky et Alma le sont." ;;
+  *) die "Unsupported distribution: ${PRETTY_NAME:-unknown}. Debian, Ubuntu, Rocky and Alma are supported." ;;
 esac
 
-info "Système : ${PRETTY_NAME:-$ID} (famille $FAMILY)"
+info "System: ${PRETTY_NAME:-$ID} ($FAMILY family)"
 
 install_packages() {
   if [ "$FAMILY" = debian ]; then
@@ -78,7 +78,7 @@ install_packages() {
 # ---------------------------------------------------------------------------
 
 ask() {
-  # $1 question, $2 défaut, $3 nom de la variable à définir
+  # $1 question, $2 default, $3 name of the variable to set
   local answer=''
 
   if [ -n "${HOPPER_NONINTERACTIVE:-}" ]; then
@@ -95,11 +95,11 @@ step "Configuration"
 
 DOMAIN="${HOPPER_DOMAIN:-}"
 if [ -z "$DOMAIN" ]; then
-  ask "Nom de domaine du panel (ou adresse IP)" "$(hostname -f 2>/dev/null || hostname)" DOMAIN
+  ask "Domain name of the panel (or IP address)" "$(hostname -f 2>/dev/null || hostname)" DOMAIN
 fi
 
-# Une adresse IP ne peut pas recevoir de certificat Let's Encrypt : proposer
-# TLS dans ce cas conduirait l'utilisateur droit dans un échec de certbot.
+# An IP address cannot receive a Let's Encrypt certificate: offering TLS in that
+# case would lead the user straight into a certbot failure.
 IS_IP=0
 case "$DOMAIN" in
   *[!0-9.]*) ;;
@@ -108,39 +108,39 @@ esac
 
 WEBSERVER="${HOPPER_WEBSERVER:-}"
 if [ -z "$WEBSERVER" ]; then
-  ask "Serveur web (nginx / apache / aucun)" nginx WEBSERVER
+  ask "Web server (nginx / apache / none)" nginx WEBSERVER
 fi
 
 case "$WEBSERVER" in
-  nginx|apache|aucun|none) ;;
-  *) die "Serveur web inconnu : $WEBSERVER (attendu : nginx, apache ou aucun)" ;;
+  nginx|apache|none|aucun) ;;
+  *) die "Unknown web server: $WEBSERVER (expected: nginx, apache or none)" ;;
 esac
-[ "$WEBSERVER" != none ] || WEBSERVER=aucun
+[ "$WEBSERVER" != aucun ] || WEBSERVER=none
 
 TLS="${HOPPER_TLS:-}"
 if [ -z "$TLS" ]; then
-  if [ "$WEBSERVER" = aucun ] || [ "$IS_IP" = 1 ]; then
+  if [ "$WEBSERVER" = none ] || [ "$IS_IP" = 1 ]; then
     TLS=no
   else
-    ask "Obtenir un certificat Let's Encrypt (oui/non)" oui TLS
+    ask "Obtain a Let's Encrypt certificate (yes/no)" yes TLS
   fi
 fi
 
-case "$TLS" in oui|yes|y|o) TLS=yes ;; *) TLS=no ;; esac
+case "$TLS" in yes|y|oui|o) TLS=yes ;; *) TLS=no ;; esac
 
 if [ "$TLS" = yes ] && [ "$IS_IP" = 1 ]; then
-  warn "Let's Encrypt ne certifie pas une adresse IP : installation en HTTP."
+  warn "Let's Encrypt does not certify an IP address: installing over HTTP."
   TLS=no
 fi
 
 CERTBOT_EMAIL="${HOPPER_ADMIN_EMAIL:-}"
 ADMIN_EMAIL="${HOPPER_ADMIN_EMAIL:-}"
-[ -n "$ADMIN_EMAIL" ] || ask "Adresse e-mail de l'administrateur" "admin@$DOMAIN" ADMIN_EMAIL
+[ -n "$ADMIN_EMAIL" ] || ask "Administrator email address" "admin@$DOMAIN" ADMIN_EMAIL
 ADMIN_USERNAME="${HOPPER_ADMIN_USERNAME:-}"
-[ -n "$ADMIN_USERNAME" ] || ask "Identifiant de l'administrateur" admin ADMIN_USERNAME
+[ -n "$ADMIN_USERNAME" ] || ask "Administrator username" admin ADMIN_USERNAME
 [ -n "$CERTBOT_EMAIL" ] || CERTBOT_EMAIL="$ADMIN_EMAIL"
 
-if [ "$WEBSERVER" = aucun ]; then
+if [ "$WEBSERVER" = none ]; then
   APP_URL="http://$DOMAIN:$PANEL_PORT"
 elif [ "$TLS" = yes ]; then
   APP_URL="https://$DOMAIN"
@@ -148,26 +148,26 @@ else
   APP_URL="http://$DOMAIN"
 fi
 
-# Le daemon n'est pas derrière le proxy : il écoute lui-même sur son port, avec
-# le certificat de certbot quand il y en a un.
+# The daemon does not sit behind the proxy: it listens on its own port itself,
+# with certbot's certificate when there is one.
 if [ "$TLS" = yes ]; then NODE_SCHEME=https; else NODE_SCHEME=http; fi
 
 info ""
 info "Panel      : $APP_URL"
-info "Serveur web: $WEBSERVER"
+info "Web server : $WEBSERVER"
 info "Daemon     : $NODE_SCHEME://$DOMAIN:$DAEMON_PORT"
 info "SFTP       : $DOMAIN:$SFTP_PORT"
 
 if [ -z "${HOPPER_NONINTERACTIVE:-}" ]; then
-  ask "Continuer ? (oui/non)" oui CONFIRM
-  case "$CONFIRM" in oui|yes|y|o) ;; *) die "Installation annulée." ;; esac
+  ask "Continue? (yes/no)" yes CONFIRM
+  case "$CONFIRM" in yes|y|oui|o) ;; *) die "Installation cancelled." ;; esac
 fi
 
 # ---------------------------------------------------------------------------
-# Dépendances système
+# System dependencies
 # ---------------------------------------------------------------------------
 
-step "Dépendances système"
+step "System dependencies"
 
 if [ "$FAMILY" = debian ]; then
   DEBIAN_FRONTEND=noninteractive apt-get update -qq
@@ -175,10 +175,10 @@ if [ "$FAMILY" = debian ]; then
 else
   install_packages ca-certificates curl gnupg git tar openssl
 fi
-good "outils de base"
+good "base tools"
 
 if ! command -v node >/dev/null 2>&1 || [ "$(node -p 'process.versions.node.split(".")[0]')" -lt "$NODE_MAJOR" ]; then
-  info "Installation de Node $NODE_MAJOR…"
+  info "Installing Node $NODE_MAJOR…"
   if [ "$FAMILY" = debian ]; then
     curl -fsSL "https://deb.nodesource.com/setup_${NODE_MAJOR}.x" | bash - >/dev/null
     install_packages nodejs
@@ -190,25 +190,25 @@ fi
 good "Node $(node -v)"
 
 if ! command -v pnpm >/dev/null 2>&1; then
-  # `npm i -g` et non corepack : corepack télécharge pnpm à la première
-  # exécution, ce qui échoue sur une machine sans accès sortant vers le registre
-  # au moment où l'on s'y attend le moins.
+  # `npm i -g` and not corepack: corepack downloads pnpm on first use, which
+  # fails on a machine with no outbound access to the registry at the moment one
+  # least expects it.
   npm install -g pnpm@10 >/dev/null
 fi
 good "pnpm $(pnpm --version)"
 
 if ! command -v docker >/dev/null 2>&1; then
-  info "Installation de Docker…"
+  info "Installing Docker…"
   curl -fsSL https://get.docker.com | sh >/dev/null
   systemctl enable --now docker >/dev/null 2>&1 || true
 fi
 good "Docker $(docker --version | cut -d' ' -f3 | tr -d ,)"
 
 # ---------------------------------------------------------------------------
-# PostgreSQL et Redis
+# PostgreSQL and Redis
 # ---------------------------------------------------------------------------
 
-step "Base de données"
+step "Database"
 
 if ! command -v psql >/dev/null 2>&1; then
   if [ "$FAMILY" = debian ]; then
@@ -219,27 +219,27 @@ if ! command -v psql >/dev/null 2>&1; then
   fi
 fi
 
-systemctl enable --now postgresql >/dev/null 2>&1 || die "PostgreSQL n'a pas démarré."
+systemctl enable --now postgresql >/dev/null 2>&1 || die "PostgreSQL did not start."
 
 DB_NAME="${HOPPER_DB_NAME:-hopper}"
 DB_USER="${HOPPER_DB_USER:-hopper}"
 DB_PASSWORD="${HOPPER_DB_PASSWORD:-$(openssl rand -hex 24)}"
 
-# Le rôle existe déjà si le script est relancé : on ne touche pas au mot de
-# passe, sinon le .env conservé pointerait sur un mot de passe changé.
+# The role already exists when the script is rerun: the password is left alone,
+# otherwise the kept .env would point at a changed password.
 if su - postgres -c "psql -tAc \"SELECT 1 FROM pg_roles WHERE rolname='$DB_USER'\"" | grep -q 1; then
-  note "rôle $DB_USER déjà présent, inchangé"
+  note "role $DB_USER already present, unchanged"
   DB_PASSWORD=''
 else
   su - postgres -c "psql -q -c \"CREATE ROLE $DB_USER LOGIN PASSWORD '$DB_PASSWORD'\"" >/dev/null
-  good "rôle $DB_USER créé"
+  good "role $DB_USER created"
 fi
 
 if su - postgres -c "psql -tAc \"SELECT 1 FROM pg_database WHERE datname='$DB_NAME'\"" | grep -q 1; then
-  note "base $DB_NAME déjà présente"
+  note "database $DB_NAME already present"
 else
   su - postgres -c "createdb -O $DB_USER $DB_NAME" >/dev/null
-  good "base $DB_NAME créée"
+  good "database $DB_NAME created"
 fi
 
 if ! command -v redis-server >/dev/null 2>&1 && ! command -v redis-cli >/dev/null 2>&1; then
@@ -257,32 +257,32 @@ step "Sources"
 SOURCE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 if [ -f "$SOURCE_DIR/pnpm-workspace.yaml" ] && [ "$SOURCE_DIR" != "$HOPPER_ROOT" ]; then
-  info "Copie depuis $SOURCE_DIR"
+  info "Copying from $SOURCE_DIR"
   mkdir -p "$HOPPER_ROOT"
   tar -C "$SOURCE_DIR" \
     --exclude=node_modules --exclude=dist --exclude=.turbo --exclude=.git \
     -cf - . | tar -C "$HOPPER_ROOT" -xf -
 elif [ -d "$HOPPER_ROOT/.git" ]; then
-  info "Mise à jour du dépôt existant"
+  info "Updating the existing repository"
   git -C "$HOPPER_ROOT" pull --ff-only
 elif [ ! -f "$HOPPER_ROOT/pnpm-workspace.yaml" ]; then
-  info "Clonage depuis $REPOSITORY"
+  info "Cloning from $REPOSITORY"
   git clone --depth 1 "$REPOSITORY" "$HOPPER_ROOT"
 fi
-good "sources dans $HOPPER_ROOT"
+good "sources in $HOPPER_ROOT"
 
 id hopper >/dev/null 2>&1 || useradd --system --home-dir "$HOPPER_ROOT" --shell /usr/sbin/nologin hopper
 mkdir -p "$CONFIG_ROOT" "$DATA_ROOT/volumes" "$DATA_ROOT/backups"
 chmod 700 "$CONFIG_ROOT"
 
-step "Construction"
-note "Quelques minutes à la première installation."
+step "Build"
+note "A few minutes on a first installation."
 cd "$HOPPER_ROOT"
 
-# Sans `CI`, pnpm refuse de purger un node_modules devenu incohérent — ce qui
-# arrive dès qu'on met à jour depuis une version dont les dépendances ont
-# bougé — et s'arrête sur « Aborted removal of modules directory due to no TTY ».
-# Les erreurs restent visibles : seule la sortie normale est masquée.
+# Without `CI`, pnpm refuses to purge a node_modules that has become
+# inconsistent — which happens as soon as one updates from a version whose
+# dependencies moved — and stops on "Aborted removal of modules directory due to
+# no TTY". Errors stay visible: only the normal output is hidden.
 export CI=true
 pnpm install --frozen-lockfile --prod=false >/dev/null || pnpm install >/dev/null
 pnpm --filter @hopper/shared build >/dev/null
@@ -291,27 +291,27 @@ pnpm --filter @hopper/panel exec prisma generate >/dev/null
 pnpm --filter @hopper/panel build >/dev/null
 pnpm --filter @hopper/web build >/dev/null
 pnpm --filter @hopper/daemon build >/dev/null
-good "panel, interface et daemon construits"
+good "panel, interface and daemon built"
 
 # ---------------------------------------------------------------------------
-# Configuration du panel
+# Panel configuration
 # ---------------------------------------------------------------------------
 
-step "Configuration du panel"
+step "Panel configuration"
 
 ENV_FILE="$HOPPER_ROOT/apps/panel/.env"
 
 if [ -f "$ENV_FILE" ]; then
-  note ".env déjà présent, conservé"
+  note ".env already present, kept"
 else
-  [ -n "$DB_PASSWORD" ] || die "Le rôle PostgreSQL existait déjà mais son mot de passe est inconnu : renseignez DATABASE_URL dans $ENV_FILE puis relancez."
+  [ -n "$DB_PASSWORD" ] || die "The PostgreSQL role already existed but its password is unknown: set DATABASE_URL in $ENV_FILE then rerun."
 
   cat > "$ENV_FILE" <<EOF
-# Généré par install.sh le $(date -Iseconds).
+# Generated by install.sh on $(date -Iseconds).
 #
-# APP_SECRET chiffre les jetons de node, les mots de passe SQL et les secrets
-# de double authentification. Le changer rend tout cela illisible : sauvegardez
-# ce fichier avec la base.
+# APP_SECRET encrypts the node tokens, the SQL passwords and the two-factor
+# secrets. Changing it makes all of them unreadable: back this file up along
+# with the database.
 NODE_ENV=production
 
 APP_URL=$APP_URL
@@ -324,44 +324,44 @@ DATABASE_URL=postgresql://$DB_USER:$DB_PASSWORD@127.0.0.1:5432/$DB_NAME
 REDIS_URL=redis://127.0.0.1:6379
 EOF
 
-  # Le panel écoute sur la boucle locale quand un proxy le précède, et sur
-  # toutes les interfaces sinon — sans quoi il ne serait joignable de nulle part.
-  [ "$WEBSERVER" != aucun ] || sed -i 's/^HOST=.*/HOST=0.0.0.0/' "$ENV_FILE"
+  # The panel listens on the loopback when a proxy sits in front, and on every
+  # interface otherwise — without which it would be reachable from nowhere.
+  [ "$WEBSERVER" != none ] || sed -i 's/^HOST=.*/HOST=0.0.0.0/' "$ENV_FILE"
 
-  good ".env écrit"
+  good ".env written"
 fi
 
-# Hors du bloc de création : un .env laissé lisible par tous par une
-# installation précédente expose APP_SECRET et le mot de passe de la base à
-# n'importe quel compte de la machine.
+# Outside the creation block: a .env left world-readable by an earlier
+# installation exposes APP_SECRET and the database password to any account on
+# the machine.
 chmod 600 "$ENV_FILE"
 
-step "Migration de la base"
+step "Database migration"
 cd "$HOPPER_ROOT/apps/panel"
 pnpm exec prisma migrate deploy >/dev/null
-good "schéma à jour"
+good "schema up to date"
 
 ADMIN_PASSWORD="${HOPPER_ADMIN_PASSWORD:-$(openssl rand -base64 18 | tr -d '\n/+=' | cut -c1-20)}"
 ADMIN_CREATED=0
 
 if HOPPER_ADMIN_EMAIL="$ADMIN_EMAIL" HOPPER_ADMIN_USERNAME="$ADMIN_USERNAME" \
-   HOPPER_ADMIN_PASSWORD="$ADMIN_PASSWORD" pnpm exec prisma db seed 2>&1 | tee /tmp/hopper-seed.log | grep -q 'Compte administrateur créé'; then
+   HOPPER_ADMIN_PASSWORD="$ADMIN_PASSWORD" pnpm exec prisma db seed 2>&1 | tee /tmp/hopper-seed.log | grep -q 'HOPPER_SEED_ADMIN_CREATED=1'; then
   ADMIN_CREATED=1
-  good "compte administrateur créé"
+  good "administrator account created"
 else
-  note "compte administrateur déjà présent, inchangé"
+  note "administrator account already present, unchanged"
 fi
 
-# En dernier : la migration et l'amorçage tournent en root et déposent des
-# fichiers de cache dans node_modules. Les laisser à root ferait échouer le
-# panel, qui tourne sous le compte hopper.
+# Last: the migration and the seed run as root and drop cache files into
+# node_modules. Leaving them owned by root would make the panel fail, since it
+# runs under the hopper account.
 chown -R hopper:hopper "$HOPPER_ROOT"
 
 # ---------------------------------------------------------------------------
 # Services
 # ---------------------------------------------------------------------------
 
-step "Services systemd"
+step "systemd services"
 
 install -m 644 "$HOPPER_ROOT/install/hopper-panel.service" /etc/systemd/system/hopper-panel.service
 install -m 644 "$HOPPER_ROOT/install/hopperd.service" /etc/systemd/system/hopperd.service
@@ -370,9 +370,9 @@ systemctl daemon-reload
 systemctl enable --now hopper-panel >/dev/null
 good "hopper-panel"
 
-# Le node local est déclaré depuis la ligne de commande : sur une machine
-# unique, exiger un passage par l'interface avant que rien ne fonctionne
-# n'apporterait rien.
+# The local node is declared from the command line: on a single machine,
+# demanding a trip through the interface before anything works at all would gain
+# nothing.
 if [ ! -f "$CONFIG_ROOT/daemon.yml" ]; then
   MEMORY_BYTES=$(( $(awk '/MemTotal/ {print $2}' /proc/meminfo) * 1024 ))
   DISK_BYTES=$(df -B1 --output=size "$DATA_ROOT" | tail -1 | tr -d ' ')
@@ -382,27 +382,27 @@ if [ ! -f "$CONFIG_ROOT/daemon.yml" ]; then
     --port "$DAEMON_PORT" --sftp-port "$SFTP_PORT" \
     --memory "$MEMORY_BYTES" --disk "$DISK_BYTES" \
     --output "$CONFIG_ROOT/daemon.yml" >/dev/null
-  good "node local déclaré"
+  good "local node declared"
 else
-  note "daemon.yml déjà présent, conservé"
+  note "daemon.yml already present, kept"
 fi
 
 systemctl enable --now hopperd >/dev/null
 good "hopperd"
 
 # ---------------------------------------------------------------------------
-# Serveur web
+# Web server
 # ---------------------------------------------------------------------------
 
 write_vhost() {
-  # $1 fichier de destination, $2 gabarit, $3 chemin du certificat, $4 clé
+  # $1 destination file, $2 template, $3 certificate path, $4 key
   sed -e "s|{{DOMAIN}}|$DOMAIN|g" -e "s|{{PORT}}|$PANEL_PORT|g" \
       -e "s|{{CERT}}|$3|g" -e "s|{{KEY}}|$4|g" "$2" > "$1"
 }
 
 write_plain_vhost() {
-  # Vhost HTTP seul : sert aussi de configuration d'attente pendant que certbot
-  # valide le domaine, puisque la validation passe par le port 80.
+  # HTTP-only vhost: it doubles as the holding configuration while certbot
+  # validates the domain, since validation goes through port 80.
   if [ "$WEBSERVER" = nginx ]; then
     cat > "$1" <<EOF
 server {
@@ -452,8 +452,8 @@ EOF
   fi
 }
 
-if [ "$WEBSERVER" != aucun ]; then
-  step "Serveur web ($WEBSERVER)"
+if [ "$WEBSERVER" != none ]; then
+  step "Web server ($WEBSERVER)"
 
   if [ "$WEBSERVER" = nginx ]; then
     command -v nginx >/dev/null 2>&1 || install_packages nginx
@@ -489,14 +489,14 @@ if [ "$WEBSERVER" != aucun ]; then
   mkdir -p /var/www/html
 
   if [ -f "$VHOST" ] && [ -z "${HOPPER_FORCE_VHOST:-}" ]; then
-    note "vhost déjà présent, conservé ($VHOST)"
+    note "vhost already present, kept ($VHOST)"
   else
     write_plain_vhost "$VHOST"
     [ "$WEBSERVER" != apache ] || [ "$FAMILY" != debian ] || a2ensite hopper >/dev/null
     systemctl enable --now "$SERVICE" >/dev/null
-    $TEST >/dev/null 2>&1 || die "Configuration $WEBSERVER invalide : $TEST"
+    $TEST >/dev/null 2>&1 || die "Invalid $WEBSERVER configuration: $TEST"
     $RELOAD
-    good "vhost HTTP en place"
+    good "HTTP vhost in place"
 
     if [ "$TLS" = yes ]; then
       command -v certbot >/dev/null 2>&1 || install_packages certbot
@@ -512,71 +512,71 @@ if [ "$WEBSERVER" != aucun ]; then
           write_vhost "$VHOST" "$HOPPER_ROOT/install/apache.conf.tmpl" "$CERT" "$KEY"
         fi
 
-        $TEST >/dev/null 2>&1 || die "Configuration $WEBSERVER invalide après ajout du certificat."
+        $TEST >/dev/null 2>&1 || die "Invalid $WEBSERVER configuration after adding the certificate."
         $RELOAD
-        good "certificat obtenu, HTTPS actif"
+        good "certificate obtained, HTTPS active"
 
-        # Le daemon lit les mêmes certificats : il tourne en root et peut donc
-        # ouvrir /etc/letsencrypt. Un rechargement après renouvellement est
-        # nécessaire, d'où ce crochet.
+        # The daemon reads the same certificates: it runs as root and can
+        # therefore open /etc/letsencrypt. A reload after renewal is needed,
+        # hence this hook.
         mkdir -p /etc/letsencrypt/renewal-hooks/deploy
         cat > /etc/letsencrypt/renewal-hooks/deploy/hopper.sh <<'EOF'
 #!/bin/sh
-# Le daemon garde le certificat en mémoire depuis son démarrage : sans ce
-# redémarrage, il continuerait de présenter l'ancien après renouvellement.
+# The daemon has held the certificate in memory since it started: without this
+# restart it would keep presenting the old one after renewal.
 systemctl restart hopperd
 EOF
         chmod 755 /etc/letsencrypt/renewal-hooks/deploy/hopper.sh
       else
-        warn "certbot a échoué — l'installation reste en HTTP."
-        warn "Vérifiez que $DOMAIN pointe sur cette machine et que le port 80 est ouvert."
+        warn "certbot failed — the installation stays on HTTP."
+        warn "Check that $DOMAIN points at this machine and that port 80 is open."
       fi
     fi
   fi
 fi
 
 # ---------------------------------------------------------------------------
-# Politiques locales
+# Local policies
 # ---------------------------------------------------------------------------
 
 if command -v getenforce >/dev/null 2>&1 && [ "$(getenforce)" = Enforcing ]; then
   step "SELinux"
-  # Sans ce booléen, httpd et nginx se voient refuser la connexion vers le
-  # panel : le proxy répond 503 et rien dans leurs journaux ne l'explique.
-  setsebool -P httpd_can_network_connect 1 >/dev/null 2>&1 && good "connexions sortantes autorisées pour le serveur web"     || warn "impossible de poser httpd_can_network_connect : le proxy renverra 503."
+  # Without this boolean, httpd and nginx are refused the connection to the
+  # panel: the proxy answers 503 and nothing in their logs explains it.
+  setsebool -P httpd_can_network_connect 1 >/dev/null 2>&1 && good "outbound connections allowed for the web server"     || warn "could not set httpd_can_network_connect: the proxy will answer 503."
 fi
 
 if systemctl is-active --quiet firewalld 2>/dev/null; then
-  step "Pare-feu"
+  step "Firewall"
   for PORT in 80/tcp 443/tcp "$DAEMON_PORT/tcp" "$SFTP_PORT/tcp"; do
     firewall-cmd --permanent --add-port="$PORT" >/dev/null 2>&1 || true
   done
   firewall-cmd --reload >/dev/null 2>&1 || true
-  good "ports 80, 443, $DAEMON_PORT et $SFTP_PORT ouverts"
-  note "Les ports de vos serveurs Minecraft restent à ouvrir."
+  good "ports 80, 443, $DAEMON_PORT and $SFTP_PORT opened"
+  note "The ports of your Minecraft servers still have to be opened."
 fi
 
 # ---------------------------------------------------------------------------
-# Diagnostic et résumé
+# Diagnostic and summary
 # ---------------------------------------------------------------------------
 
-step "Vérification"
+step "Verification"
 sleep 3
 HOPPER_ROOT="$HOPPER_ROOT" hopper doctor || true
 
-step "Terminé"
+step "Done"
 info "Panel      : $APP_URL"
 
 if [ "$ADMIN_CREATED" = 1 ]; then
-  info "Identifiant: $ADMIN_USERNAME"
-  info "Mot de passe : $ADMIN_PASSWORD"
-  note "Notez-le : il n'est pas conservé en clair."
+  info "Username   : $ADMIN_USERNAME"
+  info "Password   : $ADMIN_PASSWORD"
+  note "Write it down: it is not kept in the clear."
 fi
 
 info ""
-note "Journaux    : journalctl -u hopper-panel -f   /   journalctl -u hopperd -f"
-note "Diagnostic  : hopper doctor"
-note "Mise à jour : bash $HOPPER_ROOT/install/install.sh"
+note "Logs       : journalctl -u hopper-panel -f   /   journalctl -u hopperd -f"
+note "Diagnostic : hopper doctor"
+note "Update     : bash $HOPPER_ROOT/install/install.sh"
 info ""
-warn "Ouvrez les ports $DAEMON_PORT (daemon), $SFTP_PORT (SFTP) et ceux de vos serveurs."
-warn "Filtrez avec DOCKER-USER et non ufw : Docker écrit ses règles avant celles d'ufw."
+warn "Open ports $DAEMON_PORT (daemon), $SFTP_PORT (SFTP) and those of your servers."
+warn "Filter with DOCKER-USER and not ufw: Docker writes its rules before ufw's."

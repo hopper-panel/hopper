@@ -54,13 +54,19 @@ async function seedAdmin(): Promise<void> {
   });
 
   console.log('\n✓ Administrator account created');
-  console.log(`   e-mail       : ${email}`);
-  console.log(`   utilisateur  : ${username}`);
+  console.log(`   email    : ${email}`);
+  console.log(`   username : ${username}`);
 
   if (generated) {
-    console.log(`   mot de passe : ${password}`);
+    console.log(`   password : ${password}`);
     console.log('\n   ⚠ This password will not be shown again. Write it down now.\n');
   }
+
+  // Machine-readable marker, read by install.sh. Not prose: do not translate it
+  // and do not reword it. The installer used to grep the sentence above, and
+  // translating that sentence silently stopped it from showing the generated
+  // password at the end of an installation.
+  console.log('HOPPER_SEED_ADMIN_CREATED=1');
 }
 
 /**
