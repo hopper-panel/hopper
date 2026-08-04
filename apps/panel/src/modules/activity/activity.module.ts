@@ -3,8 +3,8 @@ import { ActivityController } from './activity.controller.js';
 import { ActivityRetentionService } from './retention.service.js';
 
 /**
- * Journal d'audit : lecture par serveur, et purge selon la rétention réglée
- * dans l'administration.
+ * Audit log: read per server, and purged according to the retention set in the
+ * administration.
  */
 @Module({ controllers: [ActivityController], providers: [ActivityRetentionService] })
 export class ActivityModule {}

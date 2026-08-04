@@ -16,23 +16,23 @@ export interface ActivityEntry {
   uuid: string;
   event: string;
   description: string;
-  /** Null pour une action du système : planificateur, daemon. */
+  /** Null for a system action: scheduler, daemon. */
   actor: { username: string } | null;
   ip: string | null;
   createdAt: Date;
 }
 
 /**
- * Journal d'activité d'un serveur.
+ * A server's activity log.
  *
- * Le journal d'audit existe depuis la phase 1 et se remplissait déjà à chaque
- * action ; il n'était simplement lisible nulle part. Cet onglet ne fait que
- * l'exposer, filtré sur le serveur consulté.
+ * The audit log has existed from the start and was already filling on every
+ * action; it simply was not readable anywhere. This tab only exposes it,
+ * filtered on the server being viewed.
  *
- * L'adresse IP y figure : c'est ce qui rend le journal utile après coup — savoir
- * *que* quelqu'un a supprimé un monde sert moins que de savoir d'où. Le
- * `userAgent`, lui, est enregistré mais non rendu : il n'apprend rien à qui
- * lit, et allonge chaque ligne.
+ * The IP address is shown: that is what makes the log useful after the fact —
+ * knowing *that* somebody deleted a world helps less than knowing from where.
+ * The `userAgent` is recorded but not returned: it teaches the reader nothing
+ * and lengthens every line.
  */
 @Controller('api/servers/:serverId/activity')
 export class ActivityController {
@@ -58,8 +58,8 @@ export class ActivityController {
     const [entries, total] = await Promise.all([
       this.prisma.auditLog.findMany({
         where,
-        // Le plus récent d'abord : on consulte un journal pour savoir ce qui
-        // vient de se passer, pas ce qui s'est passé à la création.
+        // Newest first: one reads a log to learn what just happened, not what
+        // happened at creation time.
         orderBy: { createdAt: 'desc' },
         skip: skipFor(query),
         take: query.perPage,

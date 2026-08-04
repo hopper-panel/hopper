@@ -2,16 +2,16 @@ import { Injectable, Logger, type OnModuleDestroy, type OnModuleInit } from '@ne
 import { InstanceSettingsService } from '../instance-settings/instance-settings.service.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 
-/** Une purge par jour suffit : le journal se compte en milliers de lignes, pas en millions. */
+/** One purge a day is enough: the log counts in thousands of rows, not millions. */
 const INTERVAL_MS = 24 * 60 * 60 * 1000;
 
 /**
- * Purge du journal d'activité.
+ * Purging the activity log.
  *
- * Désactivée par défaut, et c'est délibéré : le journal est la mémoire de
- * l'instance — qui a supprimé ce fichier, depuis quelle adresse, quand — et une
- * rétention imposée d'office effacerait la trace d'un incident avant qu'on ne
- * le découvre. C'est un choix d'exploitation, pris dans l'administration.
+ * Off by default, and deliberately so: the log is the instance's memory — who
+ * deleted that file, from which address, when — and a retention imposed by
+ * default would erase the trace of an incident before anyone discovered it. It
+ * is an operational choice, made in the administration.
  */
 @Injectable()
 export class ActivityRetentionService implements OnModuleInit, OnModuleDestroy {
@@ -24,9 +24,8 @@ export class ActivityRetentionService implements OnModuleInit, OnModuleDestroy {
   ) {}
 
   onModuleInit(): void {
-    // Une première passe au démarrage : sur un panel redémarré chaque nuit par
-    // une mise à jour, un minuteur de vingt-quatre heures ne se déclencherait
-    // jamais.
+    // A first pass at startup: on a panel restarted every night by an update, a
+    // twenty-four-hour timer would never fire.
     void this.prune();
 
     this.timer = setInterval(() => void this.prune(), INTERVAL_MS);
@@ -55,7 +54,7 @@ export class ActivityRetentionService implements OnModuleInit, OnModuleDestroy {
 
     if (count > 0) {
       this.logger.log(
-        `${count} entrée(s) de journal supprimée(s), antérieures à ${before.toISOString()}`,
+        `${count} log entry/entries deleted, older than ${before.toISOString()}`,
       );
     }
 

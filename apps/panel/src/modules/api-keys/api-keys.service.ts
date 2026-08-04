@@ -10,14 +10,14 @@ import {
   type ApiKeyScope,
 } from './api-key.js';
 
-/** Au-delà, la liste devient ingérable et chaque clé oubliée est un risque. */
+/** Past this, the list becomes unmanageable and every forgotten key is a risk. */
 const MAX_KEYS_PER_USER = 20;
 
 /**
- * Une clé n'est pas relue à chaque requête pour mettre à jour sa date d'usage :
- * une API appelée en boucle ferait une écriture par lecture. On n'écrit que si
- * la dernière trace remonte à plus de cinq minutes, ce qui suffit largement à
- * répondre à la question « cette clé sert-elle encore ? ».
+ * A key is not written back on every request to update its last-use date: an
+ * API called in a loop would make one write per read. It is only written if the
+ * last trace is more than five minutes old, which is amply enough to answer the
+ * question "is this key still in use?".
  */
 const LAST_USED_RESOLUTION_MS = 5 * 60 * 1000;
 
@@ -52,28 +52,28 @@ export class ApiKeysService {
   }
 
   /**
-   * Crée une clé et rend le jeton **une seule fois**.
+   * Creates a key and returns the token **once only**.
    *
-   * Il n'est pas conservé en clair : le perdre impose d'en créer une autre,
-   * ce qui est le comportement voulu.
+   * It is not kept in the clear: losing it forces creating another, which is
+   * the intended behaviour.
    */
   async create(
     userId: number,
     role: 'ADMIN' | 'USER',
     dto: { memo: string; scopes: ApiKeyScope[]; allowedIps: string[]; expiresAt?: string },
   ) {
-    // Une clé « admin » créée par un compte ordinaire ne donnerait rien de plus
-    // — le garde vérifie le rôle réel à chaque requête — mais elle laisserait
-    // croire le contraire. Mieux vaut refuser franchement.
+    // An "admin" key created by an ordinary account would grant nothing extra
+    // — the guard checks the real role on every request — but it would suggest
+    // otherwise. Better to refuse plainly.
     if (dto.scopes.includes('admin') && role !== 'ADMIN') {
-      throw new ForbiddenException('La portée « admin » est réservée aux administrateurs.');
+      throw new ForbiddenException('The "admin" scope is for administrators only.');
     }
 
     const count = await this.prisma.apiKey.count({ where: { userId } });
 
     if (count >= MAX_KEYS_PER_USER) {
       throw new ForbiddenException(
-        `Vous avez atteint la limite de ${MAX_KEYS_PER_USER} clés. Supprimez-en une avant d'en créer une autre.`,
+        `You have reached the limit of ${MAX_KEYS_PER_USER} keys. Delete one before creating another.`,
       );
     }
 
@@ -103,22 +103,22 @@ export class ApiKeysService {
   }
 
   async remove(userId: number, identifier: string): Promise<void> {
-    // La suppression est filtrée sur le propriétaire : sans cela, connaître
-    // l'identifiant public d'une clé suffirait à révoquer celle d'un autre.
+    // Deletion is filtered on the owner: without that, knowing a key's public
+    // identifier would be enough to revoke somebody else's.
     const { count } = await this.prisma.apiKey.deleteMany({ where: { userId, identifier } });
 
     if (count === 0) {
-      throw new NotFoundException('Clé introuvable.');
+      throw new NotFoundException('Key not found.');
     }
   }
 
   /**
-   * Authentifie une clé présentée dans un en-tête `Authorization`.
+   * Authenticates a key presented in an `Authorization` header.
    *
-   * Rend `null` pour toute raison d'échec, sans distinguer : format invalide,
-   * clé inconnue, secret faux, expiration, adresse refusée, compte suspendu.
-   * Distinguer ces cas dans la réponse dirait à un attaquant quel identifiant
-   * existe.
+   * Returns `null` for any reason of failure, without distinguishing: invalid
+   * format, unknown key, wrong secret, expiry, refused address, suspended
+   * account. Telling those cases apart in the response would tell an attacker
+   * which identifier exists.
    */
   async authenticate(token: string, ip: string | undefined): Promise<AuthenticatedApiKey | null> {
     const parsed = parseApiKey(token);
@@ -153,7 +153,7 @@ export class ApiKeysService {
 
     if (!ipAllowed(key.allowedIps, ip)) {
       this.logger.warn(
-        `Clé ${key.identifier} présentée depuis ${ip ?? 'une adresse inconnue'}, hors de sa liste`,
+        `Key ${key.identifier} presented from ${ip ?? 'an unknown address'}, outside its list`,
       );
       return null;
     }
@@ -185,8 +185,8 @@ export class ApiKeysService {
     await this.prisma.apiKey
       .update({ where: { id }, data: { lastUsedAt: new Date() } })
       .catch(() => {
-        // La clé a pu être révoquée entre l'authentification et ici : l'écriture
-        // manquée ne doit pas faire échouer une requête déjà autorisée.
+        // The key may have been revoked between authentication and here: the
+        // missed write must not fail a request that was already authorised.
       });
   }
 }

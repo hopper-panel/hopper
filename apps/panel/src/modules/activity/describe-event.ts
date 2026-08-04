@@ -1,16 +1,20 @@
 import { AUDIT_EVENTS } from '../audit/audit.service.js';
 
 /**
- * Rend une entrée d'audit en une phrase lisible.
+ * Renders an audit entry as a readable sentence.
  *
- * Écrit côté serveur et non dans l'interface, pour une raison simple : la
- * phrase dépend du contenu de `metadata`, dont la forme varie d'un événement à
- * l'autre et n'est connue que de celui qui l'écrit. La composer dans le
- * navigateur obligerait à publier cette forme, et à la maintenir en deux
- * endroits — le second se contentant bientôt d'afficher `server.updated`.
+ * Written server-side and not in the interface, for a simple reason: the
+ * sentence depends on the contents of `metadata`, whose shape varies from one
+ * event to the next and is known only to whoever writes it. Composing it in the
+ * browser would mean publishing that shape and maintaining it in two places —
+ * the second soon settling for displaying `server.updated`.
  *
- * Un événement inconnu n'est pas masqué : mieux vaut une ligne technique qu'un
- * trou dans un journal censé être exhaustif.
+ * The sentences are therefore not translated by the interface's catalogues:
+ * they read in English whatever language the reader chose. Moving them would
+ * mean publishing every event's metadata shape.
+ *
+ * An unknown event is not hidden: a technical line beats a hole in a log meant
+ * to be exhaustive.
  */
 
 type Metadata = Record<string, unknown>;
@@ -22,141 +26,141 @@ function text(metadata: Metadata, key: string): string | null {
 }
 
 function quoted(value: string | null): string {
-  return value === null ? '' : ` « ${value} »`;
+  return value === null ? '' : ` "${value}"`;
 }
 
 export function describeEvent(event: string, metadata: Metadata): string {
   switch (event) {
-    // -- Serveur ------------------------------------------------------------
+    // -- Server --------------------------------------------------------------
     case AUDIT_EVENTS.SERVER_CREATED:
-      return 'A créé le serveur.';
+      return 'Created the server.';
     case AUDIT_EVENTS.SERVER_DELETED:
-      return 'A supprimé le serveur.';
+      return 'Deleted the server.';
     case AUDIT_EVENTS.SERVER_SUSPENDED:
-      return 'A suspendu le serveur.';
+      return 'Suspended the server.';
     case AUDIT_EVENTS.SERVER_UNSUSPENDED:
-      return 'A rétabli le serveur.';
+      return 'Reinstated the server.';
     case AUDIT_EVENTS.SERVER_REINSTALLED:
-      return 'A réinstallé le serveur.';
+      return 'Reinstalled the server.';
 
     case AUDIT_EVENTS.SERVER_POWER: {
       const action = text(metadata, 'action');
       const labels: Record<string, string> = {
-        start: 'A démarré le serveur.',
-        stop: 'A arrêté le serveur.',
-        restart: 'A redémarré le serveur.',
-        kill: 'A tué le processus du serveur.',
+        start: 'Started the server.',
+        stop: 'Stopped the server.',
+        restart: 'Restarted the server.',
+        kill: 'Killed the server process.',
       };
 
-      return (action && labels[action]) ?? 'A changé l’état du serveur.';
+      return (action && labels[action]) ?? 'Changed the server state.';
     }
 
     case AUDIT_EVENTS.SERVER_COMMAND:
-      return `A exécuté${quoted(text(metadata, 'command'))} dans la console.`;
+      return `Ran${quoted(text(metadata, 'command'))} in the console.`;
 
-    // `server.updated` sert de fourre-tout pour les actions détaillées par
-    // `metadata.action` : fichiers, démarrage. Le distinguer ici évite d'avoir
-    // à créer un événement par opération de fichier.
+    // `server.updated` acts as a catch-all for the actions detailed by
+    // `metadata.action`: files, startup. Splitting it here avoids having to
+    // create one event per file operation.
     case AUDIT_EVENTS.SERVER_UPDATED: {
-      // `?? ''` plutôt que `null` : le `switch` couvre ainsi toutes les
-      // valeurs possibles et `default` reste la seule sortie.
+      // `?? ''` rather than `null`: the `switch` then covers every possible
+      // value and `default` stays the only way out.
       const action = text(metadata, 'action') ?? '';
 
       switch (action) {
         case 'file.write':
-          return `A modifié le fichier${quoted(text(metadata, 'file'))}.`;
+          return `Edited the file${quoted(text(metadata, 'file'))}.`;
         case 'file.rename':
-          return `A renommé ou déplacé${quoted(text(metadata, 'from'))}.`;
+          return `Renamed or moved${quoted(text(metadata, 'from'))}.`;
         case 'file.copy':
-          return `A copié${quoted(text(metadata, 'from'))}.`;
+          return `Copied${quoted(text(metadata, 'from'))}.`;
         case 'file.delete': {
           const files = Array.isArray(metadata.files) ? metadata.files.length : 0;
 
-          return files > 1 ? `A supprimé ${files} fichiers.` : 'A supprimé un fichier.';
+          return files > 1 ? `Deleted ${files} files.` : 'Deleted a file.';
         }
         case 'file.create-directory':
-          return `A créé le dossier${quoted(text(metadata, 'directory'))}.`;
+          return `Created the folder${quoted(text(metadata, 'directory'))}.`;
         case 'file.compress':
-          return 'A créé une archive.';
+          return 'Created an archive.';
         case 'file.decompress':
-          return `A extrait l’archive${quoted(text(metadata, 'file'))}.`;
+          return `Extracted the archive${quoted(text(metadata, 'file'))}.`;
         case 'file.chmod':
-          return `A changé les droits en ${text(metadata, 'mode') ?? '?'}.`;
+          return `Changed the permissions to ${text(metadata, 'mode') ?? '?'}.`;
         case 'upload':
-          return `A envoyé le fichier${quoted(text(metadata, 'name'))}.`;
+          return `Uploaded the file${quoted(text(metadata, 'name'))}.`;
         case 'startup':
-          return 'A modifié les paramètres de démarrage.';
+          return 'Changed the startup settings.';
         default:
-          return 'A modifié le serveur.';
+          return 'Changed the server.';
       }
     }
 
-    // -- Sauvegardes --------------------------------------------------------
+    // -- Backups ---------------------------------------------------------------
     case AUDIT_EVENTS.BACKUP_CREATED:
-      // Le planificateur et le daemon écrivent aussi cet événement : le second
-      // rapporte un verdict, pas une demande.
+      // The scheduler and the daemon write this event too: the latter reports
+      // a verdict, not a request.
       return metadata.successful === undefined
-        ? `A lancé la sauvegarde${quoted(text(metadata, 'name'))}.`
+        ? `Started the backup${quoted(text(metadata, 'name'))}.`
         : metadata.successful === true
-          ? 'Une sauvegarde s’est terminée.'
-          : 'Une sauvegarde a échoué.';
+          ? 'A backup finished.'
+          : 'A backup failed.';
     case AUDIT_EVENTS.BACKUP_DELETED:
-      return 'A supprimé une sauvegarde.';
+      return 'Deleted a backup.';
     case AUDIT_EVENTS.BACKUP_RESTORED:
-      return 'A restauré une sauvegarde.';
+      return 'Restored a backup.';
     case AUDIT_EVENTS.BACKUP_LOCKED:
       return metadata.locked === true
-        ? 'A verrouillé une sauvegarde.'
-        : 'A déverrouillé une sauvegarde.';
+        ? 'Locked a backup.'
+        : 'Unlocked a backup.';
 
-    // -- Bases de données ---------------------------------------------------
+    // -- Databases -----------------------------------------------------------
     case AUDIT_EVENTS.DATABASE_CREATED:
-      return `A créé la base${quoted(text(metadata, 'database'))}.`;
+      return `Created the database${quoted(text(metadata, 'database'))}.`;
     case AUDIT_EVENTS.DATABASE_UPDATED:
-      return `A changé le mot de passe de la base${quoted(text(metadata, 'database'))}.`;
+      return `Changed the password of the database${quoted(text(metadata, 'database'))}.`;
     case AUDIT_EVENTS.DATABASE_DELETED:
-      return 'A supprimé une base de données.';
+      return 'Deleted a database.';
 
-    // -- Clés d'API ----------------------------------------------------------
+    // -- API keys ------------------------------------------------------------
     case AUDIT_EVENTS.API_KEY_CREATED:
-      return `A créé une clé d’API${quoted(text(metadata, 'memo'))}.`;
+      return `Created an API key${quoted(text(metadata, 'memo'))}.`;
     case AUDIT_EVENTS.API_KEY_DELETED:
-      return 'A révoqué une clé d’API.';
+      return 'Revoked an API key.';
 
-    // -- Notifications sortantes --------------------------------------------
+    // -- Outgoing notifications ------------------------------------------------
     case AUDIT_EVENTS.WEBHOOK_CREATED:
-      // L'URL figure dans le message : c'est une requête que le panel émettra
-      // désormais tout seul, et savoir vers où compte autant que savoir qui.
-      return `A ajouté une notification vers${quoted(text(metadata, 'url'))}.`;
+      // The URL is in the message: this is a request the panel will now issue
+      // on its own, and knowing where to matters as much as knowing who.
+      return `Added a notification to${quoted(text(metadata, 'url'))}.`;
     case AUDIT_EVENTS.WEBHOOK_UPDATED:
-      return `A modifié une notification vers${quoted(text(metadata, 'url'))}.`;
+      return `Changed a notification to${quoted(text(metadata, 'url'))}.`;
     case AUDIT_EVENTS.WEBHOOK_DELETED:
-      return 'A supprimé une notification.';
+      return 'Deleted a notification.';
 
-    // -- Tâches planifiées --------------------------------------------------
+    // -- Scheduled tasks -----------------------------------------------------
     case AUDIT_EVENTS.SCHEDULE_CREATED:
-      return `A créé la tâche planifiée${quoted(text(metadata, 'name'))}.`;
+      return `Created the scheduled task${quoted(text(metadata, 'name'))}.`;
     case AUDIT_EVENTS.SCHEDULE_UPDATED:
       return metadata.manualRun === true
-        ? 'A déclenché une tâche planifiée.'
-        : 'A modifié une tâche planifiée.';
+        ? 'Triggered a scheduled task.'
+        : 'Changed a scheduled task.';
     case AUDIT_EVENTS.SCHEDULE_DELETED:
-      return 'A supprimé une tâche planifiée.';
+      return 'Deleted a scheduled task.';
     case AUDIT_EVENTS.SCHEDULE_RUN: {
       const failures = Array.isArray(metadata.failures) ? metadata.failures.length : 0;
 
       return failures === 0
-        ? `La tâche${quoted(text(metadata, 'schedule'))} s’est exécutée.`
-        : `La tâche${quoted(text(metadata, 'schedule'))} s’est exécutée avec ${failures} échec(s).`;
+        ? `The task${quoted(text(metadata, 'schedule'))} ran.`
+        : `The task${quoted(text(metadata, 'schedule'))} ran with ${failures} failure(s).`;
     }
 
-    // -- Sous-utilisateurs --------------------------------------------------
+    // -- Subusers --------------------------------------------------------------
     case AUDIT_EVENTS.SUBUSER_CREATED:
-      return 'A donné accès au serveur à un utilisateur.';
+      return 'Gave a user access to the server.';
     case AUDIT_EVENTS.SUBUSER_UPDATED:
-      return 'A modifié les permissions d’un utilisateur.';
+      return "Changed a user's permissions.";
     case AUDIT_EVENTS.SUBUSER_DELETED:
-      return 'A retiré l’accès d’un utilisateur.';
+      return "Removed a user's access.";
 
     default:
       return event;

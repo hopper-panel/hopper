@@ -5,23 +5,22 @@ import { NodeClientService } from '../nodes/node-client.service.js';
 import { NodesService } from '../nodes/nodes.service.js';
 
 /**
- * Paramètres d'un serveur : accès SFTP, identifiants techniques, réinstallation.
+ * A server's settings: SFTP access, technical identifiers, reinstallation.
  *
- * Le nom d'utilisateur SFTP est **composé ici** et non deviné par l'interface.
- * Son format — `<compte>.<8 premiers caractères de l'UUID>` — encode le serveur
- * visé, faute d'autre canal dans le protocole SFTP pour le transmettre. Le
- * reconstruire côté navigateur créerait une troisième copie de cette règle, à
- * côté de celle du daemon qui l'écrit et de celle du panel qui la relit ; la
- * copie qui dériverait ferait échouer des connexions sans que rien n'explique
- * pourquoi.
+ * The SFTP username is **composed here** and not guessed by the interface. Its
+ * format — `<account>.<first 8 characters of the UUID>` — encodes the target
+ * server, for want of another channel in the SFTP protocol to carry it.
+ * Rebuilding it browser-side would create a third copy of that rule, beside the
+ * daemon's that writes it and the panel's that reads it back; whichever copy
+ * drifted would fail connections with nothing to explain why.
  */
 @Injectable()
 export class SettingsService {
   private readonly logger = new Logger(SettingsService.name);
 
   /**
-   * Longueur du préfixe d'UUID dans le nom d'utilisateur SFTP.
-   * Doit rester égale à `SERVER_ID_LENGTH` du daemon.
+   * Length of the UUID prefix in the SFTP username.
+   * Has to stay equal to the daemon's `SERVER_ID_LENGTH`.
    */
   private static readonly SERVER_ID_LENGTH = 8;
 
@@ -49,27 +48,28 @@ export class SettingsService {
   }
 
   /**
-   * Relance le script d'installation du template.
+   * Runs the template's install script again.
    *
-   * Le daemon arrête le serveur, rejoue l'installation et rapporte le verdict
-   * comme lors d'une création. Selon le template, des fichiers peuvent être
-   * écrasés — c'est pourquoi l'interface le dit avant de proposer le bouton.
+   * The daemon stops the server, replays the installation and reports the
+   * verdict as it does on a creation. Depending on the template, files may be
+   * overwritten — which is why the interface says so before offering the
+   * button.
    */
   async reinstall(serverUuid: string): Promise<void> {
     const server = await this.requireServer(serverUuid);
 
-    // Réinstaller un serveur déjà en cours d'installation relancerait un second
-    // conteneur d'installation sur le même volume : deux scripts écriraient les
-    // mêmes fichiers en même temps.
+    // Reinstalling a server already installing would launch a second install
+    // container on the same volume: two scripts would write the same files at
+    // the same time.
     if (server.status === 'INSTALLING' || server.status === 'REINSTALLING') {
-      throw new ConflictException('Une installation est déjà en cours sur ce serveur.');
+      throw new ConflictException('An installation is already running on this server.');
     }
 
     const connection = await this.nodes.getConnection(server.node.uuid);
 
-    // L'état passe à REINSTALLING **avant** l'appel : si le daemon accepte puis
-    // que la réponse se perd, le serveur doit tout de même apparaître en cours
-    // de réinstallation plutôt que prêt.
+    // The state moves to REINSTALLING **before** the call: if the daemon
+    // accepts and the response is then lost, the server still has to show as
+    // reinstalling rather than ready.
     await this.prisma.server.update({
       where: { id: server.id },
       data: { status: 'REINSTALLING' },
@@ -87,7 +87,7 @@ export class SettingsService {
       );
 
       if (response.status >= 400) {
-        throw new Error(`le node a répondu ${response.status}`);
+        throw new Error(`the node answered ${response.status}`);
       }
     } catch (error: unknown) {
       await this.prisma.server.update({
@@ -95,9 +95,9 @@ export class SettingsService {
         data: { status: 'READY' },
       });
 
-      this.logger.error(`Réinstallation de ${serverUuid} refusée : ${String(error)}`);
+      this.logger.error(`Reinstall of ${serverUuid} refused: ${String(error)}`);
       throw new ConflictException(
-        "La réinstallation n'a pas pu être lancée. Le node est-il joignable ?",
+        'The reinstall could not be started. Is the node reachable?',
       );
     }
   }

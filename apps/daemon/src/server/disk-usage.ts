@@ -2,19 +2,18 @@ import { lstat, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 
 /**
- * Taille occupée par un volume de serveur.
+ * Space taken by a server's volume.
  *
- * Parcours itératif plutôt que récursif : une arborescence de modpack descend
- * profondément, et une pile explicite ne risque pas de saturer celle du moteur.
+ * An iterative walk rather than a recursive one: a modpack's tree runs deep,
+ * and an explicit stack cannot exhaust the engine's own.
  *
- * Les liens symboliques ne sont **pas** suivis. Un joueur peut en créer par
- * SFTP : les suivre compterait le contenu visé — potentiellement hors du volume,
- * ou plusieurs fois le même dossier — et un lien qui pointe sur son propre
- * parent ferait tourner la mesure indéfiniment.
+ * Symlinks are **not** followed. A player can create them over SFTP: following
+ * them would count the target's content — potentially outside the volume, or
+ * the same folder several times — and a link pointing at its own parent would
+ * make the measurement run forever.
  *
- * Les erreurs par entrée sont ignorées : un fichier supprimé pendant le
- * parcours est la norme sur un serveur qui tourne, et vaut mieux qu'une mesure
- * abandonnée.
+ * Per-entry errors are ignored: a file deleted during the walk is the norm on a
+ * running server, and beats an abandoned measurement.
  */
 export async function directorySize(root: string): Promise<number> {
   const pending = [root];
@@ -38,16 +37,15 @@ export async function directorySize(root: string): Promise<number> {
         continue;
       }
 
-      // `Dirent` distingue déjà les liens des fichiers ordinaires : tout ce qui
-      // n'est pas un fichier régulier — lien, socket, tube — n'occupe rien qui
-      // vaille d'être compté.
+      // `Dirent` already tells links from ordinary files: anything that is not
+      // a regular file — link, socket, pipe — occupies nothing worth counting.
       if (!entry.isFile()) {
         continue;
       }
 
       try {
-        // `lstat` et non `stat` : entre le `readdir` et ici, l'entrée a pu être
-        // remplacée par un lien, dont on mesurerait alors la cible.
+        // `lstat` and not `stat`: between the `readdir` and here, the entry may
+        // have been replaced by a link, whose target would then be measured.
         total += (await lstat(path)).size;
       } catch {
         continue;

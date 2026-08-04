@@ -6,21 +6,20 @@ import type { Environment } from '../../config/environment.js';
 export interface RateLimitResult {
   allowed: boolean;
   remaining: number;
-  /** Secondes avant que le compteur ne reparte à zéro. */
+  /** Seconds before the counter starts again from zero. */
   resetInSeconds: number;
 }
 
 /**
- * Compteur à fenêtre glissante, adossé à Redis.
+ * Sliding-window counter, backed by Redis.
  *
- * Redis plutôt qu'une Map en mémoire : sans lui, un redémarrage du panel
- * remettrait tous les compteurs à zéro — et un attaquant patient n'aurait qu'à
- * provoquer un redémarrage, ou attendre le déploiement suivant, pour reprendre
- * son bourrage d'identifiants.
+ * Redis rather than an in-memory Map: without it, a panel restart would reset
+ * every counter — and a patient attacker would only have to cause a restart, or
+ * wait for the next deployment, to resume their credential stuffing.
  *
- * Si `REDIS_URL` n'est pas défini, un repli en mémoire prend le relais pour que
- * le développement local reste simple. Ce repli est journalisé au démarrage :
- * il n'est pas acceptable en production, et l'opérateur doit le savoir.
+ * If `REDIS_URL` is not set, an in-memory fallback takes over so that local
+ * development stays simple. That fallback is logged at startup: it is not
+ * acceptable in production, and the operator has to know.
  */
 @Injectable()
 export class RateLimiterService implements OnModuleDestroy {
@@ -39,17 +38,17 @@ export class RateLimiterService implements OnModuleDestroy {
     } else {
       this.redis = null;
       this.logger.warn(
-        'REDIS_URL absent : limitation de débit en mémoire. Les compteurs sont perdus à chaque redémarrage — ne pas utiliser en production.',
+        'REDIS_URL missing: rate limiting in memory. The counters are lost on every restart — do not use in production.',
       );
     }
   }
 
   /**
-   * Incrémente le compteur de `key` et indique si l'appel est autorisé.
+   * Increments `key`'s counter and says whether the call is allowed.
    *
-   * @param key    Identifiant du seau, ex. `auth:login:192.0.2.1`.
-   * @param limit  Nombre d'appels autorisés dans la fenêtre.
-   * @param windowSeconds Durée de la fenêtre.
+   * @param key    Bucket identifier, e.g. `auth:login:192.0.2.1`.
+   * @param limit  Number of calls allowed within the window.
+   * @param windowSeconds Length of the window.
    */
   async consume(key: string, limit: number, windowSeconds: number): Promise<RateLimitResult> {
     if (!this.redis) {
@@ -57,9 +56,9 @@ export class RateLimiterService implements OnModuleDestroy {
     }
 
     try {
-      // INCR puis EXPIRE seulement au premier passage : poser l'expiration à
-      // chaque appel transformerait la fenêtre en fenêtre glissante infinie,
-      // et un attaquant régulier ne verrait jamais son compteur expirer.
+      // INCR then EXPIRE on the first pass only: setting the expiry on every
+      // call would turn the window into an endlessly sliding one, and a regular
+      // attacker would never see their counter expire.
       const pipeline = this.redis.multi().incr(key);
       pipeline.ttl(key);
       const results = await pipeline.exec();
@@ -78,14 +77,14 @@ export class RateLimiterService implements OnModuleDestroy {
         resetInSeconds: ttl,
       };
     } catch (error: unknown) {
-      // Redis en panne ne doit pas bloquer les connexions légitimes, mais on le
-      // signale : c'est un affaiblissement, pas un fonctionnement normal.
-      this.logger.error(`Limitation de débit indisponible, appel autorisé : ${String(error)}`);
+      // A Redis outage must not block legitimate sign-ins, but it is reported:
+      // this is a weakening, not normal operation.
+      this.logger.error(`Rate limiting unavailable, call allowed: ${String(error)}`);
       return { allowed: true, remaining: limit, resetInSeconds: windowSeconds };
     }
   }
 
-  /** Remet un compteur à zéro, après une authentification réussie par exemple. */
+  /** Resets a counter, after a successful sign-in for instance. */
   async reset(key: string): Promise<void> {
     if (this.redis) {
       await this.redis.del(key);

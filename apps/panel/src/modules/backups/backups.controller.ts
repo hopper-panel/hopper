@@ -26,13 +26,13 @@ import {
 } from './backups.dto.js';
 
 /**
- * Sauvegardes d'un serveur.
+ * A server's backups.
  *
- * Les permissions sont volontairement séparées : lire la liste, en créer une,
- * la télécharger, la restaurer et la supprimer sont cinq droits distincts.
- * Restaurer écrase le serveur et télécharger emporte une copie complète de ses
- * données — ce ne sont pas des variantes d'une même action, et les confondre
- * reviendrait à donner l'un en croyant accorder l'autre.
+ * The permissions are deliberately separate: reading the list, creating one,
+ * downloading it, restoring it and deleting it are five distinct rights.
+ * Restoring overwrites the server and downloading carries away a complete copy
+ * of its data — these are not variants of one action, and confusing them would
+ * amount to granting one while believing you granted the other.
  */
 @Controller('api/servers/:serverId/backups')
 export class BackupsController {
@@ -113,9 +113,9 @@ export class BackupsController {
     @CurrentUser() user: RequestUser,
     @Req() request: AuthenticatedRequest,
   ) {
-    // L'audit est écrit **avant** l'opération : une restauration qui échoue à
-    // mi-chemin a tout de même touché au volume, et c'est justement le cas où
-    // l'on veut savoir qui l'a lancée.
+    // The audit entry is written **before** the operation: a restore that
+    // fails halfway has still touched the volume, and that is precisely the
+    // case where one wants to know who launched it.
     await this.audit.record({
       event: AUDIT_EVENTS.BACKUP_RESTORED,
       actorId: user.id,
@@ -150,17 +150,16 @@ export class BackupsController {
   }
 
   /**
-   * Télécharge l'archive, relayée depuis le node.
+   * Downloads the archive, relayed from the node.
    *
-   * Le flux transite par le panel plutôt que d'exposer une URL du daemon : le
-   * daemon n'a pas de notion d'utilisateur, et lui faire servir un fichier à un
-   * navigateur demanderait de lui apprendre les sessions du panel. Il
-   * n'existe ainsi aucune URL d'archive atteignable sans passer par les
-   * permissions.
+   * The stream goes through the panel rather than exposing a daemon URL: the
+   * daemon has no notion of a user, and having it serve a file to a browser
+   * would mean teaching it the panel's sessions. As a result no archive URL
+   * exists that can be reached without going through the permissions.
    *
-   * Le relais est fait **en flux** : une archive de plusieurs gigaoctets
-   * chargée en mémoire ferait tomber le panel pour tous ses utilisateurs, pas
-   * seulement pour celui qui télécharge.
+   * The relay is done **as a stream**: an archive of several gigabytes loaded
+   * into memory would take the panel down for all its users, not only for the
+   * one downloading.
    */
   @Get(':backupId/download')
   @RequireServerPermission(PERMISSIONS.BACKUP_DOWNLOAD)
@@ -170,9 +169,9 @@ export class BackupsController {
     @CurrentServer() server: RequestServer,
     @Res() reply: FastifyReply,
   ): Promise<void> {
-    // Vérifie l'appartenance de la sauvegarde au serveur : sans cela, un
-    // utilisateur ayant accès à un serveur pourrait télécharger l'archive d'un
-    // autre en devinant son identifiant.
+    // Checks the backup belongs to the server: without that, a user with
+    // access to one server could download another's archive by guessing its
+    // identifier.
     await this.backups.findByUuid(serverId, backupId);
 
     const node = await this.prisma.node.findUniqueOrThrow({
@@ -189,14 +188,14 @@ export class BackupsController {
     if (!response.body || response.status !== 200) {
       void reply.status(response.status === 200 ? 502 : response.status).send({
         statusCode: response.status,
-        message: "L'archive n'a pas pu être récupérée sur le node.",
+        message: 'The archive could not be retrieved from the node.',
       });
       return;
     }
 
-    // L'en-tête vient du daemon : lui seul connaît le format retenu à
-    // l'archivage — `.tar.zst` ou `.tar.gz` selon la version de Node qui l'a
-    // produit. Le réinventer ici donnerait un nom de fichier faux.
+    // The header comes from the daemon: it alone knows the format chosen at
+    // archiving time — `.tar.zst` or `.tar.gz` depending on the Node version
+    // that produced it. Reinventing it here would give a wrong file name.
     const disposition = response.headers.get('content-disposition');
 
     void reply
