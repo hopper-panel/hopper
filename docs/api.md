@@ -1,65 +1,60 @@
-# API et notifications
+# API and notifications
 
-## Clés d'API
+## API keys
 
-**Mon compte → Clés d'API**. Une clé emprunte les accès de son propriétaire :
-elle ne donne jamais accès à un serveur qu'il ne pourrait pas ouvrir lui-même.
-Le jeton n'est affiché **qu'une fois**, à la création.
+**My account → API keys**. A key borrows its owner's access: it never opens a server they could not
+open themselves. The token is shown **once only**, at creation.
 
 ```bash
 curl -H "Authorization: Bearer hpk_xxxxxxxxxxxxxxxx.yyyy…" \
      https://panel.example.com/api/servers
 ```
 
-Trois portées, à cumuler :
+Three scopes, which can be combined:
 
-| Portée  | Ce qu'elle autorise                                                   |
-| ------- | --------------------------------------------------------------------- |
-| `read`  | Les requêtes `GET` — consulter serveurs, fichiers, sauvegardes        |
-| `write` | Les requêtes qui agissent — démarrer, écrire un fichier, sauvegarder  |
-| `admin` | Les routes `/api/admin/*`, et seulement pour un compte administrateur |
+| Scope   | What it allows                                                    |
+| ------- | ----------------------------------------------------------------- |
+| `read`  | `GET` requests — viewing servers, files, backups                  |
+| `write` | Requests that act — starting, writing a file, taking a backup     |
+| `admin` | The `/api/admin/*` routes, and only for an administrator account  |
 
-Une clé de lecture ne peut pas éteindre un serveur : c'est le point de ces
-portées. Le rôle du compte est revérifié à chaque requête, si bien qu'une
-rétrogradation prend effet sans avoir à révoquer les clés une à une.
+A read key cannot stop a server: that is the point of these scopes. The account's role is rechecked
+on every request, so a demotion takes effect without having to revoke keys one by one.
 
-Une clé peut être restreinte à des adresses IP sources et recevoir une date
-d'expiration. La liste d'adresses vide n'impose aucune restriction.
+A key can be restricted to source IP addresses and given an expiry date. An empty address list
+imposes no restriction.
 
-Quelques routes utiles :
+A few useful routes:
 
 ```
-GET    /api/servers                       liste des serveurs accessibles
-GET    /api/servers/:uuid                 détail d'un serveur
+GET    /api/servers                       the servers you can reach
+GET    /api/servers/:uuid                 one server in detail
 POST   /api/servers/:uuid/power           {"action":"start|stop|restart|kill"}
 GET    /api/servers/:uuid/files/list?path=/
-POST   /api/servers/:uuid/backups         déclenche une sauvegarde
-GET    /api/servers/:uuid/webhooks        notifications sortantes
+POST   /api/servers/:uuid/backups         triggers a backup
+GET    /api/servers/:uuid/webhooks        outgoing notifications
 ```
 
-La console, elle, ne s'ouvre pas avec une clé d'API : elle utilise un jeton de
-très courte durée délivré par `GET /api/servers/:uuid/console`, que le
-navigateur présente directement au daemon.
+The console does not open with an API key: it uses a very short-lived token issued by
+`GET /api/servers/:uuid/console`, which the browser presents directly to the daemon.
 
-## Notifications sortantes
+## Outgoing notifications
 
-**Onglet Notifications** d'un serveur. Le panel appelle l'adresse de votre choix
-à chaque événement souscrit : démarrage, arrêt, arrêt subi, sauvegarde et
-installation.
+A server's **Notifications tab**. The panel calls the address of your choice on every subscribed
+event: start, stop, unexpected stop, backup and installation.
 
-L'adresse est vérifiée avant enregistrement **et avant chaque envoi** : celles
-qui mènent à un réseau interne — boucle locale, adresses privées, service de
-métadonnées du cloud — sont refusées. Sans ce contrôle, un sous-utilisateur
-pourrait se faire livrer par le panel le contenu de votre réseau.
+The address is checked before saving **and before every send**: those leading to an internal network
+— loopback, private addresses, the cloud metadata service — are refused. Without that check, a
+subuser could have the panel deliver them the contents of your network.
 
 ### Discord
 
-Collez l'URL d'un webhook de salon : le message est mis en forme, coloré selon
-la gravité et lié au serveur dans le panel. Rien d'autre à configurer.
+Paste a channel webhook URL: the message is formatted, coloured by severity and linked to the server
+in the panel. Nothing else to configure.
 
-### Autre destinataire
+### Any other recipient
 
-Le corps est un JSON stable :
+The body is stable JSON:
 
 ```json
 {
@@ -67,18 +62,17 @@ Le corps est un JSON stable :
   "occurredAt": "2026-08-04T12:00:00.000Z",
   "server": {
     "uuid": "1b32d12d-…",
-    "name": "Survie",
-    "address": "jeu.example.com:25565",
+    "name": "Survival",
+    "address": "play.example.com:25565",
     "url": "https://panel.example.com/server/1b32d12d-…"
   },
-  "details": { "Cause": "tué par le noyau, mémoire insuffisante" }
+  "details": { "Cause": "killed by the kernel, out of memory" }
 }
 ```
 
-Chaque requête porte `X-Hopper-Event` et `X-Hopper-Signature`, un HMAC-SHA256 du
-corps. **Vérifiez-la** : l'URL d'un webhook finit toujours par circuler, et sans
-signature n'importe qui pourrait fabriquer de fausses alertes. Le secret se
-consulte depuis l'interface.
+Every request carries `X-Hopper-Event` and `X-Hopper-Signature`, an HMAC-SHA256 of the body.
+**Verify it**: a webhook's URL always ends up circulating, and without a signature anyone could
+forge alerts. The secret is readable from the interface.
 
 ```js
 import { createHmac, timingSafeEqual } from 'node:crypto';
@@ -92,6 +86,5 @@ const valid =
   timingSafeEqual(Buffer.from(expected), Buffer.from(received));
 ```
 
-Une adresse qui échoue vingt fois d'affilée est mise en pause plutôt que
-réessayée sans fin ; l'interface montre le dernier code de réponse et la
-réactive d'un clic.
+An address that fails twenty times in a row is paused rather than retried forever; the interface
+shows the last response code and re-enables it with one click.

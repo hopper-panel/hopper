@@ -1,80 +1,79 @@
-# Sécuriser son instance
+# Securing your instance
 
-La [politique de sécurité](../SECURITY.md) décrit le modèle de menace du projet et la façon de
-signaler une faille. Ce document-ci s'adresse à celui qui **exploite** une instance : ce qu'il faut
-régler, sauvegarder et surveiller.
+The [security policy](../SECURITY.md) describes the project's threat model and how to report a flaw.
+This document addresses whoever **runs** an instance: what to set, back up and watch.
 
-## Les six points qui comptent
+## The six things that matter
 
-### 1. `APP_SECRET` — le sauvegarder, ne jamais le changer
+### 1. `APP_SECRET` — back it up, never change it
 
-Il chiffre les jetons de node, les mots de passe des serveurs SQL et les secrets de double
-authentification. Le remplacer rend tout cela illisible d'un coup : console en erreur 500, serveurs
-de bases inutilisables, connexions 2FA impossibles.
+It encrypts the node tokens, the SQL servers' passwords and the two-factor secrets. Replacing it
+makes all of them unreadable at once: the console errors with a 500, database servers become
+unusable, 2FA sign-ins become impossible.
 
-Sauvegardez `apps/panel/.env` **avec** la base, et non séparément. Un dump SQL sans son secret ne
-restaure qu'une moitié d'instance.
+Back `apps/panel/.env` up **with** the database, not separately. A SQL dump without its secret
+restores only half an instance.
 
-### 2. Le panel derrière TLS
+### 2. The panel behind TLS
 
-Sans HTTPS, le cookie de session circule en clair : le voler suffit à prendre la main sur tous les
-serveurs de son propriétaire. L'installeur pose un certificat Let's Encrypt quand un domaine est
-fourni ; `hopper doctor` avertit tant que ce n'est pas le cas.
+Without HTTPS the session cookie travels in the clear: stealing it is enough to take over every
+server its owner holds. The installer lays down a Let's Encrypt certificate when a domain is given;
+`hopper doctor` warns until that is the case.
 
-### 3. `/etc/hopper/daemon.yml` en 0600
+### 3. `/etc/hopper/daemon.yml` in 0600
 
-Il contient le secret du node et la clé de signature des consoles. Quiconque le lit peut piloter tous
-les serveurs de la machine. Le daemon **refuse de démarrer** si d'autres utilisateurs peuvent le
-lire — c'est voulu, ne contournez pas la vérification.
+It holds the node secret and the console signing key. Whoever reads it can drive every server on the
+machine. The daemon **refuses to start** if other users can read it — that is deliberate, do not work
+around the check.
 
-### 4. Le pare-feu, dans `DOCKER-USER`
+### 4. The firewall, in `DOCKER-USER`
 
-Docker écrit ses règles `iptables` avant celles d'ufw. Une règle ufw qui semble fermer le port d'un
-conteneur ne ferme rien :
+Docker writes its `iptables` rules before ufw's. A ufw rule that seems to close a container's port
+closes nothing:
 
 ```bash
 iptables -I DOCKER-USER -p tcp --dport 25565 ! -s 203.0.113.0/24 -j DROP
 ```
 
-N'exposez à l'extérieur que le panel (80/443), le daemon (8443), le SFTP (2022) et les ports de jeu.
-La base de données et Redis n'ont aucune raison d'être joignables.
+Expose to the outside only the panel (80/443), the daemon (8443), SFTP (2022) and the game ports.
+The database and Redis have no reason to be reachable.
 
-### 5. La double authentification pour les administrateurs
+### 5. Two-factor authentication for administrators
 
-Un compte administrateur peut créer un serveur, donc exécuter du code sur l'hôte. **Mon compte →
-Double authentification** ; elle protège aussi le SFTP, qui partage les identifiants.
+An administrator account can create a server, and therefore run code on the host. **My account →
+Two-factor authentication**; it also protects SFTP, which shares the credentials.
 
-### 6. Les sauvegardes, hors de la machine
+### 6. Backups, off the machine
 
-Une sauvegarde sur le même disque que les données ne protège que des erreurs humaines. Pointez
-`system.backupDirectory` du daemon vers un autre disque, ou utilisez le pilote S3 (MinIO, Backblaze,
-Wasabi) qui les envoie ailleurs.
+A backup on the same disk as the data protects only against human error. Point the daemon's
+`system.backupDirectory` at another disk, or use the S3 driver (MinIO, Backblaze, Wasabi) which
+sends them elsewhere.
 
-## Ce que Hopper protège déjà
+## What Hopper already protects
 
-Vous n'avez rien à régler pour ce qui suit — c'est le comportement par défaut :
+You have nothing to set for the following — it is the default behaviour:
 
-- **Conteneurs sans privilège** : `cap_drop: ALL`, `no-new-privileges`, limite de pids, jamais de
-  `--privileged`, et le socket Docker n'est jamais monté dans un conteneur de serveur.
-- **Prison de chemins** sur toutes les opérations de fichiers et le SFTP : chemin résolu par
-  `realpath`, refus des symlinks qui sortent du volume, protection zip-slip à la décompression.
-- **Jetons de node en deux parties** : identifiant public, secret haché en base, rotation par
+- **Unprivileged containers**: `cap_drop: ALL`, `no-new-privileges`, a pids limit, never
+  `--privileged`, and the Docker socket is never mounted into a server container.
+- **A path jail** on every file operation and on SFTP: the path resolved through `realpath`,
+  symlinks leaving the volume refused, zip-slip protection on extraction.
+- **Two-part node tokens**: public identifier, secret hashed in the database, rotation through
   `hopper node:token`.
-- **JWT de console de courte durée**, portant les permissions du porteur, vérifiés par le daemon —
-  qui vérifie aussi l'origine de la connexion WebSocket.
-- **Commandes de démarrage en gabarit**, jamais de concaténation passée à un shell.
-- **Journal d'audit** de toutes les actions sensibles, consultable par serveur.
-- **Limitation de débit** sur l'authentification, la 2FA et le SFTP.
+- **Short-lived console JWTs**, carrying the bearer's permissions, verified by the daemon — which
+  also checks the origin of the WebSocket connection.
+- **Startup commands as templates**, never a concatenation handed to a shell.
+- **An audit log** of every sensitive action, readable per server.
+- **Rate limiting** on authentication, on 2FA and on SFTP.
 
-## Après un incident
+## After an incident
 
-Si vous soupçonnez un vol d'identifiants :
+If you suspect credentials were stolen:
 
 ```bash
-hopper user:password --username <compte>   # ferme aussi toutes ses sessions
-hopper node:token --node <node>            # invalide le jeton du daemon
+hopper user:password --username <account>   # also closes every session
+hopper node:token --node <node>             # invalidates the daemon's token
 systemctl restart hopperd
 ```
 
-Puis relisez le journal d'activité de chaque serveur touché — il porte l'adresse IP et l'auteur de
-chaque action — et changez les mots de passe des bases de données créées depuis le panel.
+Then read back the activity log of each affected server — it carries the IP address and the author
+of every action — and change the passwords of the databases created from the panel.
