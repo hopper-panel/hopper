@@ -18,6 +18,9 @@ import { z } from 'zod';
 export const TWO_FACTOR_REQUIREMENTS = ['none', 'admins', 'all'] as const;
 export const MAIL_ENCRYPTIONS = ['none', 'tls', 'starttls'] as const;
 
+/** Interface languages. English is the source language; the rest are translations. */
+export const LOCALES = ['en', 'fr', 'es', 'de', 'ru'] as const;
+
 /**
  * Champs, **sans valeur par défaut**.
  *
@@ -39,6 +42,9 @@ const FIELDS = {
    * pas fait.
    */
   twoFactorRequirement: z.enum(TWO_FACTOR_REQUIREMENTS),
+
+  /** Language served to visitors who have not picked one themselves. */
+  defaultLocale: z.enum(LOCALES),
 
   mailEnabled: z.boolean(),
   mailHost: z.string().max(255),
@@ -71,6 +77,7 @@ const FIELDS = {
 const DEFAULTS = {
   panelName: 'Hopper',
   twoFactorRequirement: 'none',
+  defaultLocale: 'en',
   mailEnabled: false,
   mailHost: '',
   mailPort: 587,
@@ -86,6 +93,7 @@ const DEFAULTS = {
 export const instanceSettingsSchema = z.object({
   panelName: FIELDS.panelName.default(DEFAULTS.panelName),
   twoFactorRequirement: FIELDS.twoFactorRequirement.default(DEFAULTS.twoFactorRequirement),
+  defaultLocale: FIELDS.defaultLocale.default(DEFAULTS.defaultLocale),
   mailEnabled: FIELDS.mailEnabled.default(DEFAULTS.mailEnabled),
   mailHost: FIELDS.mailHost.default(DEFAULTS.mailHost),
   mailPort: FIELDS.mailPort.default(DEFAULTS.mailPort),
@@ -118,6 +126,7 @@ export function isSecretKey(key: string): key is SecretKey {
 export const updateInstanceSettingsSchema = z.object({
   panelName: FIELDS.panelName.optional(),
   twoFactorRequirement: FIELDS.twoFactorRequirement.optional(),
+  defaultLocale: FIELDS.defaultLocale.optional(),
   mailEnabled: FIELDS.mailEnabled.optional(),
   mailHost: FIELDS.mailHost.optional(),
   mailPort: FIELDS.mailPort.optional(),

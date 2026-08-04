@@ -1,20 +1,20 @@
 import { useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { useTranslation } from '../i18n';
 import { useAuth } from '../lib/auth';
 import { cx } from '../lib/cx';
 import { SearchDialog } from './SearchDialog';
 
 /**
- * Mise en page générale.
+ * Application shell.
  *
- * La barre supérieure ne porte plus que des icônes, comme dans Pterodactyl.
- * Elle listait auparavant les sections d'administration à côté de « Mes
- * serveurs », ce qui mélangeait deux univers : celui de l'utilisateur qui gère
- * ses serveurs, et celui de l'administrateur qui gère l'instance. Le second a
- * désormais son propre espace, avec sa propre navigation.
+ * The top bar carries icons only. It used to list the administration sections
+ * next to "my servers", which mixed two worlds: the user who runs their servers
+ * and the administrator who runs the instance.
  */
 export function Layout() {
   const { user, logout } = useAuth();
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const [searching, setSearching] = useState(false);
   const isAdmin = user?.role === 'ADMIN';
@@ -31,17 +31,17 @@ export function Layout() {
           </NavLink>
 
           <nav className="ml-auto flex items-center gap-1">
-            <IconButton label="Rechercher" icon="🔍" onClick={() => setSearching(true)} />
-            <IconLink to="/" label="Mes serveurs" icon="▤" end />
-            {isAdmin ? <IconLink to="/admin" label="Administration" icon="⚙" /> : null}
-            <IconLink to="/account" label="Mon compte" icon="◍" />
+            <IconButton label={t('nav.search')} icon="🔍" onClick={() => setSearching(true)} />
+            <IconLink to="/" label={t('nav.servers')} icon="▤" end />
+            {isAdmin ? <IconLink to="/admin" label={t('nav.admin')} icon="⚙" /> : null}
+            <IconLink to="/account" label={t('nav.account')} icon="◍" />
 
             <span className="mx-2 hidden text-sm text-content-muted sm:inline">
               {user?.username}
             </span>
 
             <IconButton
-              label="Déconnexion"
+              label={t('nav.signOut')}
               icon="⏻"
               onClick={() => {
                 void logout();
@@ -51,21 +51,17 @@ export function Layout() {
         </div>
       </header>
 
-      {/* L'exigence de second facteur ne peut pas être imposée à la connexion —
-          il faut être connecté pour l'activer. Elle se manifeste donc par un
-          bandeau qui suit l'utilisateur partout jusqu'à ce que ce soit fait. */}
+      {/* The requirement cannot be enforced at sign-in — you must be signed in
+          to turn it on — so it shows as a banner until it is done. */}
       {user?.mustEnableTwoFactor ? (
         <div className="border-b border-accent/40 bg-accent/10">
           <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-3 px-4 py-2.5 text-sm text-content">
-            <span>
-              Cette instance exige la double authentification. Activez-la pour continuer à protéger
-              vos serveurs.
-            </span>
+            <span>{t('twoFactor.required')}</span>
             <NavLink
               to="/account"
               className="ml-auto rounded-lg bg-accent px-3 py-1.5 text-sm font-medium text-surface"
             >
-              Activer
+              {t('twoFactor.enable')}
             </NavLink>
           </div>
         </div>
@@ -88,11 +84,11 @@ export function Layout() {
 }
 
 /**
- * Bouton d'icône de la barre supérieure.
+ * Icon button of the top bar.
  *
- * Le libellé est porté par `title` **et** `aria-label` : le premier fait
- * apparaître l'infobulle du navigateur, le second nomme le bouton pour un
- * lecteur d'écran. Une icône seule n'est lisible ni par l'un ni par l'autre.
+ * The label is carried by `title` **and** `aria-label`: the first shows the
+ * browser tooltip, the second names the button for a screen reader. An icon
+ * alone is readable by neither.
  */
 function IconButton({
   label,

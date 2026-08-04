@@ -1,27 +1,30 @@
 import { useMutation } from '@tanstack/react-query';
 import { useState } from 'react';
 import { ApiKeysCard } from '../components/ApiKeysCard';
+import { LanguageCard } from '../components/LanguageCard';
 import { PageHeader } from '../components/PageHeader';
 import { Alert, Badge, Button, Card, Field, Input } from '../components/ui';
 import { ApiError, api } from '../lib/api';
+import { useTranslation } from '../i18n';
 import { useAuth } from '../lib/auth';
 
 /**
- * Compte de l'utilisateur connecté.
+ * The signed-in user's own account.
  *
- * Mot de passe et double authentification. L'adresse de courriel n'y figure pas :
- * seule l'administration sait la changer aujourd'hui, et proposer un champ qui
- * échouerait serait pire que de ne rien proposer.
+ * Password, two-factor and language. The email address is not here: only the
+ * administration can change it today, and offering a field that would fail is
+ * worse than offering none.
  */
 export function AccountPage() {
   const { user } = useAuth();
+  const { t } = useTranslation();
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-8">
       <PageHeader
-        title="Mon compte"
+        title={t('account.title')}
         description={user ? `${user.username} — ${user.email}` : undefined}
-        action={user?.role === 'ADMIN' ? <Badge tone="warn">administrateur</Badge> : null}
+        action={user?.role === 'ADMIN' ? <Badge tone="warn">{t('account.admin')}</Badge> : null}
       />
 
       <div className="grid gap-4 lg:grid-cols-2">
@@ -29,7 +32,8 @@ export function AccountPage() {
         <TwoFactorCard />
       </div>
 
-      <div className="mt-4">
+      <div className="mt-4 grid gap-4">
+        <LanguageCard />
         <ApiKeysCard />
       </div>
     </div>
@@ -37,6 +41,7 @@ export function AccountPage() {
 }
 
 function PasswordCard() {
+  const { t } = useTranslation();
   const [current, setCurrent] = useState('');
   const [next, setNext] = useState('');
   const [confirmation, setConfirmation] = useState('');
@@ -59,14 +64,14 @@ function PasswordCard() {
     },
   });
 
-  // La confirmation est vérifiée ici et non par l'API : une faute de frappe
-  // n'a pas à faire un aller-retour, et le message est plus précis.
+  // The confirmation is checked here rather than by the API: a typo need not
+  // make a round trip, and the message is more precise.
   const mismatch = confirmation !== '' && next !== confirmation;
 
   return (
     <Card>
       <h2 className="mb-4 text-sm font-semibold uppercase tracking-wide text-content">
-        Mot de passe
+        {t('account.passwordTitle')}
       </h2>
 
       {failure ? (
@@ -77,15 +82,12 @@ function PasswordCard() {
 
       {done ? (
         <div className="mb-4">
-          <Alert tone="info">
-            Mot de passe changé. Vos autres sessions ont été fermées, et le SFTP utilise désormais
-            ce nouveau mot de passe.
-          </Alert>
+          <Alert tone="info">{t('account.passwordChanged')}</Alert>
         </div>
       ) : null}
 
       <div className="flex flex-col gap-4">
-        <Field label="Mot de passe actuel">
+        <Field label={t('account.currentPassword')}>
           <Input
             type="password"
             value={current}
@@ -94,7 +96,7 @@ function PasswordCard() {
           />
         </Field>
 
-        <Field label="Nouveau mot de passe" hint="Douze caractères au minimum.">
+        <Field label={t('account.newPassword')} hint={t('account.passwordHint')}>
           <Input
             type="password"
             value={next}
@@ -103,7 +105,10 @@ function PasswordCard() {
           />
         </Field>
 
-        <Field label="Confirmation" error={mismatch ? 'Les deux saisies diffèrent.' : undefined}>
+        <Field
+          label={t('account.confirmation')}
+          error={mismatch ? t('account.mismatch') : undefined}
+        >
           <Input
             type="password"
             value={confirmation}
@@ -119,7 +124,7 @@ function PasswordCard() {
           disabled={change.isPending || mismatch || current === '' || next === ''}
           onClick={() => change.mutate()}
         >
-          {change.isPending ? 'Changement…' : 'Changer le mot de passe'}
+          {change.isPending ? t('common.saving') : t('account.changePassword')}
         </Button>
       </div>
     </Card>
@@ -127,6 +132,7 @@ function PasswordCard() {
 }
 
 function TwoFactorCard() {
+  const { t } = useTranslation();
   const [setup, setSetup] = useState<{ secret: string; otpauthUrl: string } | null>(null);
   const [code, setCode] = useState('');
   const [failure, setFailure] = useState<string | null>(null);
@@ -157,7 +163,7 @@ function TwoFactorCard() {
   return (
     <Card>
       <h2 className="mb-4 text-sm font-semibold uppercase tracking-wide text-content">
-        Double authentification
+        {t('account.twoFactorTitle')}
       </h2>
 
       {failure ? (
@@ -168,12 +174,9 @@ function TwoFactorCard() {
 
       {recovery ? (
         <>
-          {/* Montrés une seule fois : ils ne sont pas conservés en clair côté
-              panel, et il n'y a aucun moyen de les réafficher. */}
-          <Alert tone="info">
-            Notez ces codes de récupération : ils ne seront plus jamais affichés. Chacun ne sert
-            qu’une fois, si vous perdez votre téléphone.
-          </Alert>
+          {/* Shown once: they are not kept in clear on the panel side, and
+              there is no way to display them again. */}
+          <Alert tone="info">{t('account.recoveryIntro')}</Alert>
 
           <ul className="mt-3 grid grid-cols-2 gap-1 font-mono text-sm text-content">
             {recovery.map((entry) => (
@@ -185,16 +188,13 @@ function TwoFactorCard() {
         </>
       ) : setup ? (
         <div className="flex flex-col gap-4">
-          <p className="text-sm text-content-muted">
-            Ajoutez ce secret dans votre application d’authentification, puis saisissez le code
-            qu’elle affiche.
-          </p>
+          <p className="text-sm text-content-muted">{t('account.twoFactorSecretIntro')}</p>
 
           <code className="block break-all rounded-lg bg-surface px-3 py-2 font-mono text-xs text-content">
             {setup.secret}
           </code>
 
-          <Field label="Code à six chiffres">
+          <Field label={t('account.twoFactorCode')}>
             <Input
               value={code}
               onChange={(event) => setCode(event.target.value)}
@@ -205,27 +205,24 @@ function TwoFactorCard() {
 
           <div className="flex justify-end gap-2">
             <Button variant="ghost" onClick={() => setSetup(null)}>
-              Annuler
+              {t('common.cancel')}
             </Button>
             <Button
               variant="primary"
               onClick={() => confirm.mutate()}
               disabled={confirm.isPending || code.length < 6}
             >
-              {confirm.isPending ? 'Vérification…' : 'Activer'}
+              {confirm.isPending ? t('common.saving') : t('account.twoFactorActivate')}
             </Button>
           </div>
         </div>
       ) : (
         <>
-          <p className="text-sm text-content-muted">
-            Un second facteur protège votre compte même si votre mot de passe fuite. Il protège
-            aussi le SFTP, qui utilise les mêmes identifiants.
-          </p>
+          <p className="text-sm text-content-muted">{t('account.twoFactorIntro')}</p>
 
           <div className="mt-4 flex justify-end">
             <Button variant="primary" onClick={() => begin.mutate()} disabled={begin.isPending}>
-              {begin.isPending ? 'Préparation…' : 'Activer la double authentification'}
+              {begin.isPending ? t('common.loading') : t('account.twoFactorEnable')}
             </Button>
           </div>
         </>

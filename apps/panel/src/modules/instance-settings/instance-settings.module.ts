@@ -1,5 +1,6 @@
 import { Global, Module } from '@nestjs/common';
 import { AuditModule } from '../audit/audit.module.js';
+import { BrandingController } from './branding.controller.js';
 import { InstanceSettingsController } from './instance-settings.controller.js';
 import { InstanceSettingsService } from './instance-settings.service.js';
 import { MailService } from './mail.service.js';
@@ -14,7 +15,7 @@ import { MailService } from './mail.service.js';
 @Global()
 @Module({
   imports: [AuditModule],
-  controllers: [InstanceSettingsController],
+  controllers: [InstanceSettingsController, BrandingController],
   providers: [InstanceSettingsService, MailService],
   exports: [InstanceSettingsService, MailService],
 })

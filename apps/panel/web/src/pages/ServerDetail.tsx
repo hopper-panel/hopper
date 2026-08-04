@@ -12,6 +12,7 @@ import {
   UploadIcon,
 } from '../components/icons';
 import { Button } from '../components/ui';
+import { useTranslation, type MessageKey } from '../i18n';
 import { copyText } from '../lib/clipboard';
 import { cx } from '../lib/cx';
 import { formatAddress, formatBytes, formatUptime, formatUsedBytes } from '../lib/format';
@@ -33,6 +34,7 @@ export function ServerDetailPage() {
   // Le serveur, ses permissions et la console viennent de `ServerLayout` :
   // cette page n'est plus qu'un onglet parmi d'autres et ne recharge rien.
   const { server, controller, can } = useServerContext();
+  const { t } = useTranslation();
   // Abonnement local : les autres onglets ne se rendent plus au rythme des
   // relevés du daemon.
   const history = useUsageHistory(controller, CHART_POINTS);
@@ -49,7 +51,7 @@ export function ServerDetailPage() {
         <div className="flex flex-wrap gap-2">
           <PowerButton
             action="start"
-            label="Démarrer"
+            label="console.start"
             controller={controller}
             can={can}
             variant="primary"
@@ -57,33 +59,33 @@ export function ServerDetailPage() {
           />
           <PowerButton
             action="restart"
-            label="Redémarrer"
+            label="console.restart"
             controller={controller}
             can={can}
             disabled={busy || controller.state === 'offline'}
           />
           <PowerButton
             action="stop"
-            label="Arrêter"
+            label="console.stop"
             controller={controller}
             can={can}
             variant="danger"
             disabled={busy || controller.state === 'offline'}
           />
-          {/* Le SIGKILL n'apparaît que quand il peut servir : un serveur éteint
-              n'a rien à tuer, et un bouton toujours présent finit par être
-              cliqué à la place d'« Arrêter ». */}
+          {/* Kill only appears when it can serve: an offline server has
+              nothing to kill, and a button that is always there ends up being
+              clicked instead of Stop. */}
           {controller.state !== 'offline' ? (
             <PowerButton
               action="kill"
-              label="Tuer"
+              label="console.kill"
               controller={controller}
               can={can}
               variant="ghost"
               disabled={false}
-              // Un SIGKILL pendant une sauvegarde de région corrompt la map : on
-              // demande confirmation plutôt que d'exposer un bouton ordinaire.
-              confirm="Tuer le serveur coupe le processus sans sauvegarde. Une perte de données, voire une corruption de la map, est possible. Continuer ?"
+              // A SIGKILL during a region save corrupts the map: this asks
+              // for confirmation rather than exposing an ordinary button.
+              confirm="console.killConfirm"
             />
           ) : null}
         </div>
@@ -94,55 +96,51 @@ export function ServerDetailPage() {
           <Console controller={controller} />
         </div>
 
-        {/* Cartes de ressources, une par mesure. Le node, le template et
-            l'identifiant du serveur ont migré vers l'onglet Paramètres : ils ne
-            changent jamais, et occupaient la place de ce qu'on vient réellement
-            surveiller.
+        {/* One card per measurement. The node, template and server id moved to
+            the Settings tab: they never change, and took the room of what one
+            actually comes here to watch.
 
-            La colonne s'étire sur toute la hauteur de la console — un élément
-            de grille l'occupe déjà, restait à répartir les cartes dedans avec
-            `flex-1`. Sans cela elles s'arrêtaient aux deux tiers et laissaient
-            un vide en bas, d'autant plus visible que la console, elle, descend
-            jusqu'en bas. */}
+            The column stretches to the console height — a grid item already
+            does — and `flex-1` shares that height between the cards. */}
         <div className="flex flex-col gap-3">
           <Stat
             icon={<AddressIcon />}
-            label="Adresse"
+            label={t('console.address')}
             value={formatAddress(server.primaryAllocation, server.node.fqdn)}
             mono
             copyable
           />
           <Stat
             icon={<ClockIcon />}
-            label="Temps de fonctionnement"
+            label={t('console.uptime')}
             value={usage ? formatUptime(usage.uptime) : '—'}
           />
           <Stat
             icon={<CpuIcon />}
-            label="Processeur"
+            label={t('console.cpu')}
             value={usage ? `${usage.cpuPercent.toFixed(2)} %` : '—'}
             limit={server.cpuPercent === 0 ? unlimited : `${server.cpuPercent} %`}
           />
           <Stat
             icon={<MemoryIcon />}
-            label="Mémoire"
+            label={t('console.memory')}
             value={usage ? formatUsedBytes(usage.memoryBytes) : '—'}
             limit={server.memoryBytes === 0 ? unlimited : formatBytes(server.memoryBytes)}
           />
           <Stat
             icon={<DiskIcon />}
-            label="Disque"
+            label={t('console.disk')}
             value={usage ? formatUsedBytes(usage.diskBytes) : '—'}
             limit={server.diskBytes === 0 ? unlimited : formatBytes(server.diskBytes)}
           />
           <Stat
             icon={<DownloadIcon />}
-            label="Réseau (entrant)"
+            label={t('console.networkIn')}
             value={usage ? formatUsedBytes(usage.networkRxBytes) : '—'}
           />
           <Stat
             icon={<UploadIcon />}
-            label="Réseau (sortant)"
+            label={t('console.networkOut')}
             value={usage ? formatUsedBytes(usage.networkTxBytes) : '—'}
           />
         </div>
@@ -150,27 +148,26 @@ export function ServerDetailPage() {
 
       <div className="mt-4 grid gap-4 lg:grid-cols-3">
         <ResourceChart
-          title="Processeur"
+          title={t('console.chartCpu')}
           series={[
             {
-              label: 'Charge',
+              label: t('console.chartCpu'),
               points: history.map((s) => s.cpuPercent),
               color: PRIMARY_LINE,
               fill: true,
             },
           ]}
-          // Une limite de CPU sert de plafond : sans elle, l'échelle suit le
-          // maximum observé, sinon un serveur discret afficherait une courbe
-          // écrasée au ras de l'axe.
+          // A CPU limit acts as the ceiling; without one the scale follows
+          // the observed maximum, so a quiet server still reads.
           ceiling={server.cpuPercent}
           format={(value) => `${value.toFixed(2)} %`}
         />
 
         <ResourceChart
-          title="Mémoire"
+          title={t('console.chartMemory')}
           series={[
             {
-              label: 'Utilisée',
+              label: t('console.chartMemory'),
               points: history.map((s) => s.memoryBytes),
               color: PRIMARY_LINE,
               fill: true,
@@ -181,10 +178,18 @@ export function ServerDetailPage() {
         />
 
         <ResourceChart
-          title="Réseau"
+          title={t('console.chartNetwork')}
           series={[
-            { label: 'entrant', points: rates(history, 'networkRxBytes'), color: PRIMARY_LINE },
-            { label: 'sortant', points: rates(history, 'networkTxBytes'), color: SECONDARY_LINE },
+            {
+              label: t('console.chartInbound'),
+              points: rates(history, 'networkRxBytes'),
+              color: PRIMARY_LINE,
+            },
+            {
+              label: t('console.chartOutbound'),
+              points: rates(history, 'networkTxBytes'),
+              color: SECONDARY_LINE,
+            },
           ]}
           format={(value) => `${formatUsedBytes(Math.round(value))}/s`}
         />
@@ -194,12 +199,12 @@ export function ServerDetailPage() {
 }
 
 /**
- * Débit instantané, déduit de deux compteurs cumulés successifs.
+ * Instant throughput, from two consecutive cumulative counters.
  *
- * Le daemon rapporte des totaux depuis le démarrage du conteneur : les tracer
- * tels quels donnerait une droite toujours croissante, où l'on ne verrait
- * aucun pic. Un redémarrage remet les compteurs à zéro et produirait une
- * différence négative — ramenée à zéro plutôt qu'affichée sous l'axe.
+ * The daemon reports totals since container start: plotting them raw would give
+ * an ever-rising line with no visible spike. A restart resets the counters and
+ * would produce a negative difference — clamped to zero rather than drawn below
+ * the axis.
  */
 function rates(
   history: readonly ResourceUsage[],
@@ -218,19 +223,20 @@ function PowerButton({
   confirm,
 }: {
   action: PowerAction;
-  label: string;
+  label: MessageKey;
   controller: ConsoleController;
   can: (permission: Permission) => boolean;
   disabled: boolean;
   variant?: 'primary' | 'secondary' | 'danger' | 'ghost';
-  confirm?: string;
+  confirm?: MessageKey;
 }) {
-  // Masquer plutôt que désactiver : un bouton grisé sans explication laisse
-  // croire à une panne. L'API refuserait de toute façon l'action.
+  const { t } = useTranslation();
+
+  // Hidden rather than disabled: a greyed-out button with no explanation
+  // reads as a breakage. The API would refuse the action anyway.
   //
-  // La permission vient de l'API et non du WebSocket : autrement les boutons
-  // apparaissaient d'un coup à la connexion de la console, après un instant où
-  // la page semblait n'en offrir aucun.
+  // The permission comes from the API, not from the WebSocket: otherwise the
+  // buttons appeared all at once when the console connected.
   if (!can(POWER_PERMISSIONS[action])) {
     return null;
   }
@@ -241,24 +247,23 @@ function PowerButton({
       className="min-w-24"
       disabled={disabled || controller.status !== 'connected'}
       onClick={() => {
-        if (confirm && !window.confirm(confirm)) {
+        if (confirm && !window.confirm(t(confirm))) {
           return;
         }
         controller.setPower(action);
       }}
     >
-      {label}
+      {t(label)}
     </Button>
   );
 }
 
 /**
- * Une mesure, dans sa propre carte.
+ * One measurement, in its own card.
  *
- * Séparées plutôt que listées dans un même encadré : chacune se lit d'un coup
- * d'œil pendant que la console défile, ce qu'une liste dense ne permet pas.
- * L'icône n'est pas décorative — c'est elle qu'on vise du regard quand on
- * cherche une ligne précise dans la colonne.
+ * Separate cards rather than one dense list: each reads at a glance while the
+ * console scrolls. The icon is not decorative — it is what the eye aims for
+ * when looking for one row in the column.
  */
 function Stat({
   icon,
@@ -277,6 +282,7 @@ function Stat({
   /** Rend la carte cliquable : un clic copie la valeur. */
   copyable?: boolean;
 }) {
+  const { t } = useTranslation();
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
@@ -297,11 +303,11 @@ function Stat({
       <div className="min-w-0 text-left">
         <p className="text-xs uppercase tracking-wide text-content-muted">
           {label}
-          {/* Le retour tient dans le libellé plutôt que dans une infobulle :
-              rien ne distingue un presse-papiers rempli d'un clic sans effet,
-              et la copie peut réellement échouer — le panel servi en HTTP n'a
-              pas accès à l'API du presse-papiers. */}
-          {copied ? <span className="ml-2 text-accent">copié</span> : null}
+          {/* Feedback in the label rather than a tooltip: nothing tells a
+              filled clipboard from a click with no effect, and copying can
+              genuinely fail — a panel served over plain HTTP has no clipboard
+              API. */}
+          {copied ? <span className="ml-2 text-accent">{t('common.copied')}</span> : null}
         </p>
         <p className={`truncate text-content ${mono ? 'font-mono text-sm' : 'font-semibold'}`}>
           {value}
@@ -323,7 +329,7 @@ function Stat({
   return (
     <button
       type="button"
-      title={`Copier ${value}`}
+      title={t('console.copyAddress', { value })}
       className={cx(shell, 'w-full text-left transition-colors hover:bg-surface-hover')}
       onClick={() => {
         void copyText(value).then(setCopied);

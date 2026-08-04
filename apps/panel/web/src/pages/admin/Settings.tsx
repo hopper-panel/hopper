@@ -2,12 +2,14 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { PageHeader } from '../../components/PageHeader';
 import { Alert, Badge, Button, Card, Field, Input, Spinner } from '../../components/ui';
+import { LOCALES, LOCALE_NAMES, useTranslation } from '../../i18n';
 import { ApiError, api } from '../../lib/api';
 import { cx } from '../../lib/cx';
 
 interface Settings {
   panelName: string;
   twoFactorRequirement: 'none' | 'admins' | 'all';
+  defaultLocale: (typeof LOCALES)[number];
   mailEnabled: boolean;
   mailHost: string;
   mailPort: number;
@@ -23,39 +25,36 @@ interface Settings {
 
 type Tab = 'general' | 'mail' | 'advanced';
 
-const TABS: { id: Tab; label: string }[] = [
-  { id: 'general', label: 'Général' },
-  { id: 'mail', label: 'Courriel' },
-  { id: 'advanced', label: 'Avancé' },
-];
-
-const TWO_FACTOR: { value: Settings['twoFactorRequirement']; label: string }[] = [
-  { value: 'none', label: 'Facultative' },
-  { value: 'admins', label: 'Administrateurs' },
-  { value: 'all', label: 'Tout le monde' },
+const TABS: {
+  id: Tab;
+  label: 'adminSettings.tabGeneral' | 'adminSettings.tabMail' | 'adminSettings.tabAdvanced';
+}[] = [
+  { id: 'general', label: 'adminSettings.tabGeneral' },
+  { id: 'mail', label: 'adminSettings.tabMail' },
+  { id: 'advanced', label: 'adminSettings.tabAdvanced' },
 ];
 
 const ENCRYPTIONS: { value: Settings['mailEncryption']; label: string }[] = [
   { value: 'starttls', label: 'STARTTLS (587)' },
-  { value: 'tls', label: 'TLS implicite (465)' },
-  { value: 'none', label: 'Aucun' },
+  { value: 'tls', label: 'TLS (465)' },
+  { value: 'none', label: 'None' },
 ];
 
 /**
- * Paramètres de l'instance.
+ * Instance settings.
  *
- * Trois onglets, comme dans Pterodactyl, parce qu'ils répondent à trois
- * questions différentes : comment le panel se présente, comment il envoie ses
- * courriels, et comment il se comporte. Un seul écran de vingt champs se lit
- * mal et se remplit encore plus mal.
+ * Three tabs, because they answer three different questions: how the panel
+ * presents itself, how it sends mail, how it behaves. A single screen of twenty
+ * fields reads badly and is filled in worse.
  *
- * Ce qui vit dans le `.env` — URL publique, secret d'application, base de
- * données — n'y figure pas : ces valeurs engagent le chiffrement de tout le
- * reste, et les rendre modifiables par un formulaire ferait dépendre
- * l'intégrité de l'instance d'un clic.
+ * What lives in `.env` — public URL, application secret, database — is not
+ * here: those values underpin the encryption of everything else, and making
+ * them editable from a form would hang the integrity of the instance on a
+ * click.
  */
 export function AdminSettingsPage() {
   const queryClient = useQueryClient();
+  const { t } = useTranslation();
   const [tab, setTab] = useState<Tab>('general');
   const [draft, setDraft] = useState<Settings | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
@@ -80,14 +79,14 @@ export function AdminSettingsPage() {
       api.patch<Settings>('/api/admin/settings', {
         panelName: values.panelName,
         twoFactorRequirement: values.twoFactorRequirement,
+        defaultLocale: values.defaultLocale,
         mailEnabled: values.mailEnabled,
         mailHost: values.mailHost,
         mailPort: Number(values.mailPort) || 587,
         mailEncryption: values.mailEncryption,
         mailUsername: values.mailUsername,
-        // Vide veut dire « inchangé » : le serveur ne renvoie jamais le mot de
-        // passe, l'écraser avec une chaîne vide l'effacerait à chaque
-        // enregistrement.
+        // Empty means unchanged: the server never returns the password, and
+        // overwriting it with an empty string would wipe it on every save.
         mailPassword: values.mailPassword,
         mailFromAddress: values.mailFromAddress,
         mailFromName: values.mailFromName,
@@ -97,10 +96,10 @@ export function AdminSettingsPage() {
     onSuccess: () => {
       setDraft(null);
       setFailure(null);
-      setNotice('Paramètres enregistrés.');
+      setNotice(t('adminSettings.saved'));
       void queryClient.invalidateQueries({ queryKey: ['admin', 'settings'] });
-      // Le nom du panel apparaît dans la barre supérieure : la session doit le
-      // relire, sinon l'ancien nom reste affiché jusqu'au prochain rechargement.
+      // The panel name shows in the top bar: the session must reload it, or
+      // the old name stays until the next full refresh.
       void queryClient.invalidateQueries({ queryKey: ['auth', 'me'] });
     },
     onError: (error: unknown) => {
@@ -113,7 +112,7 @@ export function AdminSettingsPage() {
     mutationFn: () => api.post<void>('/api/admin/settings/mail/test', { to: testAddress.trim() }),
     onSuccess: () => {
       setFailure(null);
-      setNotice(`Message envoyé à ${testAddress}. S’il n’arrive pas, regardez les indésirables.`);
+      setNotice(t('adminSettings.testSent', { address: testAddress }));
     },
     onError: (error: unknown) => {
       setNotice(null);
@@ -122,21 +121,21 @@ export function AdminSettingsPage() {
   });
 
   if (settings.isLoading || !current) {
-    return <Spinner label="Chargement des paramètres…" />;
+    return <Spinner label={t('common.loading')} />;
   }
 
   return (
     <>
       <PageHeader
-        title="Paramètres"
-        description="Comment le panel se présente, envoie ses courriels et se comporte."
+        title={t('adminSettings.title')}
+        description={t('adminSettings.subtitle')}
         action={
           <Button
             variant="primary"
             disabled={save.isPending || draft === null}
             onClick={() => save.mutate(current)}
           >
-            {save.isPending ? 'Enregistrement…' : 'Enregistrer'}
+            {save.isPending ? t('common.saving') : t('common.save')}
           </Button>
         }
       />
@@ -154,7 +153,7 @@ export function AdminSettingsPage() {
                 : 'border-transparent text-content-muted hover:text-content',
             )}
           >
-            {entry.label}
+            {t(entry.label)}
           </button>
         ))}
       </nav>
@@ -173,17 +172,14 @@ export function AdminSettingsPage() {
 
       {draft !== null ? (
         <div className="mb-4">
-          <Alert tone="info">Modifications non enregistrées.</Alert>
+          <Alert tone="info">{t('adminSettings.unsaved')}</Alert>
         </div>
       ) : null}
 
       {tab === 'general' ? (
         <Card>
           <div className="grid gap-5 lg:grid-cols-2">
-            <Field
-              label="Nom de l’instance"
-              hint="Affiché dans l’interface et dans les courriels envoyés."
-            >
+            <Field label={t('adminSettings.panelName')} hint={t('adminSettings.panelNameHint')}>
               <Input
                 value={current.panelName}
                 onChange={(event) => patch({ panelName: event.target.value })}
@@ -191,25 +187,53 @@ export function AdminSettingsPage() {
             </Field>
 
             <div>
-              <p className="mb-1.5 text-sm font-medium text-content">Double authentification</p>
+              <p className="mb-1.5 text-sm font-medium text-content">
+                {t('adminSettings.defaultLanguage')}
+              </p>
 
               <div className="flex flex-wrap gap-2">
-                {TWO_FACTOR.map((option) => (
+                {LOCALES.map((locale) => (
                   <Button
-                    key={option.value}
-                    variant={
-                      current.twoFactorRequirement === option.value ? 'primary' : 'secondary'
-                    }
-                    onClick={() => patch({ twoFactorRequirement: option.value })}
+                    key={locale}
+                    lang={locale}
+                    variant={current.defaultLocale === locale ? 'primary' : 'secondary'}
+                    onClick={() => patch({ defaultLocale: locale })}
                   >
-                    {option.label}
+                    {LOCALE_NAMES[locale]}
                   </Button>
                 ))}
               </div>
 
               <p className="mt-1.5 text-xs text-content-muted">
-                Les comptes concernés gardent l’accès à leur page « Mon compte » pour l’activer — on
-                ne peut pas exiger un second facteur avant de laisser quelqu’un le configurer.
+                {t('adminSettings.defaultLanguageHint')}
+              </p>
+            </div>
+
+            <div className="lg:col-span-2">
+              <p className="mb-1.5 text-sm font-medium text-content">
+                {t('adminSettings.twoFactor')}
+              </p>
+
+              <div className="flex flex-wrap gap-2">
+                {(['none', 'admins', 'all'] as const).map((option) => (
+                  <Button
+                    key={option}
+                    variant={current.twoFactorRequirement === option ? 'primary' : 'secondary'}
+                    onClick={() => patch({ twoFactorRequirement: option })}
+                  >
+                    {t(
+                      option === 'none'
+                        ? 'adminSettings.twoFactorNone'
+                        : option === 'admins'
+                          ? 'adminSettings.twoFactorAdmins'
+                          : 'adminSettings.twoFactorAll',
+                    )}
+                  </Button>
+                ))}
+              </div>
+
+              <p className="mt-1.5 text-xs text-content-muted">
+                {t('adminSettings.twoFactorHint')}
               </p>
             </div>
           </div>
@@ -222,25 +246,22 @@ export function AdminSettingsPage() {
             <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
               <div>
                 <h2 className="text-sm font-semibold uppercase tracking-wide text-content">
-                  Serveur SMTP
+                  {t('adminSettings.smtpTitle')}
                 </h2>
-                <p className="mt-1 text-sm text-content-muted">
-                  Sans lui, la création d’un compte n’envoie rien : l’administrateur doit
-                  transmettre lui-même un mot de passe.
-                </p>
+                <p className="mt-1 text-sm text-content-muted">{t('adminSettings.smtpIntro')}</p>
               </div>
 
               <Button
                 variant={current.mailEnabled ? 'primary' : 'secondary'}
                 onClick={() => patch({ mailEnabled: !current.mailEnabled })}
               >
-                {current.mailEnabled ? 'Envoi activé' : 'Envoi désactivé'}
+                {t(current.mailEnabled ? 'adminSettings.mailOn' : 'adminSettings.mailOff')}
               </Button>
             </div>
 
             <div className="grid gap-5 lg:grid-cols-3">
               <div className="lg:col-span-2">
-                <Field label="Hôte">
+                <Field label={t('adminSettings.mailHost')}>
                   <Input
                     value={current.mailHost}
                     onChange={(event) => patch({ mailHost: event.target.value })}
@@ -250,7 +271,7 @@ export function AdminSettingsPage() {
                 </Field>
               </div>
 
-              <Field label="Port">
+              <Field label={t('adminSettings.mailPort')}>
                 <Input
                   value={String(current.mailPort)}
                   onChange={(event) => patch({ mailPort: Number(event.target.value) })}
@@ -260,7 +281,9 @@ export function AdminSettingsPage() {
               </Field>
 
               <div>
-                <p className="mb-1.5 text-sm font-medium text-content">Chiffrement</p>
+                <p className="mb-1.5 text-sm font-medium text-content">
+                  {t('adminSettings.mailEncryption')}
+                </p>
                 <div className="flex flex-wrap gap-2">
                   {ENCRYPTIONS.map((option) => (
                     <Button
@@ -274,7 +297,10 @@ export function AdminSettingsPage() {
                 </div>
               </div>
 
-              <Field label="Identifiant" hint="Vide pour un serveur sans authentification.">
+              <Field
+                label={t('adminSettings.mailUsername')}
+                hint={t('adminSettings.mailUsernameHint')}
+              >
                 <Input
                   value={current.mailUsername}
                   onChange={(event) => patch({ mailUsername: event.target.value })}
@@ -283,12 +309,12 @@ export function AdminSettingsPage() {
               </Field>
 
               <Field
-                label="Mot de passe"
-                hint={
+                label={t('adminSettings.mailPassword')}
+                hint={t(
                   current.mailPasswordSet
-                    ? 'Enregistré. Laissez vide pour le conserver.'
-                    : 'Stocké chiffré, jamais réaffiché.'
-                }
+                    ? 'adminSettings.mailPasswordKept'
+                    : 'adminSettings.mailPasswordNew',
+                )}
               >
                 <Input
                   type="password"
@@ -299,7 +325,7 @@ export function AdminSettingsPage() {
               </Field>
 
               <div className="lg:col-span-2">
-                <Field label="Adresse d’expédition">
+                <Field label={t('adminSettings.mailFrom')}>
                   <Input
                     value={current.mailFromAddress}
                     onChange={(event) => patch({ mailFromAddress: event.target.value })}
@@ -309,7 +335,7 @@ export function AdminSettingsPage() {
                 </Field>
               </div>
 
-              <Field label="Nom de l’expéditeur">
+              <Field label={t('adminSettings.mailFromName')}>
                 <Input
                   value={current.mailFromName}
                   onChange={(event) => patch({ mailFromName: event.target.value })}
@@ -320,16 +346,13 @@ export function AdminSettingsPage() {
 
           <Card>
             <h2 className="mb-1 text-sm font-semibold uppercase tracking-wide text-content">
-              Envoi de vérification
+              {t('adminSettings.testTitle')}
             </h2>
-            <p className="mb-4 text-sm text-content-muted">
-              Le test utilise les paramètres <strong>enregistrés</strong> : enregistrez avant de
-              l’essayer.
-            </p>
+            <p className="mb-4 text-sm text-content-muted">{t('adminSettings.testIntro')}</p>
 
             <div className="flex flex-wrap items-end gap-3">
               <div className="min-w-64 flex-1">
-                <Field label="Destinataire">
+                <Field label={t('adminSettings.testRecipient')}>
                   <Input
                     value={testAddress}
                     onChange={(event) => setTestAddress(event.target.value)}
@@ -343,7 +366,7 @@ export function AdminSettingsPage() {
                 onClick={() => test.mutate()}
                 disabled={test.isPending || testAddress.trim() === ''}
               >
-                {test.isPending ? 'Envoi…' : 'Envoyer'}
+                {test.isPending ? t('adminSettings.testSending') : t('adminSettings.testSend')}
               </Button>
             </div>
           </Card>
@@ -353,10 +376,7 @@ export function AdminSettingsPage() {
       {tab === 'advanced' ? (
         <Card>
           <div className="grid gap-5 lg:grid-cols-2">
-            <Field
-              label="Délai d’attente des nodes (ms)"
-              hint="Au-delà, un daemon est déclaré injoignable. Augmentez-le pour une machine lointaine."
-            >
+            <Field label={t('adminSettings.nodeTimeout')} hint={t('adminSettings.nodeTimeoutHint')}>
               <Input
                 value={String(current.nodeTimeoutMs)}
                 onChange={(event) => patch({ nodeTimeoutMs: Number(event.target.value) })}
@@ -365,10 +385,7 @@ export function AdminSettingsPage() {
               />
             </Field>
 
-            <Field
-              label="Rétention du journal d’activité (jours)"
-              hint="0 conserve tout. Le journal dit qui a fait quoi : le purger est un choix, pas un réglage par défaut."
-            >
+            <Field label={t('adminSettings.retention')} hint={t('adminSettings.retentionHint')}>
               <Input
                 value={String(current.activityRetentionDays)}
                 onChange={(event) => patch({ activityRetentionDays: Number(event.target.value) })}
@@ -379,21 +396,15 @@ export function AdminSettingsPage() {
           </div>
 
           <div className="mt-5">
-            <Alert tone="info">
-              L’URL publique, le secret d’application et l’accès à la base restent dans le fichier{' '}
-              <code className="font-mono">.env</code>. Le secret chiffre les jetons de node et les
-              mots de passe SQL : le changer par mégarde rendrait tout cela illisible.
-            </Alert>
+            <Alert tone="info">{t('adminSettings.envNote')}</Alert>
           </div>
         </Card>
       ) : null}
 
       <p className="mt-4 text-xs text-content-subtle">
-        {current.mailEnabled ? (
-          <Badge tone="online">courriel actif</Badge>
-        ) : (
-          <Badge>courriel inactif</Badge>
-        )}
+        <Badge tone={current.mailEnabled ? 'online' : 'offline'}>
+          {t(current.mailEnabled ? 'adminSettings.mailOn' : 'adminSettings.mailOff')}
+        </Badge>
       </p>
     </>
   );

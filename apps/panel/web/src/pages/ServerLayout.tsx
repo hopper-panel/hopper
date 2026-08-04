@@ -5,52 +5,51 @@ import { Link, NavLink, Outlet, useParams } from 'react-router-dom';
 import { Page } from '../components/Page';
 import { Alert, Spinner } from '../components/ui';
 import { api, type ServerSummary } from '../lib/api';
+import { useTranslation, type MessageKey } from '../i18n';
 import { cx } from '../lib/cx';
 import type { ServerContext } from '../lib/server-context';
 import { useConsole } from '../lib/use-console';
 
 interface Tab {
-  /** Chemin relatif à `/server/:uuid`. Vide pour la console. */
+  /** Path relative to `/server/:uuid`. Empty for the console. */
   path: string;
-  label: string;
-  /** Sans elle, l'onglet n'est pas affiché du tout. */
+  label: MessageKey;
+  /** Without it, the tab is not rendered at all. */
   permission?: Permission;
 }
 
 /**
- * Onglets d'un serveur.
+ * Server tabs.
  *
- * Seuls figurent ici les écrans qui existent : un onglet grisé ou qui mène à
- * une page vide fait douter de tout le reste de l'interface. Les suivants —
- * s'ajoutent d'une ligne chacun à mesure qu'ils sont écrits.
+ * Only screens that exist are listed: a greyed-out tab, or one leading to an
+ * empty page, casts doubt on the rest of the interface.
  */
 const TABS: Tab[] = [
-  { path: '', label: 'Console' },
-  { path: 'files', label: 'Fichiers', permission: 'file.read' },
-  { path: 'databases', label: 'Bases de données', permission: 'database.read' },
-  { path: 'backups', label: 'Sauvegardes', permission: 'backup.read' },
-  { path: 'schedules', label: 'Planificateur', permission: 'schedule.read' },
-  { path: 'subusers', label: 'Utilisateurs', permission: 'user.read' },
-  { path: 'network', label: 'Réseau', permission: 'allocation.read' },
-  { path: 'startup', label: 'Démarrage', permission: 'startup.read' },
-  { path: 'webhooks', label: 'Notifications', permission: 'webhook.read' },
-  { path: 'settings', label: 'Paramètres' },
-  { path: 'activity', label: 'Activité', permission: 'activity.read' },
+  { path: '', label: 'tab.console' },
+  { path: 'files', label: 'tab.files', permission: 'file.read' },
+  { path: 'databases', label: 'tab.databases', permission: 'database.read' },
+  { path: 'backups', label: 'tab.backups', permission: 'backup.read' },
+  { path: 'schedules', label: 'tab.schedules', permission: 'schedule.read' },
+  { path: 'subusers', label: 'tab.subusers', permission: 'user.read' },
+  { path: 'network', label: 'tab.network', permission: 'allocation.read' },
+  { path: 'startup', label: 'tab.startup', permission: 'startup.read' },
+  { path: 'webhooks', label: 'tab.webhooks', permission: 'webhook.read' },
+  { path: 'settings', label: 'tab.settings' },
+  { path: 'activity', label: 'tab.activity', permission: 'activity.read' },
 ];
 
 /**
- * Mise en page commune aux écrans d'un serveur.
+ * Layout shared by every screen of a server.
  *
- * Porte la barre d'onglets, mais surtout **la connexion à la console** : celle-ci
- * appartient au serveur, pas à un écran. Tant qu'elle vivait dans la page de
- * console, passer aux fichiers la fermait et y revenir la rouvrait — une
- * reconnexion complète, avec son clignotement, à chaque aller-retour. Elle
- * survit désormais aux changements d'onglet, ce qui rend aussi l'état du
- * serveur visible partout.
+ * It carries the tab bar, but above all **the console connection**: that
+ * belongs to the server, not to one screen. While it lived in the console page,
+ * switching to Files closed it and coming back reopened it — a full reconnect,
+ * flicker included, on every round trip.
  */
 export function ServerLayout() {
   const { uuid = '' } = useParams();
   const controller = useConsole(uuid);
+  const { t } = useTranslation();
 
   const server = useQuery({
     queryKey: ['server', uuid],
@@ -63,9 +62,8 @@ export function ServerLayout() {
       api.get<{ permissions: Permission[]; isOwner: boolean }>(`/api/servers/${uuid}/permissions`),
   });
 
-  // Le nom du serveur ne figure plus que sur la page de console : le porter
-  // dans le titre de l'onglet le garde sous les yeux depuis les autres écrans,
-  // et permet de distinguer deux serveurs ouverts côte à côte.
+  // The server name now appears on the console page only: putting it in the
+  // browser tab keeps it in sight from the other screens.
   const name = server.data?.name;
 
   useEffect(() => {
@@ -92,9 +90,9 @@ export function ServerLayout() {
     return (
       <Page>
         <Alert>
-          Ce serveur est introuvable ou vous n’y avez pas accès.{' '}
+          This server does not exist, or you do not have access to it.{' '}
           <Link to="/" className="underline">
-            Retour à mes serveurs
+            {t('nav.servers')}
           </Link>
         </Alert>
       </Page>
@@ -108,21 +106,18 @@ export function ServerLayout() {
 
   return (
     <>
-      {/* Barre d'onglets seule, collée sous la barre supérieure, comme dans
-          Pterodactyl. Le nom du serveur en occupait auparavant la ligne
-          au-dessus : il est désormais le titre de la page de console, ce qui
-          rend au contenu la hauteur d'un bandeau entier. */}
+      {/* Tab bar alone, right under the top bar. The server name used to take
+          the row above; it is now the console page title. */}
       <div className="border-b border-border-subtle bg-surface-raised">
         <div className="mx-auto max-w-7xl px-4">
-          {/* `-mb-px` fait passer le soulignement de l'onglet actif par-dessus
-              la bordure du bandeau, au lieu de le poser juste au-dessus. */}
+          {/* `-mb-px` draws the active underline over the band border. */}
           <nav className="-mb-px flex gap-1 overflow-x-auto" aria-label="Sections du serveur">
             {TABS.filter((tab) => !tab.permission || can(tab.permission)).map((tab) => (
               <NavLink
                 key={tab.path}
                 to={tab.path === '' ? `/server/${uuid}` : `/server/${uuid}/${tab.path}`}
-                // Sans `end`, l'onglet Console resterait actif sur toutes les
-                // routes filles, puisque son chemin en est le préfixe.
+                // Without `end`, the Console tab would stay active on every
+                // child route, since its path is their prefix.
                 end={tab.path === ''}
                 className={({ isActive }) =>
                   cx(
@@ -133,7 +128,7 @@ export function ServerLayout() {
                   )
                 }
               >
-                {tab.label}
+                {t(tab.label)}
               </NavLink>
             ))}
           </nav>

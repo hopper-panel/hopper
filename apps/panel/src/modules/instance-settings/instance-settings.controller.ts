@@ -5,6 +5,7 @@ import { AUDIT_EVENTS, AuditService } from '../audit/audit.service.js';
 import { AdminOnly } from '../auth/decorators.js';
 import { CurrentUser, type AuthenticatedRequest, type RequestUser } from '../auth/request-user.js';
 import {
+  LOCALES,
   MAIL_ENCRYPTIONS,
   TWO_FACTOR_REQUIREMENTS,
   updateInstanceSettingsSchema,
@@ -40,6 +41,7 @@ export class InstanceSettingsController {
       options: {
         twoFactorRequirements: TWO_FACTOR_REQUIREMENTS,
         mailEncryptions: MAIL_ENCRYPTIONS,
+        locales: LOCALES,
       },
     };
   }

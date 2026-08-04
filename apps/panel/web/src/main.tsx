@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { BrowserRouter } from 'react-router-dom';
 import { App } from './App';
+import { TranslationProvider } from './i18n';
 import { ApiError } from './lib/api';
 import { AuthProvider } from './lib/auth';
 import './index.css';
@@ -13,9 +14,8 @@ const queryClient = new QueryClient({
       staleTime: 30_000,
       refetchOnWindowFocus: false,
       retry: (failureCount, error) => {
-        // Réessayer une 401, 403 ou 404 ne changera rien : ce sont des refus,
-        // pas des pannes. Seules les erreurs réseau et les 5xx méritent un
-        // nouvel essai.
+        // Retrying a 401, 403 or 404 changes nothing: those are refusals, not
+        // failures. Only network errors and 5xx deserve another attempt.
         if (error instanceof ApiError && error.status < 500) {
           return false;
         }
@@ -28,16 +28,18 @@ const queryClient = new QueryClient({
 const container = document.getElementById('root');
 
 if (!container) {
-  throw new Error("L'élément #root est absent de index.html.");
+  throw new Error('#root is missing from index.html.');
 }
 
 createRoot(container).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
-        <AuthProvider>
-          <App />
-        </AuthProvider>
+        <TranslationProvider>
+          <AuthProvider>
+            <App />
+          </AuthProvider>
+        </TranslationProvider>
       </BrowserRouter>
     </QueryClientProvider>
   </StrictMode>,

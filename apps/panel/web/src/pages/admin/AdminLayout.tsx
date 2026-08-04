@@ -1,63 +1,67 @@
 import { NavLink, Outlet } from 'react-router-dom';
 import { Alert } from '../../components/ui';
+import { useTranslation, type MessageKey } from '../../i18n';
 import { useAuth } from '../../lib/auth';
 import { cx } from '../../lib/cx';
 
 /**
- * Espace d'administration.
+ * Administration area.
  *
- * Une barre latérale plutôt que des onglets : les sections n'ont rien à voir
- * les unes avec les autres — machines, comptes, templates — et une barre
- * horizontale les aurait mises sur le même plan que les onglets d'un serveur,
- * qui portent tous sur le même objet.
+ * A sidebar rather than tabs: the sections have nothing to do with one another
+ * — machines, accounts, templates — and a horizontal bar would have put them on
+ * the same footing as the tabs of a server, which all describe one object.
  *
- * Le garde d'accès est purement visuel : chaque route d'administration exige
- * déjà le rôle côté API. Il évite d'afficher un écran qui se remplirait de 403.
+ * The guard below is cosmetic: every administration route already demands the
+ * role on the API side. It only avoids rendering a screen full of 403s.
  */
-const SECTIONS = [
+const SECTIONS: {
+  title: MessageKey;
+  items: { to: string; label: MessageKey; icon: string; end?: boolean }[];
+}[] = [
   {
-    title: 'Administration',
+    title: 'admin.sectionAdministration',
     items: [
-      { to: '/admin', label: 'Vue d’ensemble', icon: '⌂', end: true },
-      { to: '/admin/settings', label: 'Paramètres', icon: '⚙' },
+      { to: '/admin', label: 'admin.overview', icon: '⌂', end: true },
+      { to: '/admin/settings', label: 'admin.settings', icon: '⚙' },
     ],
   },
   {
-    title: 'Exploitation',
+    title: 'admin.sectionOperations',
     items: [
-      { to: '/admin/nodes', label: 'Nodes', icon: '▦' },
-      { to: '/admin/servers', label: 'Serveurs', icon: '▤' },
-      { to: '/admin/users', label: 'Utilisateurs', icon: '◍' },
-      { to: '/admin/database-hosts', label: 'Bases de données', icon: '◫' },
+      { to: '/admin/nodes', label: 'admin.nodes', icon: '▦' },
+      { to: '/admin/servers', label: 'admin.servers', icon: '▤' },
+      { to: '/admin/users', label: 'admin.users', icon: '◍' },
+      { to: '/admin/database-hosts', label: 'admin.databaseHosts', icon: '◫' },
     ],
   },
   {
-    title: 'Catalogue',
-    items: [{ to: '/admin/templates', label: 'Templates', icon: '❐' }],
+    title: 'admin.sectionCatalogue',
+    items: [{ to: '/admin/templates', label: 'admin.templates', icon: '❐' }],
   },
 ];
 
 export function AdminLayout() {
   const { user } = useAuth();
+  const { t } = useTranslation();
 
   if (user?.role !== 'ADMIN') {
     return (
       <div className="mx-auto max-w-7xl px-4 py-8">
-        <Alert>Cette section est réservée aux administrateurs du panel.</Alert>
+        <Alert>This section is reserved for panel administrators.</Alert>
       </div>
     );
   }
 
   return (
     <div className="mx-auto flex max-w-7xl gap-6 px-4 py-8">
-      {/* `sticky` : la liste des sections reste atteignable au bas d'une longue
-          liste de serveurs, sans avoir à remonter. */}
+      {/* `sticky`: the section list stays reachable at the bottom of a long
+          page, without scrolling back up. */}
       <aside className="sticky top-8 hidden h-fit w-56 shrink-0 lg:block">
         <nav className="flex flex-col gap-6">
           {SECTIONS.map((section) => (
             <div key={section.title}>
               <p className="mb-2 px-3 text-xs font-semibold uppercase tracking-wide text-content-subtle">
-                {section.title}
+                {t(section.title)}
               </p>
 
               <div className="flex flex-col gap-0.5">
@@ -70,8 +74,8 @@ export function AdminLayout() {
         </nav>
       </aside>
 
-      {/* Sur petit écran, la barre latérale devient une rangée défilante :
-          l'empiler au-dessus du contenu repousserait celui-ci hors de l'écran. */}
+      {/* On a small screen the sidebar becomes a scrolling row: stacking it
+          above the content would push that content off screen. */}
       <nav className="-mx-4 mb-4 flex gap-1 overflow-x-auto px-4 lg:hidden">
         {SECTIONS.flatMap((section) => section.items).map((item) => (
           <SidebarLink key={item.to} {...item} compact />
@@ -93,11 +97,13 @@ function SidebarLink({
   compact,
 }: {
   to: string;
-  label: string;
+  label: MessageKey;
   icon: string;
   end?: boolean;
   compact?: boolean;
 }) {
+  const { t } = useTranslation();
+
   return (
     <NavLink
       to={to}
@@ -115,7 +121,7 @@ function SidebarLink({
       <span aria-hidden className="w-4 text-center">
         {icon}
       </span>
-      {label}
+      {t(label)}
     </NavLink>
   );
 }

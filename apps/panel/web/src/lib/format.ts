@@ -1,49 +1,56 @@
-/** Formate une taille en octets pour un humain. 0 signifie « illimité ». */
-export function formatBytes(bytes: number): string {
-  if (bytes === 0) {
-    return 'illimité';
-  }
+/**
+ * Value formatting.
+ *
+ * Units keep their international form (B, KiB, MiB): they read the same in
+ * every language the panel speaks, and a translated unit would drift from what
+ * the daemon logs. The few words that appear here are English, the source
+ * language; screens that need them translated pass through `useTranslation`.
+ */
 
-  const units = ['o', 'Kio', 'Mio', 'Gio', 'Tio'];
+const UNITS = ['B', 'KiB', 'MiB', 'GiB', 'TiB'];
+
+/** Formats a limit. 0 means unlimited. */
+export function formatBytes(bytes: number): string {
+  return bytes === 0 ? '∞' : formatUsedBytes(bytes);
+}
+
+/** Formats a measurement, where 0 is a real value rather than a missing limit. */
+export function formatUsedBytes(bytes: number): string {
   let value = bytes;
   let unit = 0;
 
-  while (value >= 1024 && unit < units.length - 1) {
+  while (value >= 1024 && unit < UNITS.length - 1) {
     value /= 1024;
     unit += 1;
   }
 
-  return `${value % 1 === 0 ? value : value.toFixed(1)} ${units[unit]}`;
+  return `${value % 1 === 0 ? value : value.toFixed(1)} ${UNITS[unit]}`;
 }
 
-/**
- * Formate une **mesure** en octets.
- *
- * `formatBytes` traduit 0 par « illimité », ce qui convient à une limite mais
- * pas à une consommation : un serveur éteint afficherait une mémoire illimitée.
- */
-export function formatUsedBytes(bytes: number): string {
-  return bytes === 0 ? '0 o' : formatBytes(bytes);
-}
-
-/** Pourcentage d'un cœur → nombre de cœurs. 0 signifie « illimité ». */
+/** Percent of one core into a core count. 0 means unlimited. */
 export function formatCpu(percent: number): string {
-  return percent === 0
-    ? 'illimité'
-    : `${(percent / 100).toFixed(percent % 100 === 0 ? 0 : 1)} cœur${percent > 100 ? 's' : ''}`;
+  return percent === 0 ? '∞' : `${(percent / 100).toFixed(percent % 100 === 0 ? 0 : 1)} vCPU`;
+}
+
+export function formatDate(iso: string | null, locale = 'en'): string {
+  if (!iso) {
+    return '—';
+  }
+
+  return new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short' }).format(
+    new Date(iso),
+  );
 }
 
 /**
- * Durée depuis le démarrage du conteneur, en millisecondes.
+ * Container uptime.
  *
- * Les unités nulles de tête sont omises, mais pas celles du milieu : « 2j 0h 5m »
- * se lit sans ambiguïté, « 2j 5m » se confond avec deux jours et cinq minutes de
- * plus qu'il n'y en a. Les secondes disparaissent au-delà d'une journée, où
- * elles n'apprennent plus rien.
+ * Leading zero units are dropped, middle ones are not: "2d 0h 5m" reads
+ * unambiguously, "2d 5m" reads as five minutes more than there are.
  */
 export function formatUptime(milliseconds: number): string {
   if (milliseconds <= 0) {
-    return 'hors ligne';
+    return '—';
   }
 
   const total = Math.floor(milliseconds / 1000);
@@ -53,7 +60,7 @@ export function formatUptime(milliseconds: number): string {
   const seconds = total % 60;
 
   if (days > 0) {
-    return `${days}j ${hours}h ${minutes}m`;
+    return `${days}d ${hours}h ${minutes}m`;
   }
 
   if (hours > 0) {
@@ -63,36 +70,19 @@ export function formatUptime(milliseconds: number): string {
   return minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
 }
 
-export function formatDate(iso: string | null): string {
-  if (!iso) {
-    return 'jamais';
-  }
-
-  return new Intl.DateTimeFormat('fr-FR', {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-  }).format(new Date(iso));
-}
-
-/** Adresse à donner aux joueurs. L'alias prime sur l'IP quand il existe. */
 /**
- * Adresse à laquelle un joueur se connecte.
+ * Address a player connects to.
  *
- * Une allocation en `0.0.0.0` signifie « toutes les interfaces de la machine »,
- * pas une adresse joignable : l'afficher telle quelle, ou par un « ce serveur »
- * de remplacement, ne donne rien à copier dans un client Minecraft. C'est le
- * nom d'hôte du node qu'il faut montrer — celui par lequel on l'atteint depuis
- * l'extérieur.
- *
- * Un alias, quand il existe, l'emporte sur tout : c'est le domaine que
- * l'hébergeur annonce à ses joueurs.
+ * A `0.0.0.0` allocation means "every interface on the machine", not a
+ * reachable address: the node hostname is shown instead. An alias, when set,
+ * wins over everything — it is the domain the host announces to players.
  */
 export function formatAddress(
   allocation: { ip: string; port: number; alias: string | null } | null,
   nodeFqdn?: string,
 ): string {
   if (!allocation) {
-    return 'aucun port';
+    return '—';
   }
 
   const wildcard = allocation.ip === '0.0.0.0' || allocation.ip === '::';
@@ -101,25 +91,21 @@ export function formatAddress(
   return `${host}:${allocation.port}`;
 }
 
-/**
- * Statut d'un serveur tel qu'il est enregistré en base — à ne pas confondre
- * avec son état d'exécution, qui vient du daemon par WebSocket. Un serveur
- * « prêt » peut être éteint.
- */
 const STATUS_LABELS: Record<
   string,
   { label: string; tone: 'online' | 'offline' | 'warn' | 'danger' }
 > = {
-  INSTALLING: { label: 'Installation', tone: 'warn' },
-  INSTALL_FAILED: { label: 'Installation échouée', tone: 'danger' },
-  READY: { label: 'Prêt', tone: 'online' },
-  SUSPENDED: { label: 'Suspendu', tone: 'danger' },
-  DELETING: { label: 'Suppression', tone: 'warn' },
-  REINSTALLING: { label: 'Réinstallation', tone: 'warn' },
+  INSTALLING: { label: 'Installing', tone: 'warn' },
+  INSTALL_FAILED: { label: 'Install failed', tone: 'danger' },
+  READY: { label: 'Ready', tone: 'online' },
+  SUSPENDED: { label: 'Suspended', tone: 'danger' },
+  DELETING: { label: 'Deleting', tone: 'warn' },
+  REINSTALLING: { label: 'Reinstalling', tone: 'warn' },
 };
 
+/** Stored server status, distinct from the runtime state reported by the daemon. */
 export function describeStatus(status: string) {
-  // Un statut inconnu est affiché tel quel plutôt que masqué : il vaut mieux
-  // montrer une valeur brute qu'un serveur sans état apparent.
+  // An unknown status is shown as-is rather than hidden: a raw value beats a
+  // server with no visible state at all.
   return STATUS_LABELS[status] ?? { label: status, tone: 'offline' as const };
 }
