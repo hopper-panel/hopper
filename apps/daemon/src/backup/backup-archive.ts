@@ -11,18 +11,17 @@ import type { JailedFilesystem } from '../fs/jailed-filesystem.js';
 import { ALWAYS_IGNORED, IgnoreList } from './ignore.js';
 
 /**
- * Production et restauration des archives de sauvegarde.
+ * Producing and restoring backup archives.
  *
- * Deux propriétés gouvernent ce fichier.
+ * Two properties govern this file.
  *
- * **Tout est en flux.** Un monde Minecraft dépasse couramment plusieurs
- * gigaoctets ; rien n'est jamais chargé en mémoire, et l'empreinte SHA-256 est
- * calculée au passage plutôt que par une seconde lecture du fichier produit.
+ * **Everything streams.** A Minecraft world routinely exceeds several
+ * gigabytes; nothing is ever loaded into memory, and the SHA-256 digest is
+ * computed on the way through rather than by reading the produced file again.
  *
- * **L'archive vit hors du volume.** La ranger dedans la placerait sous le
- * gestionnaire de fichiers et le SFTP : n'importe quel sous-utilisateur ayant
- * `file.delete` pourrait effacer les sauvegardes, et la sauvegarde suivante
- * s'archiverait elle-même.
+ * **The archive lives outside the volume.** Putting it inside would place it
+ * under the file manager and SFTP: any subuser holding `file.delete` could
+ * erase the backups, and the next backup would archive itself.
  */
 
 export class BackupError extends Error {
@@ -33,12 +32,12 @@ export class BackupError extends Error {
 }
 
 /**
- * Compression retenue.
+ * Compression to use.
  *
- * zstd est nettement plus rapide que gzip à taux comparable, mais n'existe dans
- * `node:zlib` qu'à partir de Node 22.15. Plutôt que d'imposer cette version, on
- * teste sa présence et on inscrit le format dans le nom du fichier : une
- * archive produite sur un hôte reste restaurable sur un autre.
+ * zstd is markedly faster than gzip at a comparable ratio, but only exists in
+ * `node:zlib` from Node 22.15 on. Rather than mandate that version, its
+ * presence is probed and the format is written into the file name: an archive
+ * produced on one host stays restorable on another.
  */
 export function detectCompression(): BackupCompression {
   return typeof (zlib as { createZstdCompress?: unknown }).createZstdCompress === 'function'
@@ -58,7 +57,7 @@ function decompressor(compression: BackupCompression) {
     : zlib.createGunzip();
 }
 
-/** Déduit le format d'une archive de son extension. */
+/** Infers an archive's format from its extension. */
 export function compressionOf(archivePath: string): BackupCompression {
   const normalized = archivePath.replace(/\\/g, '/');
 
@@ -68,7 +67,7 @@ export function compressionOf(archivePath: string): BackupCompression {
     }
   }
 
-  throw new BackupError(`Format d'archive inconnu : ${archivePath}`);
+  throw new BackupError(`Unknown archive format: ${archivePath}`);
 }
 
 export interface BackupArchiveResult {
@@ -78,21 +77,20 @@ export interface BackupArchiveResult {
 }
 
 export interface CreateBackupOptions {
-  /** Racine du volume, telle que le daemon la connaît. */
+  /** Volume root, as the daemon knows it. */
   volumePath: string;
-  /** Destination de l'archive, hors du volume. */
+  /** Destination of the archive, outside the volume. */
   archivePath: string;
   ignoredFiles: readonly string[];
   compression: BackupCompression;
 }
 
 /**
- * Archive un volume de serveur.
+ * Archives a server's volume.
  *
- * Les liens symboliques sont archivés **en tant que liens**, sans être suivis :
- * suivre un lien pointant hors du volume ferait entrer dans la sauvegarde des
- * fichiers de l'hôte, et un lien pointant vers un parent produirait une archive
- * infinie.
+ * Symlinks are archived **as links**, without being followed: following a link
+ * pointing outside the volume would pull host files into the backup, and a link
+ * pointing at a parent would produce an infinite archive.
  */
 export async function createBackupArchive(
   options: CreateBackupOptions,
@@ -103,9 +101,9 @@ export async function createBackupArchive(
   let sizeBytes = 0;
   let fileCount = 0;
 
-  // L'empreinte porte sur l'archive **compressée**, celle qui sera relue à la
-  // restauration. La calculer sur le flux non compressé ne détecterait pas une
-  // corruption survenue après la compression.
+  // The digest covers the **compressed** archive, the one that will be read
+  // back on restore. Computing it on the uncompressed stream would not catch a
+  // corruption that happened after compression.
   const measure = new Transform({
     transform(chunk: Buffer, _encoding, done) {
       hash.update(chunk);
@@ -116,11 +114,11 @@ export async function createBackupArchive(
 
   await mkdir(dirname(options.archivePath), { recursive: true });
 
-  // Le rejet du pipeline est rattaché **immédiatement**, avant tout `await`
-  // susceptible d'échouer. Détruire le paquetage sur erreur fait rejeter cette
-  // promesse avec `ERR_STREAM_PREMATURE_CLOSE` ; si personne ne l'écoute
-  // encore, Node la traite en rejet non géré et termine le processus — c'est
-  // le daemon entier qui tombe pour une sauvegarde manquée.
+  // The pipeline's rejection is attached **immediately**, before any `await`
+  // that could fail. Destroying the packer on error rejects this promise with
+  // `ERR_STREAM_PREMATURE_CLOSE`; if nobody is listening yet, Node treats it as
+  // an unhandled rejection and ends the process — the whole daemon falls over
+  // for one missed backup.
   let writeError: Error | undefined;
   const written = pipeline(
     packer,
@@ -129,7 +127,7 @@ export async function createBackupArchive(
     createWriteStream(options.archivePath),
   ).catch((error: unknown) => {
     writeError =
-      error instanceof Error ? error : new BackupError("Écriture de l'archive interrompue.");
+      error instanceof Error ? error : new BackupError('Archive write interrupted.');
   });
 
   try {
@@ -143,9 +141,8 @@ export async function createBackupArchive(
   } catch (error) {
     packer.destroy();
     await written;
-    // Une archive partielle est pire qu'aucune : elle serait proposée à la
-    // restauration et n'échouerait qu'au moment d'extraire, sur un volume déjà
-    // vidé.
+    // A partial archive is worse than none: it would be offered for restore
+    // and would only fail at extraction time, on an already-emptied volume.
     await rm(options.archivePath, { force: true });
     throw error;
   }
@@ -161,9 +158,9 @@ async function packDirectory(
   let count = 0;
   const queue: string[] = [root];
 
-  // Parcours itératif : une récursion sur l'arborescence d'un serveur bien
-  // rempli peut atteindre la limite de pile, et le plantage serait attribué à
-  // la sauvegarde plutôt qu'à sa profondeur.
+  // Iterative walk: recursing over the tree of a well-filled server can hit
+  // the stack limit, and the crash would be blamed on the backup rather than on
+  // the depth of the tree.
   while (queue.length > 0) {
     const directory = queue.pop()!;
     const entries = await opendir(directory);
@@ -202,8 +199,8 @@ async function packDirectory(
       }
 
       if (!entry.isFile()) {
-        // Sockets, tubes nommés, périphériques : rien de tout cela n'a de sens
-        // dans une sauvegarde, et `tar-stream` ne saurait qu'en faire.
+        // Sockets, named pipes, devices: none of that makes sense in a backup,
+        // and `tar-stream` would not know what to do with them.
         continue;
       }
 
@@ -226,31 +223,30 @@ async function packDirectory(
 export interface RestoreBackupOptions {
   jail: JailedFilesystem;
   archivePath: string;
-  /** Vider le volume avant extraction. */
+  /** Empty the volume before extracting. */
   truncate: boolean;
-  /** Empreinte attendue ; l'extraction n'est pas tentée sans correspondance. */
+  /** Expected digest; extraction is not attempted without a match. */
   expectedChecksum?: string;
   /**
-   * Utilisateur du conteneur, à qui appartiennent les fichiers restaurés.
+   * Container user, who owns the restored files.
    *
-   * Sans cela, l'extraction — faite par le daemon, donc par root — produit un
-   * volume que le serveur ne peut plus écrire : il démarre, puis échoue à
-   * sauvegarder son monde, sur une erreur qui ne mentionne jamais la
-   * restauration. L'appartenance n'est délibérément pas relue de l'archive :
-   * une sauvegarde peut être restaurée sur un node dont l'utilisateur de
-   * conteneur porte un autre identifiant.
+   * Without this, the extraction — done by the daemon, so by root — produces a
+   * volume the server can no longer write to: it starts, then fails to save its
+   * world, on an error that never mentions the restore. Ownership is
+   * deliberately not read back from the archive: a backup can be restored on a
+   * node whose container user carries a different identifier.
    *
-   * Absent sous Windows, où `chown` n'a pas de sens.
+   * Absent on Windows, where `chown` makes no sense.
    */
   ownership?: { uid: number; gid: number };
 }
 
 /**
- * Restaure une archive dans le volume d'un serveur.
+ * Restores an archive into a server's volume.
  *
- * L'empreinte est vérifiée **avant** d'écrire quoi que ce soit. Une archive
- * corrompue détectée en cours d'extraction laisserait un volume à moitié
- * écrasé — c'est-à-dire un serveur détruit par l'opération censée le sauver.
+ * The digest is checked **before** anything is written. A corrupt archive
+ * detected mid-extraction would leave a half-overwritten volume — that is, a
+ * server destroyed by the operation meant to save it.
  */
 export async function restoreBackupArchive(options: RestoreBackupOptions): Promise<number> {
   const compression = compressionOf(options.archivePath);
@@ -260,8 +256,8 @@ export async function restoreBackupArchive(options: RestoreBackupOptions): Promi
 
     if (actual !== options.expectedChecksum) {
       throw new BackupError(
-        "L'archive ne correspond pas à son empreinte : restauration refusée pour ne pas " +
-          'écraser le serveur avec des données corrompues.',
+        'The archive does not match its digest: restore refused so as not to ' +
+          'overwrite the server with corrupt data.',
       );
     }
   }
@@ -276,8 +272,8 @@ export async function restoreBackupArchive(options: RestoreBackupOptions): Promi
   extractor.on('entry', (header, stream, next) => {
     void (async () => {
       try {
-        // `resolveArchiveEntry` est ce qui interdit le zip-slip : c'est le jail
-        // qui décide où va l'entrée, jamais le nom qu'elle porte.
+        // `resolveArchiveEntry` is what forbids the zip slip: the jail decides
+        // where the entry goes, never the name it carries.
         const destination = await options.jail.resolveArchiveEntry('/', header.name);
 
         if (header.type === 'directory') {
@@ -295,9 +291,9 @@ export async function restoreBackupArchive(options: RestoreBackupOptions): Promi
           await applyOwnership(destination, options.ownership);
           restored += 1;
         } else {
-          // Les liens symboliques d'une archive ne sont pas recréés : rien ne
-          // garantit que leur cible reste dans le volume, et un lien vers
-          // `/etc/shadow` rendu lisible par le SFTP annulerait le jail.
+          // Symlinks from an archive are not recreated: nothing guarantees
+          // their target stays inside the volume, and a link to `/etc/shadow`
+          // made readable over SFTP would undo the jail.
           stream.resume();
         }
 
@@ -314,11 +310,10 @@ export async function restoreBackupArchive(options: RestoreBackupOptions): Promi
 }
 
 /**
- * Donne le fichier à l'utilisateur du conteneur.
+ * Hands the file over to the container user.
  *
- * Un échec n'interrompt pas la restauration : sur un système de fichiers qui ne
- * gère pas les propriétaires, perdre l'appartenance vaut mieux que perdre la
- * restauration entière.
+ * A failure does not interrupt the restore: on a filesystem with no notion of
+ * owners, losing ownership beats losing the whole restore.
  */
 async function applyOwnership(
   path: string,
@@ -331,7 +326,7 @@ async function applyOwnership(
   await chown(path, ownership.uid, ownership.gid).catch(() => undefined);
 }
 
-/** SHA-256 d'un fichier, lu en flux. */
+/** SHA-256 of a file, read as a stream. */
 export async function checksumOf(path: string): Promise<string> {
   const hash = createHash('sha256');
   await pipeline(createReadStream(path), hash);
