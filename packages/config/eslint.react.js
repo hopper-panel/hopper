@@ -3,7 +3,7 @@ const reactHooks = require('eslint-plugin-react-hooks');
 const reactRefresh = require('eslint-plugin-react-refresh');
 const base = require('./eslint.base.js');
 
-/** Configuration ESLint pour le front React (apps/panel/web). */
+/** ESLint configuration for the React front (apps/panel/web). */
 module.exports = [
   ...base,
   {

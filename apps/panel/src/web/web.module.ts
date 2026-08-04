@@ -5,10 +5,10 @@ import { WEB_ROOT_TOKEN, resolveWebRoot } from './web-assets.js';
 import { WebController } from './web.controller.js';
 
 /**
- * Sert l'interface construite.
+ * Serves the built interface.
  *
- * Déclaré en dernier dans `AppModule` : sa route générique ne doit être
- * consultée qu'après les contrôleurs de l'API.
+ * Declared last in `AppModule`: its catch-all route must only be consulted
+ * after the API controllers.
  */
 @Module({
   controllers: [WebController],

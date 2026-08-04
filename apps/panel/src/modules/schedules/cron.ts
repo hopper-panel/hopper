@@ -87,7 +87,7 @@ function parsePart(part: string, range: FieldRange): number[] {
   const [spec, stepText, ...extra] = part.split('/');
 
   if (extra.length > 0 || spec === undefined) {
-    throw new CronError(`Expression « ${part} » invalide pour le champ ${range.label}.`);
+    throw new CronError(`Expression "${part}" is invalid for field ${range.label}.`);
   }
 
   let step = 1;
@@ -96,7 +96,7 @@ function parsePart(part: string, range: FieldRange): number[] {
     step = Number.parseInt(stepText, 10);
 
     if (!Number.isInteger(step) || step < 1) {
-      throw new CronError(`Pas « ${stepText} » invalide pour le champ ${range.label}.`);
+      throw new CronError(`Step "${stepText}" is invalid for field ${range.label}.`);
     }
   }
 
@@ -118,13 +118,13 @@ function boundsOf(spec: string, range: FieldRange, part: string): [number, numbe
   const [fromText, toText, ...extra] = spec.split('-');
 
   if (extra.length > 0 || fromText === undefined) {
-    throw new CronError(`Expression « ${part} » invalide pour le champ ${range.label}.`);
+    throw new CronError(`Expression "${part}" is invalid for field ${range.label}.`);
   }
 
   const from = toNumber(fromText, range, part);
 
-  // `5/15` sans borne haute explicite parcourt le reste du domaine, comme dans
-  // une crontab — et non la seule valeur 5.
+  // `5/15` with no explicit upper bound walks the rest of the domain, as in a
+  // crontab — not the single value 5.
   const to =
     toText === undefined ? (part.includes('/') ? range.max : from) : toNumber(toText, range, part);
 
@@ -150,7 +150,7 @@ function toNumber(text: string, range: FieldRange, part: string): number {
 
   if (value < range.min || value > max) {
     throw new CronError(
-      `« ${value} » hors des bornes ${range.min}–${range.max} du champ ${range.label} ` +
+      `"${value}" is outside the ${range.min}–${range.max} bounds of field ${range.label} ` +
         `(expression « ${part} »).`,
     );
   }
@@ -227,7 +227,7 @@ export function nextOccurrence(expression: CronExpression, from: Date): Date {
   throw new CronError('This expression matches no date in the next four years.');
 }
 
-/** Rend l'expression sous sa forme habituelle, pour l'affichage et les journaux. */
+/** Returns the expression in its usual form, for display and for logs. */
 export function formatCron(expression: CronExpression): string {
   return [
     expression.minute,

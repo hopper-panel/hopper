@@ -6,11 +6,11 @@ import { InstanceSettingsService } from './instance-settings.service.js';
 import { MailService } from './mail.service.js';
 
 /**
- * Paramètres de l'instance et envoi de courriels.
+ * Instance settings and email sending.
  *
- * Global : les paramètres servent un peu partout — délai d'attente des nodes,
- * exigence de double authentification, courriel de bienvenue — et les importer
- * module par module reviendrait à les câbler dans la moitié de l'application.
+ * Global: the settings are needed almost everywhere — node timeout, two-factor
+ * requirement, welcome email — and importing them module by module would amount
+ * to wiring them through half the application.
  */
 @Global()
 @Module({

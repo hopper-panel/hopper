@@ -168,7 +168,7 @@ function check(rule: ParsedRule, value: string): RuleViolation | null {
     case 'regex':
       return matchesRegex(rule.args[0] ?? '', value)
         ? null
-        : { rule: 'regex', message: "Cette valeur n'a pas le format attendu." };
+        : { rule: 'regex', message: 'This value is not in the expected format.' };
 
     default:
       // An unknown rule is **not** the user's mistake: it is the template
@@ -221,9 +221,8 @@ function matchesRegex(pattern: string, value: string): boolean {
 
     return expression.test(value);
   } catch {
-    // Expression illisible : c'est le template qui est fautif, pas la valeur.
-    // La refuser bloquerait l'utilisateur sur une erreur qu'il ne peut pas
-    // corriger.
+    // An unreadable expression: the template is at fault, not the value.
+    // Refusing it would block the user on an error they cannot fix.
     return true;
   }
 }

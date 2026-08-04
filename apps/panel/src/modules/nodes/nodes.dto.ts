@@ -27,7 +27,7 @@ export const createNodeSchema = z.object({
 
   memoryBytes: z.number().int().nonnegative().default(0),
   diskBytes: z.number().int().nonnegative().default(0),
-  /** -1 = pas de limite, 0 = surallocation interdite. */
+  /** -1 = no limit, 0 = overallocation forbidden. */
   memoryOverallocation: z.number().int().min(-1).max(1000).default(0),
   diskOverallocation: z.number().int().min(-1).max(1000).default(0),
 

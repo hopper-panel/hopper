@@ -17,11 +17,11 @@ import { AllocationsService } from './allocations.service.js';
 import { updateAllocationSchema, type UpdateAllocationDto } from './allocations.dto.js';
 
 /**
- * Ports d'un serveur.
+ * A server's ports.
  *
- * Désigner le port principal relève de `allocation.update` et non de
- * `allocation.create` : c'est une modification de ce que le serveur expose
- * déjà, pas l'ouverture d'un port de plus sur la machine.
+ * Designating the primary port belongs to `allocation.update` and not to
+ * `allocation.create`: it changes what the server already exposes, it does not
+ * open one more port on the machine.
  */
 @Controller('api/servers/:serverId/allocations')
 export class AllocationsController {

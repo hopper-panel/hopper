@@ -86,7 +86,7 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 const expected = 'sha256=' + createHmac('sha256', secret).update(rawBody).digest('hex');
 const received = request.headers['x-hopper-signature'];
 
-// Comparaison à temps constant : `===` s'arrête au premier octet différent.
+// Constant-time comparison: `===` stops at the first differing byte.
 const valid =
   expected.length === received.length &&
   timingSafeEqual(Buffer.from(expected), Buffer.from(received));

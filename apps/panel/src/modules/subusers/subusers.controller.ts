@@ -30,12 +30,12 @@ import {
 import { SubusersService } from './subusers.service.js';
 
 /**
- * Sous-utilisateurs d'un serveur.
+ * A server's subusers.
  *
- * L'attribuant est transmis au service : c'est lui qui borne ce qui peut être
- * accordé. Un sous-utilisateur autorisé à gérer les autres ne doit pas pouvoir
- * leur donner plus de droits qu'il n'en a — ce serait une élévation de
- * privilèges déguisée en délégation.
+ * The grantor is passed to the service: they are what bounds what can be
+ * granted. A subuser allowed to manage the others must not be able to give them
+ * more rights than they hold — that would be a privilege escalation dressed up
+ * as delegation.
  */
 @Controller('api/servers/:serverId/subusers')
 export class SubusersController {

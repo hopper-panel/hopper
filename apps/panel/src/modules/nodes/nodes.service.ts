@@ -451,8 +451,8 @@ export class NodesService {
                 keyPath: `/etc/letsencrypt/live/${node.fqdn}/privkey.pem`,
               }
             : { enabled: false },
-        // Sans cette origine, le daemon refuserait toutes les connexions
-        // WebSocket venant du panel et aucune console ne s'ouvrirait.
+        // Without this origin, the daemon would refuse every WebSocket
+        // connection coming from the panel and no console would open.
         allowedOrigins: [this.appUrl],
       },
       panel: { url: this.appUrl, jwtSecret },

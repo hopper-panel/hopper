@@ -5,11 +5,10 @@ import { BackupsController } from './backups.controller.js';
 import { BackupsService } from './backups.service.js';
 
 /**
- * Sauvegardes.
+ * Backups.
  *
- * `BackupsService` est exporté : le module distant en a besoin pour enregistrer
- * le verdict rendu par le daemon, et le planificateur pour déclencher une
- * sauvegarde nocturne.
+ * `BackupsService` is exported: the remote module needs it to record the
+ * verdict the daemon returns, and the scheduler to trigger a nightly backup.
  */
 @Module({
   imports: [NodesModule, AuditModule],

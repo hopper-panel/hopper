@@ -29,8 +29,8 @@ import { WebModule } from './web/web.module.js';
       isGlobal: true,
       cache: true,
       validate: validateEnvironment,
-      // `.env.example` n'est jamais chargé : il ne contient que des valeurs de
-      // démonstration et masquerait une variable réellement manquante.
+      // `.env.example` is never loaded: it holds demonstration values only and
+      // would mask a genuinely missing variable.
       envFilePath: ['.env'],
     }),
     PrismaModule,
@@ -53,8 +53,8 @@ import { WebModule } from './web/web.module.js';
     WebhooksModule,
     RemoteModule,
     HealthModule,
-    // En dernier : sa route générique sert de repli à l'interface et ne doit
-    // être atteinte qu'une fois toutes les routes d'API écartées.
+    // Last: its catch-all route is the interface's fallback and must only be
+    // reached once every API route has been ruled out.
     WebModule,
   ],
 })

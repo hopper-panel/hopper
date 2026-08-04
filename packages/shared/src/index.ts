@@ -10,5 +10,5 @@ export * from './contract/remote-api.js';
 export * from './contract/websocket.js';
 export * from './contract/jwt.js';
 
-/** Version du contrat. Le daemon refuse un panel dont la majeure diffère. */
+/** Contract version. The daemon refuses a panel whose major differs. */
 export const CONTRACT_VERSION = '1';

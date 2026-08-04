@@ -5,9 +5,9 @@ module.exports = [
   {
     files: ['**/*.ts'],
     rules: {
-      // Les décorateurs de NestJS reposent sur des paramètres de constructeur
-      // dont le type porte l'information d'injection : les retirer casserait le
-      // conteneur, même quand ESLint les croit inutilisés.
+      // NestJS's decorators rely on constructor parameters whose type carries
+      // the injection information: removing them would break the container,
+      // even when ESLint believes they are unused.
       '@typescript-eslint/no-extraneous-class': 'off',
       '@typescript-eslint/no-unsafe-call': 'off',
     },

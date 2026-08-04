@@ -4,11 +4,10 @@ import { ApiKeysController } from './api-keys.controller.js';
 import { ApiKeysService } from './api-keys.service.js';
 
 /**
- * Clés d'API.
+ * API keys.
  *
- * Global : le garde d'authentification, enregistré une fois pour toute
- * l'application, doit pouvoir s'injecter le service sans que chaque module ait
- * à importer celui-ci.
+ * Global: the authentication guard, registered once for the whole application,
+ * has to be able to inject the service without every module importing this one.
  */
 @Global()
 @Module({

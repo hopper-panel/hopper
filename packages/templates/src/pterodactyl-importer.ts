@@ -316,8 +316,8 @@ export function importPterodactylEgg(raw: unknown, options: ImportOptions): EggI
     fileDenylist: [],
     installContainer: installation.container ?? 'debian:bookworm-slim',
     installEntrypoint: installation.entrypoint ?? '/bin/bash',
-    // Pterodactyl monte le volume sur /mnt/server, comme Hopper : les scripts
-    // sont directement compatibles.
+    // Pterodactyl mounts the volume on /mnt/server, as Hopper does: the
+    // scripts are directly compatible.
     installScript: installation.script,
     variables: convertVariables(egg, warnings),
     importedFromEgg: egg.uuid,

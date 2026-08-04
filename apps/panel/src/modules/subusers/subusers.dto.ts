@@ -3,10 +3,10 @@ import { z } from 'zod';
 
 export const createSubuserSchema = z.object({
   /**
-   * Compte désigné par son adresse.
+   * The account named by its address.
    *
-   * Et non par son identifiant : l'adresse est ce que le propriétaire du
-   * serveur connaît de la personne à qui il ouvre l'accès.
+   * And not by its identifier: the address is what the server's owner knows of
+   * the person they are opening access to.
    */
   email: z.email(),
   permissions: z.array(permissionSchema).max(64),

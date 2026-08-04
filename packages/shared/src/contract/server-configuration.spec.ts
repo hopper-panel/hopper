@@ -17,7 +17,7 @@ const MINIMAL = {
 };
 
 describe('serverConfigurationSchema', () => {
-  it('applique les valeurs par défaut sur une configuration minimale', () => {
+  it('applies the defaults on a minimal configuration', () => {
     const parsed = serverConfigurationSchema.parse(MINIMAL);
 
     expect(parsed.suspended).toBe(false);
@@ -30,12 +30,12 @@ describe('serverConfigurationSchema', () => {
     expect(parsed.build.oomKillDisabled).toBe(false);
   });
 
-  // Sans limite de PID, un plugin malveillant peut forker jusqu'à figer l'hôte.
-  it('impose une limite de processus par défaut', () => {
+  // With no PID limit, a hostile plugin can fork until the host seizes up.
+  it('imposes a process limit by default', () => {
     expect(serverConfigurationSchema.parse(MINIMAL).build.pidsLimit).toBe(512);
   });
 
-  it('refuse une limite de processus nulle', () => {
+  it('refuses a zero process limit', () => {
     const config = { ...MINIMAL, build: { ...MINIMAL.build, pidsLimit: 0 } };
     expect(serverConfigurationSchema.safeParse(config).success).toBe(false);
   });
@@ -45,16 +45,16 @@ describe('serverConfigurationSchema', () => {
     expect(serverConfigurationSchema.safeParse(config).success).toBe(false);
   });
 
-  it('refuse une commande de démarrage vide', () => {
+  it('refuses an empty startup command', () => {
     expect(serverConfigurationSchema.safeParse({ ...MINIMAL, invocation: '' }).success).toBe(false);
   });
 
-  it('refuse un signal d’arrêt inconnu', () => {
+  it('refuses an unknown stop signal', () => {
     const config = { ...MINIMAL, stop: { type: 'signal', value: 'SIGUSR1' } };
     expect(serverConfigurationSchema.safeParse(config).success).toBe(false);
   });
 
-  it('accepte un arrêt par signal', () => {
+  it('accepts a stop by signal', () => {
     const config = { ...MINIMAL, stop: { type: 'signal', value: 'SIGTERM' } };
     expect(serverConfigurationSchema.parse(config).stop).toEqual({
       type: 'signal',
@@ -62,7 +62,7 @@ describe('serverConfigurationSchema', () => {
     });
   });
 
-  it('refuse un UUID mal formé', () => {
+  it('refuses a malformed UUID', () => {
     expect(serverConfigurationSchema.safeParse({ ...MINIMAL, uuid: 'survie-1' }).success).toBe(
       false,
     );

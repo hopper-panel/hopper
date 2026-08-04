@@ -14,7 +14,7 @@ import type { NestFastifyApplication } from '@nestjs/platform-fastify';
  * it all the CORS and cross-site cookies that come along.
  */
 
-/** Jeton d'injection du chemin absolu de l'interface construite. */
+/** Injection token for the absolute path of the built interface. */
 export const WEB_ROOT_TOKEN = 'WEB_ROOT_PATH';
 
 /**

@@ -225,7 +225,7 @@ export class SchedulerService implements OnModuleInit, OnModuleDestroy {
 
     await this.audit.record({
       event: AUDIT_EVENTS.SCHEDULE_RUN,
-      // Le planificateur n'est pas un utilisateur.
+      // The scheduler is not a user.
       actorId: null,
       serverId: schedule.serverId,
       metadata: {

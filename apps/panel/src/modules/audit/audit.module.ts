@@ -1,7 +1,7 @@
 import { Global, Module } from '@nestjs/common';
 import { AuditService } from './audit.service.js';
 
-/** Global : presque tous les modules journalisent des actions. */
+/** Global: almost every module logs actions. */
 @Global()
 @Module({
   providers: [AuditService],

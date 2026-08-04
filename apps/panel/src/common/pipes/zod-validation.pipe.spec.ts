@@ -12,7 +12,7 @@ const schema = z.object({
 describe('ZodValidationPipe', () => {
   const pipe = new ZodValidationPipe(schema);
 
-  it('renvoie la valeur analysée, valeurs par défaut appliquées', () => {
+  it('returns the parsed value, defaults applied', () => {
     expect(pipe.transform({ name: 'Survie', port: 25565 })).toEqual({
       name: 'Survie',
       port: 25565,
@@ -20,21 +20,21 @@ describe('ZodValidationPipe', () => {
     });
   });
 
-  // Sans ce comportement, un champ mal orthographié serait silencieusement
-  // ignoré et l'opérateur croirait avoir modifié un réglage.
-  it('retire les propriétés non déclarées', () => {
+  // Without this behaviour, a misspelled field would be silently ignored and
+  // the operator would believe they had changed a setting.
+  it('strips the undeclared properties', () => {
     const result = pipe.transform({ name: 'Survie', port: 25565, isAdmin: true });
     expect(result).not.toHaveProperty('isAdmin');
   });
 
-  it('lève une 400 sur une valeur invalide', () => {
+  it('throws a 400 on an invalid value', () => {
     expect(() => pipe.transform({ name: '', port: 99999 })).toThrow(BadRequestException);
   });
 
-  it('détaille chaque problème avec son chemin', () => {
+  it('details each problem with its path', () => {
     try {
       pipe.transform({ name: '', port: 99999 });
-      expect.unreachable('la validation aurait dû échouer');
+      expect.unreachable('validation should have failed');
     } catch (error) {
       const response = (error as BadRequestException).getResponse() as {
         issues: { path: string }[];
