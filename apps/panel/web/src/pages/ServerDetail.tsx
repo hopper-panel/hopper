@@ -1,5 +1,5 @@
 import type { Permission, PowerAction, ResourceUsage } from '@hopper/shared';
-import type { ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { Console } from '../components/Console';
 import { CHART_POINTS, ResourceChart } from '../components/ResourceChart';
 import {
@@ -12,6 +12,8 @@ import {
   UploadIcon,
 } from '../components/icons';
 import { Button } from '../components/ui';
+import { copyText } from '../lib/clipboard';
+import { cx } from '../lib/cx';
 import { formatAddress, formatBytes, formatUptime, formatUsedBytes } from '../lib/format';
 import { useServerContext } from '../lib/server-context';
 import { useUsageHistory, type ConsoleController } from '../lib/use-console';
@@ -95,13 +97,20 @@ export function ServerDetailPage() {
         {/* Cartes de ressources, une par mesure. Le node, le template et
             l'identifiant du serveur ont migré vers l'onglet Paramètres : ils ne
             changent jamais, et occupaient la place de ce qu'on vient réellement
-            surveiller. */}
+            surveiller.
+
+            La colonne s'étire sur toute la hauteur de la console — un élément
+            de grille l'occupe déjà, restait à répartir les cartes dedans avec
+            `flex-1`. Sans cela elles s'arrêtaient aux deux tiers et laissaient
+            un vide en bas, d'autant plus visible que la console, elle, descend
+            jusqu'en bas. */}
         <div className="flex flex-col gap-3">
           <Stat
             icon={<AddressIcon />}
             label="Adresse"
             value={formatAddress(server.primaryAllocation, server.node.fqdn)}
             mono
+            copyable
           />
           <Stat
             icon={<ClockIcon />}
@@ -257,6 +266,7 @@ function Stat({
   value,
   limit,
   mono,
+  copyable,
 }: {
   icon: ReactNode;
   label: string;
@@ -264,15 +274,35 @@ function Stat({
   /** Plafond de la mesure, affiché en retrait à la suite de la valeur. */
   limit?: string;
   mono?: boolean;
+  /** Rend la carte cliquable : un clic copie la valeur. */
+  copyable?: boolean;
 }) {
-  return (
-    <div className="flex items-center gap-3 rounded-xl border border-border-subtle bg-surface-raised p-3">
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    if (!copied) {
+      return;
+    }
+
+    const timer = setTimeout(() => setCopied(false), 1500);
+    return () => clearTimeout(timer);
+  }, [copied]);
+
+  const body = (
+    <>
       <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-surface text-content-muted [&>svg]:size-5">
         {icon}
       </span>
 
-      <div className="min-w-0">
-        <p className="text-xs uppercase tracking-wide text-content-muted">{label}</p>
+      <div className="min-w-0 text-left">
+        <p className="text-xs uppercase tracking-wide text-content-muted">
+          {label}
+          {/* Le retour tient dans le libellé plutôt que dans une infobulle :
+              rien ne distingue un presse-papiers rempli d'un clic sans effet,
+              et la copie peut réellement échouer — le panel servi en HTTP n'a
+              pas accès à l'API du presse-papiers. */}
+          {copied ? <span className="ml-2 text-accent">copié</span> : null}
+        </p>
         <p className={`truncate text-content ${mono ? 'font-mono text-sm' : 'font-semibold'}`}>
           {value}
           {limit ? (
@@ -280,6 +310,26 @@ function Stat({
           ) : null}
         </p>
       </div>
-    </div>
+    </>
+  );
+
+  const shell =
+    'flex flex-1 items-center gap-3 rounded-xl border border-border-subtle bg-surface-raised p-3';
+
+  if (!copyable) {
+    return <div className={shell}>{body}</div>;
+  }
+
+  return (
+    <button
+      type="button"
+      title={`Copier ${value}`}
+      className={cx(shell, 'w-full text-left transition-colors hover:bg-surface-hover')}
+      onClick={() => {
+        void copyText(value).then(setCopied);
+      }}
+    >
+      {body}
+    </button>
   );
 }

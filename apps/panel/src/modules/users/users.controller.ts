@@ -74,6 +74,18 @@ export class UsersController {
     return this.users.update(uuid, body, actor.id, contextOf(request));
   }
 
+  /**
+   * Renvoie le lien de choix du mot de passe.
+   *
+   * Utile quand le premier courriel s'est perdu, ou quand le lien a expiré :
+   * l'alternative serait de fixer un mot de passe à la place de l'utilisateur.
+   */
+  @Post(':uuid/invitation')
+  @HttpCode(HttpStatus.OK)
+  invite(@Param('uuid') uuid: string) {
+    return this.users.resendInvitation(uuid);
+  }
+
   @Delete(':uuid')
   @HttpCode(HttpStatus.NO_CONTENT)
   remove(

@@ -17,17 +17,37 @@ import { useServerContext } from '../lib/server-context';
  * du texte d'interface dans une réponse JSON.
  */
 const EVENTS: { value: string; label: string; description: string }[] = [
-  { value: 'server.started', label: 'Serveur démarré', description: 'Le serveur accepte les joueurs.' },
-  { value: 'server.stopped', label: 'Serveur arrêté', description: 'Arrêt demandé depuis le panel ou la console.' },
+  {
+    value: 'server.started',
+    label: 'Serveur démarré',
+    description: 'Le serveur accepte les joueurs.',
+  },
+  {
+    value: 'server.stopped',
+    label: 'Serveur arrêté',
+    description: 'Arrêt demandé depuis le panel ou la console.',
+  },
   {
     value: 'server.crashed',
     label: 'Serveur arrêté seul',
     description: 'Plantage, ou arrêt par le noyau faute de mémoire.',
   },
   { value: 'backup.completed', label: 'Sauvegarde terminée', description: 'L’archive est prête.' },
-  { value: 'backup.failed', label: 'Sauvegarde échouée', description: 'L’archive n’a pas pu être écrite.' },
-  { value: 'install.completed', label: 'Installation terminée', description: 'Le serveur est prêt à démarrer.' },
-  { value: 'install.failed', label: 'Installation échouée', description: 'Le script d’installation a échoué.' },
+  {
+    value: 'backup.failed',
+    label: 'Sauvegarde échouée',
+    description: 'L’archive n’a pas pu être écrite.',
+  },
+  {
+    value: 'install.completed',
+    label: 'Installation terminée',
+    description: 'Le serveur est prêt à démarrer.',
+  },
+  {
+    value: 'install.failed',
+    label: 'Installation échouée',
+    description: 'Le script d’installation a échoué.',
+  },
 ];
 
 interface Webhook {
@@ -194,7 +214,9 @@ export function ServerWebhooksPage() {
                       : webhook.lastError
                         ? `dernier envoi en échec — ${webhook.lastError}`
                         : `dernier envoi réussi le ${formatDate(webhook.lastSuccessAt)}`}
-                    {webhook.failureCount > 0 ? ` · ${webhook.failureCount} échec(s) d’affilée` : null}
+                    {webhook.failureCount > 0
+                      ? ` · ${webhook.failureCount} échec(s) d’affilée`
+                      : null}
                   </p>
 
                   {secret?.uuid === webhook.uuid ? (
@@ -211,7 +233,10 @@ export function ServerWebhooksPage() {
                       <Button onClick={() => test.mutate(webhook.uuid)} disabled={test.isPending}>
                         Tester
                       </Button>
-                      <Button onClick={() => reveal.mutate(webhook.uuid)} disabled={reveal.isPending}>
+                      <Button
+                        onClick={() => reveal.mutate(webhook.uuid)}
+                        disabled={reveal.isPending}
+                      >
                         Secret
                       </Button>
                       <Button
@@ -313,7 +338,9 @@ export function ServerWebhooksPage() {
                       />
                       <span className="min-w-0">
                         <span className="block text-sm text-content">{event.label}</span>
-                        <span className="block text-xs text-content-muted">{event.description}</span>
+                        <span className="block text-xs text-content-muted">
+                          {event.description}
+                        </span>
                       </span>
                     </label>
                   );

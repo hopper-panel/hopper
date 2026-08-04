@@ -18,7 +18,11 @@ interface ApiKey {
 }
 
 const SCOPES: { value: string; label: string; description: string; adminOnly?: boolean }[] = [
-  { value: 'read', label: 'Lecture', description: 'Consulter les serveurs, fichiers et sauvegardes.' },
+  {
+    value: 'read',
+    label: 'Lecture',
+    description: 'Consulter les serveurs, fichiers et sauvegardes.',
+  },
   {
     value: 'write',
     label: 'Écriture',

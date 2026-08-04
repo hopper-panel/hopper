@@ -116,7 +116,10 @@ describe('assertSafeWebhookUrl', () => {
     // Le contournement classique : le nom est parfaitement banal, c'est la
     // réponse DNS qui pointe à l'intérieur.
     await expect(
-      assertSafeWebhookUrl('https://interne.exemple/', resolver({ 'interne.exemple': ['10.0.0.5'] })),
+      assertSafeWebhookUrl(
+        'https://interne.exemple/',
+        resolver({ 'interne.exemple': ['10.0.0.5'] }),
+      ),
     ).rejects.toThrow(/réseau interne/);
   });
 

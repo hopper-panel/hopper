@@ -9,6 +9,7 @@ import { AuthModule } from './modules/auth/auth.module.js';
 import { BackupsModule } from './modules/backups/backups.module.js';
 import { DatabasesModule } from './modules/databases/databases.module.js';
 import { HealthModule } from './modules/health/health.module.js';
+import { InstanceSettingsModule } from './modules/instance-settings/instance-settings.module.js';
 import { NodesModule } from './modules/nodes/nodes.module.js';
 import { RemoteModule } from './modules/remote/remote.module.js';
 import { SchedulesModule } from './modules/schedules/schedules.module.js';
@@ -36,6 +37,7 @@ import { WebModule } from './web/web.module.js';
     AuditModule,
     AuthModule,
     ApiKeysModule,
+    InstanceSettingsModule,
     UsersModule,
     NodesModule,
     TemplatesModule,

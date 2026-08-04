@@ -1,11 +1,10 @@
 import { Module } from '@nestjs/common';
 import { ActivityController } from './activity.controller.js';
+import { ActivityRetentionService } from './retention.service.js';
 
 /**
- * Lecture du journal d'audit d'un serveur.
- *
- * Aucun service : la seule opération est une lecture paginée, et l'interposer
- * derrière un service n'ajouterait qu'un fichier.
+ * Journal d'audit : lecture par serveur, et purge selon la rétention réglée
+ * dans l'administration.
  */
-@Module({ controllers: [ActivityController] })
+@Module({ controllers: [ActivityController], providers: [ActivityRetentionService] })
 export class ActivityModule {}

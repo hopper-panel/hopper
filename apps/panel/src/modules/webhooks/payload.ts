@@ -1,9 +1,5 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
-import {
-  WEBHOOK_EVENT_COLORS,
-  WEBHOOK_EVENT_LABELS,
-  type WebhookEvent,
-} from './events.js';
+import { WEBHOOK_EVENT_COLORS, WEBHOOK_EVENT_LABELS, type WebhookEvent } from './events.js';
 
 /** Contexte d'un événement, tel que le destinataire le reçoit. */
 export interface WebhookContext {

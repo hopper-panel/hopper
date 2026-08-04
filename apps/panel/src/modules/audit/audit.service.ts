@@ -53,6 +53,8 @@ export const AUDIT_EVENTS = {
   SCHEDULE_DELETED: 'schedule.deleted',
   SCHEDULE_RUN: 'schedule.run',
 
+  SETTINGS_UPDATED: 'settings.updated',
+
   API_KEY_CREATED: 'api-key.created',
   API_KEY_DELETED: 'api-key.deleted',
 

@@ -11,6 +11,7 @@ import {
   type SystemInformation,
 } from '@hopper/shared';
 import { Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
+import { InstanceSettingsService } from '../instance-settings/instance-settings.service.js';
 
 /** Coordonnées d'un daemon. En phase 1, elles viendront de la table `Node`. */
 export interface NodeConnection {
@@ -36,11 +37,29 @@ export type NodeHealth =
 export class NodeClientService {
   private readonly logger = new Logger(NodeClientService.name);
 
-  /** Un daemon injoignable ne doit pas bloquer le rendu d'une page. */
-  private static readonly TIMEOUT_MS = 5000;
+  /**
+   * Un daemon injoignable ne doit pas bloquer le rendu d'une page.
+   *
+   * La valeur est réglable depuis l'administration : cinq secondes conviennent
+   * à un node sur le même réseau, beaucoup moins à une machine à l'autre bout
+   * du monde, où le délai fait passer pour morte une machine qui répond.
+   */
+  private static readonly DEFAULT_TIMEOUT_MS = 5000;
+
+  constructor(private readonly settings: InstanceSettingsService) {}
+
+  private async timeoutMs(): Promise<number> {
+    // Un paramètre illisible ne doit pas empêcher de joindre un node : on
+    // retombe sur la valeur d'origine plutôt que de propager l'erreur.
+    return this.settings
+      .all()
+      .then((values) => values.nodeTimeoutMs)
+      .catch(() => NodeClientService.DEFAULT_TIMEOUT_MS);
+  }
 
   async fetchSystemInformation(node: NodeConnection): Promise<NodeHealth> {
     const startedAt = performance.now();
+    const timeout = await this.timeoutMs();
 
     try {
       const response = await fetch(new URL(DAEMON_ROUTES.system, node.url), {
@@ -48,7 +67,7 @@ export class NodeClientService {
           authorization: `Bearer ${node.token}`,
           accept: 'application/json',
         },
-        signal: AbortSignal.timeout(NodeClientService.TIMEOUT_MS),
+        signal: AbortSignal.timeout(timeout),
       });
 
       const latencyMs = Math.round(performance.now() - startedAt);
@@ -94,7 +113,7 @@ export class NodeClientService {
       const latencyMs = Math.round(performance.now() - startedAt);
       const reason =
         error instanceof Error && error.name === 'TimeoutError'
-          ? `Aucune réponse du daemon en ${NodeClientService.TIMEOUT_MS} ms.`
+          ? `Aucune réponse du daemon en ${timeout} ms.`
           : 'Connexion au daemon impossible.';
 
       this.logger.warn(`Node ${node.uuid} injoignable : ${reason}`);
@@ -141,10 +160,12 @@ export class NodeClientService {
    * « on ne sait pas », et ne pas prendre le second pour le premier.
    */
   async fetchServerState(node: NodeConnection, uuid: string): Promise<ServerState | null> {
+    const timeout = await this.timeoutMs();
+
     try {
       const response = await fetch(new URL(DAEMON_ROUTES.server(uuid), node.url), {
         headers: { authorization: `Bearer ${node.token}`, accept: 'application/json' },
-        signal: AbortSignal.timeout(NodeClientService.TIMEOUT_MS),
+        signal: AbortSignal.timeout(timeout),
       });
 
       if (!response.ok) {

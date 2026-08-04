@@ -17,6 +17,7 @@ import {
   changePasswordSchema,
   disableTwoFactorSchema,
   loginSchema,
+  passwordSetupSchema,
   refreshSchema,
   totpCodeSchema,
   type ChangePasswordDto,
@@ -25,6 +26,7 @@ import {
   type RefreshDto,
   type TotpCodeDto,
 } from './auth.dto.js';
+import { InstanceSettingsService } from '../instance-settings/instance-settings.service.js';
 import { AuthService, type RequestContext } from './auth.service.js';
 import { Public } from './decorators.js';
 import { CurrentUser, type AuthenticatedRequest, type RequestUser } from './request-user.js';
@@ -39,6 +41,7 @@ export class AuthController {
 
   constructor(
     private readonly auth: AuthService,
+    private readonly settings: InstanceSettingsService,
     config: ConfigService<Environment, true>,
   ) {
     // `Secure` casserait la connexion en développement sur http://localhost.
@@ -122,8 +125,43 @@ export class AuthController {
   }
 
   @Get('me')
-  me(@CurrentUser() user: RequestUser): Record<string, unknown> {
-    return { uuid: user.uuid, username: user.username, email: user.email, role: user.role };
+  async me(@CurrentUser() user: RequestUser): Promise<Record<string, unknown>> {
+    const settings = await this.settings.all();
+    const account = await this.auth.describeAccount(user.id);
+
+    return {
+      uuid: user.uuid,
+      username: user.username,
+      email: user.email,
+      role: user.role,
+      panelName: settings.panelName,
+      twoFactorEnabled: account.twoFactorEnabled,
+      /**
+       * L'interface s'en sert pour barrer l'accès tant que le second facteur
+       * n'est pas actif. L'exigence ne peut pas être appliquée à la connexion :
+       * il faut être connecté pour activer un second facteur.
+       */
+      mustEnableTwoFactor:
+        !account.twoFactorEnabled &&
+        (settings.twoFactorRequirement === 'all' ||
+          (settings.twoFactorRequirement === 'admins' && user.role === 'ADMIN')),
+    };
+  }
+
+  /**
+   * Choix du mot de passe initial, depuis le lien reçu par courriel.
+   *
+   * Publique par nécessité : son porteur n'a pas encore de mot de passe, donc
+   * pas de session. Le jeton signé tient lieu d'authentification.
+   */
+  @Post('password-setup')
+  @Public()
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async setupPassword(
+    @Body(new ZodValidationPipe(passwordSetupSchema)) body: { token: string; password: string },
+    @Req() request: AuthenticatedRequest,
+  ): Promise<void> {
+    await this.auth.setPasswordFromToken(body.token, body.password, this.contextOf(request));
   }
 
   @Post('password')

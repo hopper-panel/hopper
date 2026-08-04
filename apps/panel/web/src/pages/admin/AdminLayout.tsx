@@ -17,7 +17,10 @@ import { cx } from '../../lib/cx';
 const SECTIONS = [
   {
     title: 'Administration',
-    items: [{ to: '/admin', label: 'Vue d’ensemble', icon: '⌂', end: true }],
+    items: [
+      { to: '/admin', label: 'Vue d’ensemble', icon: '⌂', end: true },
+      { to: '/admin/settings', label: 'Paramètres', icon: '⚙' },
+    ],
   },
   {
     title: 'Exploitation',

@@ -18,7 +18,13 @@ export const usernameSchema = z
 export const createUserSchema = z.object({
   email: z.email().max(191),
   username: usernameSchema,
-  password: passwordSchema,
+  /**
+   * Facultatif : sans mot de passe, le compte est créé inutilisable et son
+   * titulaire reçoit un lien pour en choisir un. C'est le comportement à
+   * préférer — un mot de passe choisi par l'administrateur transite par un
+   * canal qu'il ne maîtrise pas, et reste souvent inchangé.
+   */
+  password: passwordSchema.optional(),
   role: z.enum(['ADMIN', 'USER']).default('USER'),
 });
 

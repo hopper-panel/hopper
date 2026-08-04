@@ -16,12 +16,31 @@ export function AdminUsersPage() {
     queryFn: () => api.get<Paginated<UserSummary>>('/api/admin/users'),
   });
 
+  const [notice, setNotice] = useState<string | null>(null);
+
   const createMutation = useMutation({
-    mutationFn: (body: Record<string, unknown>) => api.post<UserSummary>('/api/admin/users', body),
-    onSuccess: () => {
+    mutationFn: (body: Record<string, unknown>) =>
+      api.post<UserSummary & { invitationSent: boolean }>('/api/admin/users', body),
+    onSuccess: (created) => {
       void queryClient.invalidateQueries({ queryKey: ['admin', 'users'] });
       setCreating(false);
+      setNotice(
+        created.invitationSent
+          ? `Compte créé. Un lien pour choisir un mot de passe a été envoyé à ${created.email}.`
+          : 'Compte créé. Aucun courriel n’est parti : configurez un serveur SMTP dans les paramètres, ou communiquez vous-même le mot de passe.',
+      );
     },
+  });
+
+  const inviteMutation = useMutation({
+    mutationFn: (uuid: string) =>
+      api.post<{ sent: boolean }>(`/api/admin/users/${uuid}/invitation`),
+    onSuccess: (result) =>
+      setNotice(
+        result.sent
+          ? 'Invitation renvoyée.'
+          : 'Aucun serveur SMTP configuré : rien n’a pu être envoyé.',
+      ),
   });
 
   const deleteMutation = useMutation({
@@ -56,6 +75,12 @@ export function AdminUsersPage() {
       {deleteMutation.error instanceof ApiError ? (
         <div className="mb-4">
           <Alert>{deleteMutation.error.message}</Alert>
+        </div>
+      ) : null}
+
+      {notice ? (
+        <div className="mb-4">
+          <Alert tone="info">{notice}</Alert>
         </div>
       ) : null}
 
@@ -97,9 +122,20 @@ export function AdminUsersPage() {
                   {user.uuid === currentUser?.uuid ? (
                     <span className="text-xs text-content-muted">vous</span>
                   ) : (
-                    <Button variant="danger" onClick={() => deleteMutation.mutate(user.uuid)}>
-                      Supprimer
-                    </Button>
+                    <div className="flex justify-end gap-2">
+                      {/* Renvoyer un lien plutôt que fixer un mot de passe à la
+                          place de quelqu'un : le premier courriel se perd, le
+                          lien expire au bout d'un jour. */}
+                      <Button
+                        onClick={() => inviteMutation.mutate(user.uuid)}
+                        disabled={inviteMutation.isPending}
+                      >
+                        Renvoyer l’invitation
+                      </Button>
+                      <Button variant="danger" onClick={() => deleteMutation.mutate(user.uuid)}>
+                        Supprimer
+                      </Button>
+                    </div>
                   )}
                 </td>
               </tr>
@@ -124,7 +160,13 @@ function CreateUserForm({
 
   function handleSubmit(event: FormEvent): void {
     event.preventDefault();
-    onSubmit(form);
+
+    // Mot de passe vide : le champ est facultatif, et l'envoyer vide ferait
+    // échouer la validation au lieu de déclencher l'invitation par courriel.
+    onSubmit({
+      ...form,
+      password: form.password === '' ? undefined : form.password,
+    });
   }
 
   return (
@@ -155,14 +197,14 @@ function CreateUserForm({
 
           <Field
             label="Mot de passe"
-            hint="12 caractères minimum. Une phrase de passe vaut mieux qu'un mot compliqué."
+            hint="Laissez vide pour envoyer un lien par courriel : c'est préférable, un mot de passe choisi ici transite par un canal que vous ne maîtrisez pas."
           >
             <Input
               type="password"
               value={form.password}
               onChange={(event) => setForm({ ...form, password: event.target.value })}
               minLength={12}
-              required
+              placeholder="lien envoyé par courriel"
             />
           </Field>
 

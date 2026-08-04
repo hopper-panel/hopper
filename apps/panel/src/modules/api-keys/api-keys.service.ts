@@ -182,9 +182,11 @@ export class ApiKeysService {
       return;
     }
 
-    await this.prisma.apiKey.update({ where: { id }, data: { lastUsedAt: new Date() } }).catch(() => {
-      // La clé a pu être révoquée entre l'authentification et ici : l'écriture
-      // manquée ne doit pas faire échouer une requête déjà autorisée.
-    });
+    await this.prisma.apiKey
+      .update({ where: { id }, data: { lastUsedAt: new Date() } })
+      .catch(() => {
+        // La clé a pu être révoquée entre l'authentification et ici : l'écriture
+        // manquée ne doit pas faire échouer une requête déjà autorisée.
+      });
   }
 }

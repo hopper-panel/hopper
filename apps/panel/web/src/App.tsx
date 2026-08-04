@@ -6,6 +6,7 @@ import { useAuth } from './lib/auth';
 import { AccountPage } from './pages/Account';
 import { DashboardPage } from './pages/Dashboard';
 import { LoginPage } from './pages/Login';
+import { PasswordSetupPage } from './pages/PasswordSetup';
 import { ServerActivityPage } from './pages/ServerActivity';
 import { ServerBackupsPage } from './pages/ServerBackups';
 import { ServerDatabasesPage } from './pages/ServerDatabases';
@@ -25,6 +26,7 @@ import { AdminNodeDetailPage } from './pages/admin/NodeDetail';
 import { AdminNodesPage } from './pages/admin/Nodes';
 import { AdminOverviewPage } from './pages/admin/Overview';
 import { AdminServersPage } from './pages/admin/Servers';
+import { AdminSettingsPage } from './pages/admin/Settings';
 import { AdminTemplatesPage } from './pages/admin/Templates';
 import { AdminUsersPage } from './pages/admin/Users';
 
@@ -45,6 +47,8 @@ export function App() {
   if (!user) {
     return (
       <Routes>
+        {/* Avant la connexion : son visiteur n'a pas encore de mot de passe. */}
+        <Route path="/definir-mot-de-passe" element={<PasswordSetupPage />} />
         <Route path="*" element={<LoginPage />} />
       </Routes>
     );
@@ -92,6 +96,7 @@ export function App() {
           <Route path="servers" element={<AdminServersPage />} />
           <Route path="users" element={<AdminUsersPage />} />
           <Route path="database-hosts" element={<AdminDatabaseHostsPage />} />
+          <Route path="settings" element={<AdminSettingsPage />} />
           <Route path="templates" element={<AdminTemplatesPage />} />
         </Route>
 

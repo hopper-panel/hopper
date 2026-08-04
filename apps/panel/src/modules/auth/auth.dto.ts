@@ -49,3 +49,17 @@ export type RefreshDto = z.infer<typeof refreshSchema>;
 export type ChangePasswordDto = z.infer<typeof changePasswordSchema>;
 export type TotpCodeDto = z.infer<typeof totpCodeSchema>;
 export type DisableTwoFactorDto = z.infer<typeof disableTwoFactorSchema>;
+
+/**
+ * Choix du mot de passe initial, depuis le lien reçu par courriel.
+ *
+ * Le jeton est borné en longueur : un JWT signé en HS256 dépasse rarement
+ * quatre cents caractères, et refuser plus tôt évite de faire vérifier une
+ * signature sur une charge arbitraire.
+ */
+export const passwordSetupSchema = z.object({
+  token: z.string().min(1).max(2048),
+  password: passwordSchema,
+});
+
+export type PasswordSetupDto = z.infer<typeof passwordSetupSchema>;

@@ -12,7 +12,7 @@ import { RateLimiterService } from '../../common/rate-limit/rate-limiter.service
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { AUDIT_EVENTS, AuditService } from '../audit/audit.service.js';
 import { PasswordService } from './password.service.js';
-import { REFRESH_TOKEN_TTL_SECONDS, TokenService } from './token.service.js';
+import { REFRESH_TOKEN_TTL_SECONDS, TokenService, fingerprintOf } from './token.service.js';
 import { TotpService } from './totp.service.js';
 
 /** Cinq tentatives par quart d'heure, par IP et par identifiant visé. */
@@ -379,12 +379,95 @@ export class AuthService {
     });
   }
 
+  /** État du compte, pour l'écran « Mon compte » et l'exigence de second facteur. */
+  async describeAccount(userId: number): Promise<{ twoFactorEnabled: boolean }> {
+    const user = await this.prisma.user.findUniqueOrThrow({
+      where: { id: userId },
+      select: { totpConfirmed: true },
+    });
+
+    return { twoFactorEnabled: user.totpConfirmed };
+  }
+
+  /**
+   * Choix du mot de passe initial, depuis le lien reçu par courriel.
+   *
+   * Le jeton porte une empreinte du mot de passe en vigueur à son émission :
+   * s'il a changé depuis — parce que le lien a déjà servi, ou qu'un
+   * administrateur est passé par là — l'empreinte ne correspond plus et le lien
+   * est refusé. C'est ce qui le rend à usage unique sans table de jetons.
+   *
+   * La limitation de débit s'applique comme à une connexion : le jeton est
+   * signé, mais rien n'empêche d'essayer.
+   */
+  async setPasswordFromToken(
+    token: string,
+    newPassword: string,
+    context: RequestContext,
+  ): Promise<void> {
+    const claims = await this.tokens.verifyPasswordSetup(token);
+
+    if (!claims) {
+      await this.penalizeSetupFailure(context);
+      throw new UnauthorizedException('Ce lien est invalide ou a expiré.');
+    }
+
+    const user = await this.prisma.user.findUnique({ where: { uuid: claims.userUuid } });
+
+    if (!user || fingerprintOf(user.passwordHash) !== claims.fingerprint) {
+      await this.penalizeSetupFailure(context);
+      throw new UnauthorizedException('Ce lien a déjà servi, ou a expiré.');
+    }
+
+    if (user.suspended) {
+      throw new UnauthorizedException('Ce compte est suspendu.');
+    }
+
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: { passwordHash: await this.passwords.hash(newPassword) },
+    });
+
+    await this.revokeAllSessions(user.id);
+
+    await this.audit.record({
+      event: AUDIT_EVENTS.PASSWORD_CHANGED,
+      actorId: user.id,
+      ip: context.ip,
+      userAgent: context.userAgent,
+      metadata: { source: 'invitation' },
+    });
+  }
+
   // -------------------------------------------------------------------------
   // Interne
   // -------------------------------------------------------------------------
 
   private loginKey(identifier: string, ip: string): string {
     return `auth:login:${ip}:${identifier.toLowerCase()}`;
+  }
+
+  /**
+   * Décompte une tentative **ratée** de choix de mot de passe.
+   *
+   * Seuls les échecs comptent, à la différence de la connexion : un lien valide
+   * est un jeton signé, il n'y a rien à deviner par force brute. Compter les
+   * réussites bloquerait un bureau entier derrière une même adresse — cinq
+   * comptes créés, et le sixième arriverait devant une porte close.
+   */
+  private async penalizeSetupFailure(context: RequestContext): Promise<void> {
+    const result = await this.rateLimiter.consume(
+      `password-setup:${context.ip}`,
+      LOGIN_ATTEMPT_LIMIT,
+      LOGIN_WINDOW_SECONDS,
+    );
+
+    if (!result.allowed) {
+      throw new HttpException(
+        `Trop de tentatives. Réessayez dans ${result.resetInSeconds} secondes.`,
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
   }
 
   private async assertNotRateLimited(identifier: string, context: RequestContext): Promise<void> {

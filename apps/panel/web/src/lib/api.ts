@@ -117,6 +117,11 @@ export interface CurrentUser {
   username: string;
   email: string;
   role: 'ADMIN' | 'USER';
+  /** Nom de l'instance, réglé dans l'administration. */
+  panelName: string;
+  twoFactorEnabled: boolean;
+  /** L'instance exige un second facteur que ce compte n'a pas encore activé. */
+  mustEnableTwoFactor: boolean;
 }
 
 export interface ServerSummary {

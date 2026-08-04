@@ -10,6 +10,7 @@ import {
 } from '@hopper/shared';
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { createHash } from 'node:crypto';
 import { SignJWT, jwtVerify } from 'jose';
 import { CryptoService } from '../../common/crypto/crypto.service.js';
 import type { Environment } from '../../config/environment.js';
@@ -51,6 +52,54 @@ export class TokenService {
     config: ConfigService<Environment, true>,
   ) {
     this.issuer = config.get('APP_URL', { infer: true });
+  }
+
+  // -------------------------------------------------------------------------
+  // Choix du mot de passe initial
+  // -------------------------------------------------------------------------
+
+  /**
+   * Jeton d'un lien « choisissez votre mot de passe ».
+   *
+   * Il porte une empreinte du mot de passe en vigueur au moment de l'émission.
+   * C'est ce qui le rend **à usage unique sans table dédiée** : dès qu'un mot
+   * de passe est choisi, l'empreinte change et le lien cesse de fonctionner —
+   * y compris pour un second clic sur le même courriel, ou pour un lien resté
+   * dans une boîte compromise après coup.
+   */
+  async signPasswordSetup(input: {
+    userUuid: string;
+    passwordHash: string;
+    ttlSeconds: number;
+  }): Promise<string> {
+    return new SignJWT({ fingerprint: fingerprintOf(input.passwordHash) })
+      .setProtectedHeader({ alg: 'HS256' })
+      .setSubject(input.userUuid)
+      .setIssuer(this.issuer)
+      .setAudience('hopper:password-setup')
+      .setIssuedAt()
+      .setExpirationTime(`${input.ttlSeconds}s`)
+      .sign(this.crypto.getSigningKey());
+  }
+
+  async verifyPasswordSetup(
+    token: string,
+  ): Promise<{ userUuid: string; fingerprint: string } | null> {
+    try {
+      const { payload } = await jwtVerify(token, this.crypto.getSigningKey(), {
+        issuer: this.issuer,
+        audience: 'hopper:password-setup',
+        algorithms: ['HS256'],
+      });
+
+      if (typeof payload.sub !== 'string' || typeof payload.fingerprint !== 'string') {
+        return null;
+      }
+
+      return { userUuid: payload.sub, fingerprint: payload.fingerprint };
+    } catch {
+      return null;
+    }
   }
 
   // -------------------------------------------------------------------------
@@ -211,4 +260,15 @@ export class TokenService {
       return null;
     }
   }
+}
+
+/**
+ * Empreinte courte d'une empreinte de mot de passe.
+ *
+ * Le hash argon2 lui-même n'entre pas dans le jeton : celui-ci est lisible par
+ * son porteur, et y placer de quoi mener une attaque hors ligne serait absurde.
+ * Seize caractères suffisent à détecter un changement.
+ */
+export function fingerprintOf(passwordHash: string): string {
+  return createHash('sha256').update(passwordHash).digest('hex').slice(0, 16);
 }

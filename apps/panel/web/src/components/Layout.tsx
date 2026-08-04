@@ -27,7 +27,7 @@ export function Layout() {
             <span aria-hidden className="text-lg">
               🪣
             </span>
-            <span className="font-semibold">Hopper</span>
+            <span className="font-semibold">{user?.panelName ?? 'Hopper'}</span>
           </NavLink>
 
           <nav className="ml-auto flex items-center gap-1">
@@ -50,6 +50,26 @@ export function Layout() {
           </nav>
         </div>
       </header>
+
+      {/* L'exigence de second facteur ne peut pas être imposée à la connexion —
+          il faut être connecté pour l'activer. Elle se manifeste donc par un
+          bandeau qui suit l'utilisateur partout jusqu'à ce que ce soit fait. */}
+      {user?.mustEnableTwoFactor ? (
+        <div className="border-b border-accent/40 bg-accent/10">
+          <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-3 px-4 py-2.5 text-sm text-content">
+            <span>
+              Cette instance exige la double authentification. Activez-la pour continuer à protéger
+              vos serveurs.
+            </span>
+            <NavLink
+              to="/account"
+              className="ml-auto rounded-lg bg-accent px-3 py-1.5 text-sm font-medium text-surface"
+            >
+              Activer
+            </NavLink>
+          </div>
+        </div>
+      ) : null}
 
       <main>
         <Outlet />

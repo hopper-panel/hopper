@@ -104,9 +104,9 @@ describe('buildDiscordPayload', () => {
 
 describe('buildPayload', () => {
   it('choisit le format selon la destination', () => {
-    expect(buildPayload('https://discord.com/api/webhooks/1/x', 'server.started', context).discord).toBe(
-      true,
-    );
+    expect(
+      buildPayload('https://discord.com/api/webhooks/1/x', 'server.started', context).discord,
+    ).toBe(true);
     expect(buildPayload('https://exemple.fr/hook', 'server.started', context).discord).toBe(false);
   });
 });

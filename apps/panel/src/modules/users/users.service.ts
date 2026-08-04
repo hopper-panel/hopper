@@ -11,6 +11,11 @@ import {
   type Paginated,
   type PaginationQuery,
 } from '../../common/pagination.js';
+import { ConfigService } from '@nestjs/config';
+import { randomBytes } from 'node:crypto';
+import type { Environment } from '../../config/environment.js';
+import { MailService } from '../instance-settings/mail.service.js';
+import { TokenService } from '../auth/token.service.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { AUDIT_EVENTS, AuditService } from '../audit/audit.service.js';
 import { AuthService, type RequestContext } from '../auth/auth.service.js';
@@ -42,14 +47,24 @@ export function toUserView(user: User): UserView {
   };
 }
 
+/** Durée de validité d'un lien d'invitation, en heures. */
+const INVITATION_TTL_HOURS = 24;
+
 @Injectable()
 export class UsersService {
+  private readonly appUrl: string;
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly passwords: PasswordService,
     private readonly auth: AuthService,
     private readonly audit: AuditService,
-  ) {}
+    private readonly tokens: TokenService,
+    private readonly mail: MailService,
+    config: ConfigService<Environment, true>,
+  ) {
+    this.appUrl = config.get('APP_URL', { infer: true }).replace(/\/$/, '');
+  }
 
   async list(query: PaginationQuery): Promise<Paginated<UserView>> {
     const where: Prisma.UserWhereInput = query.search
@@ -89,15 +104,22 @@ export class UsersService {
     /** Nul quand la création vient de la ligne de commande, sans session. */
     actorId: number | null,
     context: RequestContext,
-  ): Promise<UserView> {
+  ): Promise<UserView & { invitationSent: boolean }> {
     await this.assertAvailable(dto.email, dto.username);
+
+    // Sans mot de passe fourni, on en pose un aléatoire que personne ne
+    // connaîtra jamais : le compte existe mais reste inutilisable jusqu'à ce
+    // que son titulaire en choisisse un par le lien reçu. Laisser le champ
+    // vide en base serait pire — un hash vide finit toujours par croiser une
+    // comparaison qui l'accepte.
+    const password = dto.password ?? randomBytes(48).toString('base64url');
 
     const user = await this.prisma.user.create({
       data: {
         email: dto.email.toLowerCase(),
         username: dto.username,
         role: dto.role,
-        passwordHash: await this.passwords.hash(dto.password),
+        passwordHash: await this.passwords.hash(password),
       },
     });
 
@@ -109,7 +131,55 @@ export class UsersService {
       metadata: { targetUuid: user.uuid, username: user.username, role: user.role },
     });
 
-    return toUserView(user);
+    const invitationSent = await this.sendInvitation(user);
+
+    return { ...toUserView(user), invitationSent };
+  }
+
+  /**
+   * Envoie le lien de choix du mot de passe.
+   *
+   * Rend vrai si le courriel est parti. L'échec n'interrompt rien : le compte
+   * est créé, et un administrateur peut renvoyer l'invitation.
+   */
+  async sendInvitation(user: {
+    uuid: string;
+    email: string;
+    username: string;
+    passwordHash: string;
+  }): Promise<boolean> {
+    if (!(await this.mail.isConfigured())) {
+      return false;
+    }
+
+    const token = await this.tokens.signPasswordSetup({
+      userUuid: user.uuid,
+      passwordHash: user.passwordHash,
+      ttlSeconds: INVITATION_TTL_HOURS * 3600,
+    });
+
+    await this.mail.sendWelcome({
+      to: user.email,
+      username: user.username,
+      setupUrl: `${this.appUrl}/definir-mot-de-passe?token=${encodeURIComponent(token)}`,
+      expiresInHours: INVITATION_TTL_HOURS,
+    });
+
+    return true;
+  }
+
+  /** Renvoie une invitation à un compte existant. */
+  async resendInvitation(uuid: string): Promise<{ sent: boolean }> {
+    const user = await this.prisma.user.findUnique({
+      where: { uuid },
+      select: { uuid: true, email: true, username: true, passwordHash: true },
+    });
+
+    if (!user) {
+      throw new NotFoundException('Utilisateur introuvable.');
+    }
+
+    return { sent: await this.sendInvitation(user) };
   }
 
   async update(
