@@ -9,11 +9,11 @@ import {
 } from './definitions.js';
 
 describe('updateInstanceSettingsSchema', () => {
-  it('ne rend que ce qui a été envoyé', () => {
-    // Le piège qui a coûté une configuration SMTP : `.partial()` sur un schéma
-    // dont les champs portent un `.default()` réinjecte ces défauts pour les
-    // clés absentes. Enregistrer le seul nom de l'instance réécrivait alors le
-    // serveur SMTP avec une chaîne vide.
+  it('returns only what was sent', () => {
+    // The trap that cost an SMTP configuration: `.partial()` on a schema whose
+    // fields carry a `.default()` reinjects those defaults for the absent keys.
+    // Saving the instance name alone then rewrote the SMTP server with an empty
+    // string.
     const parsed = updateInstanceSettingsSchema.parse({ panelName: 'Kronia' });
 
     expect(Object.keys(parsed)).toEqual(['panelName']);
@@ -31,11 +31,11 @@ describe('updateInstanceSettingsSchema', () => {
     expect(updateInstanceSettingsSchema.safeParse({ twoFactorRequirement: 'parfois' }).success).toBe(
       false,
     );
-    // Un délai d'une milliseconde ferait passer tous les nodes pour morts.
+    // A one-millisecond timeout would make every node look dead.
     expect(updateInstanceSettingsSchema.safeParse({ nodeTimeoutMs: 1 }).success).toBe(false);
   });
 
-  it('écarte les clés inconnues', () => {
+  it('drops the unknown keys', () => {
     expect(updateInstanceSettingsSchema.parse({ appSecret: 'x' })).toEqual({});
   });
 });
@@ -45,11 +45,11 @@ describe('instanceSettingsSchema', () => {
     expect(DEFAULT_SETTINGS.panelName).toBe('Hopper');
     expect(DEFAULT_SETTINGS.mailEnabled).toBe(false);
     expect(DEFAULT_SETTINGS.nodeTimeoutMs).toBe(5000);
-    // Zéro : purger le journal d'audit doit rester un choix explicite.
+    // Zero: purging the audit log has to stay an explicit choice.
     expect(DEFAULT_SETTINGS.activityRetentionDays).toBe(0);
   });
 
-  it('complète les valeurs manquantes', () => {
+  it('fills in the missing values', () => {
     expect(instanceSettingsSchema.parse({ panelName: 'Kronia' })).toEqual({
       ...DEFAULT_SETTINGS,
       panelName: 'Kronia',
@@ -57,8 +57,8 @@ describe('instanceSettingsSchema', () => {
   });
 });
 
-describe('sérialisation', () => {
-  it('fait l’aller-retour pour chaque type', () => {
+describe('serialisation', () => {
+  it('round-trips for every type', () => {
     expect(deserializeSetting('panelName', serializeSetting('Kronia'))).toBe('Kronia');
     expect(deserializeSetting('mailEnabled', serializeSetting(true))).toBe(true);
     expect(deserializeSetting('mailEnabled', serializeSetting(false))).toBe(false);
@@ -67,14 +67,14 @@ describe('sérialisation', () => {
   });
 
   it('rend undefined sur une valeur illisible', () => {
-    // Une ligne corrompue doit être ignorée, pas faire échouer la lecture de
-    // tous les autres paramètres.
+    // A corrupt row has to be ignored, not fail the reading of every other
+    // setting.
     expect(deserializeSetting('mailPort', 'pas un nombre')).toBeUndefined();
   });
 });
 
 describe('isSecretKey', () => {
-  it('ne désigne que le mot de passe SMTP', () => {
+  it('names the SMTP password only', () => {
     expect(isSecretKey('mailPassword')).toBe(true);
     expect(isSecretKey('mailUsername')).toBe(false);
     expect(isSecretKey('panelName')).toBe(false);

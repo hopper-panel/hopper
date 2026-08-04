@@ -12,13 +12,12 @@ import {
 import { SettingsService } from './settings.service.js';
 
 /**
- * Paramètres d'un serveur.
+ * A server's settings.
  *
- * La lecture ne demande aucune permission particulière : ce qu'elle expose —
- * l'adresse SFTP, l'identifiant du serveur, le nom du node — est déjà connu de
- * quiconque a accès au serveur. Ce qui est protégé, c'est l'usage : le SFTP
- * exige `file.sftp`, et le mot de passe reste celui du panel, jamais transmis
- * ici.
+ * Reading them needs no particular permission: what they expose — the SFTP
+ * address, the server identifier, the node name — is already known to anyone
+ * with access to the server. What is protected is the use: SFTP requires
+ * `file.sftp`, and the password stays the panel's, never passed here.
  */
 @Controller('api/servers/:serverId/settings')
 export class SettingsController {
@@ -42,9 +41,9 @@ export class SettingsController {
     @CurrentUser() user: RequestUser,
     @Req() request: AuthenticatedRequest,
   ): Promise<void> {
-    // L'audit précède l'opération : une réinstallation qui échoue à mi-chemin a
-    // tout de même touché au volume, et c'est le cas où l'on veut savoir qui
-    // l'a lancée.
+    // The audit entry precedes the operation: a reinstall that fails halfway
+    // has still touched the volume, and that is the case where one wants to
+    // know who launched it.
     await this.audit.record({
       event: AUDIT_EVENTS.SERVER_REINSTALLED,
       actorId: user.id,

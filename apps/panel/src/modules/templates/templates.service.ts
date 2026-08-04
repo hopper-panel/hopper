@@ -2,10 +2,10 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service.js';
 
 /**
- * Normalise les images d'un template.
+ * Normalises a template's images.
  *
- * Le format courant est un tableau ordonné ; l'ancien format objet reste lu
- * pour ne pas casser un template créé avant le changement.
+ * The current format is an ordered array; the old object format is still read
+ * so as not to break a template created before the change.
  */
 function parseImageOptions(raw: unknown): DockerImageOption[] {
   if (Array.isArray(raw)) {
@@ -36,7 +36,7 @@ export interface TemplateVariableView {
 }
 
 export interface DockerImageOption {
-  /** Libellé affiché, ex. « Java 21 ». */
+  /** Displayed label, e.g. "Java 21". */
   name: string;
   image: string;
 }
@@ -47,19 +47,18 @@ export interface TemplateView {
   description: string;
   author: string;
   group: { uuid: string; name: string };
-  /** Ordonnées : la première est le défaut. */
+  /** Ordered: the first is the default. */
   dockerImages: DockerImageOption[];
   startup: string;
   variables: TemplateVariableView[];
 }
 
 /**
- * Lecture des templates de serveurs.
+ * Reading server templates.
  *
- * Volontairement en lecture seule à ce stade : la création, l'édition et
- * l'import d'« eggs » Pterodactyl arrivent en phase 3. L'interface a besoin dès
- * maintenant de lister les templates pour que la création d'un serveur ait un
- * sens.
+ * Deliberately read-only here: creating and editing templates is done through
+ * the catalogue and the egg importer. The interface needs to list templates for
+ * server creation to make sense.
  */
 @Injectable()
 export class TemplatesService {
@@ -103,7 +102,7 @@ export class TemplatesService {
     return this.toView(template);
   }
 
-  /** Recherche par clé stable, utilisée après un import ou une synchronisation. */
+  /** Lookup by stable key, used after an import or a synchronisation. */
   async findByKey(key: string): Promise<TemplateView> {
     const template = await this.prisma.template.findUnique({
       where: { key },
@@ -143,8 +142,8 @@ export class TemplatesService {
       group: { uuid: template.group.uuid, name: template.group.name },
       dockerImages: parseImageOptions(template.dockerImages),
       startup: template.startup,
-      // Une variable non visible est un détail d'implémentation du template
-      // (chemin interne, drapeau de build) : l'exposer inviterait à la modifier.
+      // A non-viewable variable is an implementation detail of the template
+      // (internal path, build flag): exposing it would invite editing it.
       variables: template.variables
         .filter((variable) => variable.userViewable)
         .map((variable) => ({

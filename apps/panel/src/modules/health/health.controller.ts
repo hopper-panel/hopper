@@ -14,12 +14,12 @@ export class HealthController {
   ) {}
 
   /**
-   * Sonde de vitalité. Volontairement muette sur la configuration : elle est
-   * appelée par systemd et les load balancers, parfois depuis l'extérieur.
+   * Liveness probe. Deliberately mute about the configuration: it is called by
+   * systemd and by load balancers, sometimes from outside.
    *
-   * Publique par nécessité : une sonde qui exige une session ne peut pas
-   * remplir son rôle. Un `systemctl start` attendrait indéfiniment un service
-   * qu'il croit en panne alors qu'il répond parfaitement.
+   * Public out of necessity: a probe that demands a session cannot do its job.
+   * A `systemctl start` would wait forever on a service it believes broken when
+   * it answers perfectly.
    */
   @Public()
   @Get()
@@ -28,10 +28,10 @@ export class HealthController {
   }
 
   /**
-   * Vérifie que le panel sait joindre le daemon de développement.
+   * Checks that the panel can reach the development daemon.
    *
-   * Réservée aux administrateurs, contrairement à la sonde ci-dessus : elle
-   * révèle l'existence et l'état d'un node.
+   * Administrators only, unlike the probe above: it reveals the existence and
+   * the state of a node.
    */
   @AdminOnly()
   @Get('node')
@@ -41,7 +41,7 @@ export class HealthController {
 
     if (!url || !token) {
       throw new ServiceUnavailableException(
-        'DEV_NODE_URL et DEV_NODE_TOKEN ne sont pas définis dans .env.',
+        'DEV_NODE_URL and DEV_NODE_TOKEN are not set in .env.',
       );
     }
 

@@ -31,11 +31,11 @@ import {
 import { SchedulesService } from './schedules.service.js';
 
 /**
- * Tâches planifiées d'un serveur.
+ * A server's scheduled tasks.
  *
- * Le déclenchement manuel demande la permission de **modification** et non de
- * lecture : lancer une séquence qui redémarre le serveur n'est pas une
- * consultation, même si l'on n'a rien changé à l'horaire.
+ * Triggering one by hand requires the **update** permission and not the read
+ * one: launching a sequence that restarts the server is not a look at it, even
+ * if the schedule was left untouched.
  */
 @Controller('api/servers/:serverId/schedules')
 export class SchedulesController {
@@ -107,9 +107,9 @@ export class SchedulesController {
     @CurrentUser() user: RequestUser,
     @Req() request: AuthenticatedRequest,
   ): Promise<void> {
-    // Avance l'échéance : le planificateur prendra la tâche à son prochain
-    // passage. L'exécuter ici tiendrait la requête ouverte pendant toute la
-    // séquence, décalages compris — plusieurs minutes.
+    // Brings the due time forward: the scheduler will pick the task up on its
+    // next pass. Running it here would hold the request open for the whole
+    // sequence, offsets included — several minutes.
     await this.schedules.triggerNow(serverId, scheduleId);
 
     await this.record(server, user, request, AUDIT_EVENTS.SCHEDULE_UPDATED, {

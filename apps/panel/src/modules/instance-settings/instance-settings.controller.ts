@@ -17,11 +17,10 @@ import { MailService } from './mail.service.js';
 const testMailSchema = z.object({ to: z.email().max(255) });
 
 /**
- * Paramètres de l'instance.
+ * Instance settings.
  *
- * Réservé aux administrateurs : le nom du panel et le serveur SMTP engagent
- * tout le monde, et l'exigence de double authentification est un réglage de
- * sécurité.
+ * Administrators only: the panel's name and the SMTP server bind everybody, and
+ * the two-factor requirement is a security setting.
  */
 @Controller('api/admin/settings')
 @AdminOnly()
@@ -36,8 +35,8 @@ export class InstanceSettingsController {
   async get() {
     return {
       settings: await this.settings.forApi(),
-      // Les valeurs possibles viennent du serveur : l'interface n'a pas à
-      // maintenir sa propre copie des énumérations.
+      // The possible values come from the server: the interface has no business
+      // maintaining its own copy of the enumerations.
       options: {
         twoFactorRequirements: TWO_FACTOR_REQUIREMENTS,
         mailEncryptions: MAIL_ENCRYPTIONS,
@@ -59,8 +58,8 @@ export class InstanceSettingsController {
       actorId: user.id,
       ip: request.ip,
       userAgent: request.headers['user-agent'],
-      // Les clés modifiées, jamais les valeurs : le mot de passe SMTP n'a rien
-      // à faire dans un journal que l'on consulte à plusieurs.
+      // The keys changed, never the values: the SMTP password has no business
+      // in a log several people read.
       metadata: { keys: Object.keys(body) },
     });
 

@@ -15,15 +15,15 @@ import {
 } from './cipher.js';
 
 /**
- * Primitives cryptographiques du panel.
+ * The panel's cryptographic primitives.
  *
- * Deux clés distinctes sont dérivées d'`APP_SECRET` par HKDF, avec des `info`
- * différents : une pour chiffrer les secrets stockés en base, une pour signer
- * les jetons. Réutiliser la même clé brute pour les deux usages ferait qu'une
- * faiblesse dans l'un affaiblirait l'autre.
+ * Two distinct keys are derived from `APP_SECRET` by HKDF, with different
+ * `info` values: one to encrypt the secrets stored in the database, one to sign
+ * the tokens. Reusing the same raw key for both uses would mean a weakness in
+ * one weakened the other.
  *
- * Les primitives elles-mêmes vivent dans `cipher.ts`, sans dépendance à Nest,
- * pour que le script d'amorçage produise des valeurs relisibles par le panel.
+ * The primitives themselves live in `cipher.ts`, with no dependency on Nest, so
+ * the seed script produces values the panel can read back.
  */
 @Injectable()
 export class CryptoService {
@@ -36,7 +36,7 @@ export class CryptoService {
     this.signingKey = deriveKey(secret, SIGNING_INFO);
   }
 
-  /** Clé de signature, pour les jetons émis par le panel. */
+  /** Signing key, for the tokens the panel issues. */
   getSigningKey(): Buffer {
     return this.signingKey;
   }
@@ -71,9 +71,9 @@ export class CryptoService {
   }
 
   /**
-   * Code de récupération 2FA, au format `XXXXX-XXXXX`.
-   * L'alphabet exclut les caractères qu'on confond en recopiant depuis un
-   * papier : ces codes sont saisis à la main, souvent sous stress.
+   * 2FA recovery code, in the form `XXXXX-XXXXX`.
+   * The alphabet excludes the characters one confuses when copying from paper:
+   * these codes are typed by hand, often under stress.
    */
   randomRecoveryCode(): string {
     const half = (): string => randomString(5, UNAMBIGUOUS_ALPHABET);

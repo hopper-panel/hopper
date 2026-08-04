@@ -19,17 +19,17 @@ import { NodesService } from '../nodes/nodes.service.js';
 import { planRetention } from './retention.js';
 
 /**
- * Sauvegardes, vues du panel.
+ * Backups, as the panel sees them.
  *
- * Le panel tient le registre : c'est lui qui sait combien de sauvegardes un
- * serveur a le droit de garder, laquelle est verrouillée, et laquelle doit
- * disparaître quand la suivante arrive. Le daemon, lui, ne sait qu'archiver un
- * volume — il n'a aucune idée de ce qu'est une politique de rétention.
+ * The panel keeps the register: it is the one that knows how many backups a
+ * server may keep, which is locked, and which has to go when the next one
+ * arrives. The daemon only knows how to archive a volume — it has no idea what
+ * a retention policy is.
  *
- * L'enregistrement est créé **avant** d'appeler le node, jamais après. Si le
- * node est injoignable, on préfère une ligne marquée en échec à une archive
- * écrite sur disque dont le panel ignorerait l'existence : la première se voit
- * et se corrige, la seconde occupe le disque en silence.
+ * The record is created **before** calling the node, never after. If the node
+ * is unreachable, a row marked failed beats an archive written to disk the
+ * panel knows nothing about: the first is visible and fixable, the second takes
+ * up disk in silence.
  */
 @Injectable()
 export class BackupsService {
@@ -69,10 +69,10 @@ export class BackupsService {
   }
 
   /**
-   * Demande une nouvelle sauvegarde.
+   * Requests a new backup.
    *
-   * Rend la main dès que le node a accepté : l'archivage se poursuit et le
-   * verdict arrive par `POST /api/remote/backups/:uuid/status`.
+   * Returns as soon as the node has accepted: archiving carries on and the
+   * verdict arrives through `POST /api/remote/backups/:uuid/status`.
    */
   async create(
     serverUuid: string,
@@ -81,18 +81,17 @@ export class BackupsService {
     const server = await this.requireServer(serverUuid);
 
     if (server.backupLimit <= 0) {
-      throw new BadRequestException('Les sauvegardes sont désactivées sur ce serveur.');
+      throw new BadRequestException('Backups are disabled on this server.');
     }
 
-    // Une sauvegarde déjà en cours n'est pas encore comptée dans la rétention :
-    // en lancer deux en parallèle ferait dépasser le quota et saturerait le
-    // disque du node.
+    // A backup already running is not counted in retention yet: launching two
+    // in parallel would overshoot the quota and fill the node's disk.
     const inFlight = await this.prisma.backup.count({
       where: { serverId: server.id, successful: null },
     });
 
     if (inFlight > 0) {
-      throw new ConflictException('Une sauvegarde est déjà en cours sur ce serveur.');
+      throw new ConflictException('A backup is already running on this server.');
     }
 
     await this.enforceRetention(server.id, server.backupLimit);
@@ -122,8 +121,8 @@ export class BackupsService {
         }),
       );
     } catch (error: unknown) {
-      // La ligne est marquée en échec plutôt que supprimée : l'utilisateur doit
-      // voir que sa sauvegarde a été tentée et pourquoi elle n'a pas abouti.
+      // The row is marked failed rather than deleted: the user has to see that
+      // their backup was attempted and why it did not complete.
       await this.prisma.backup.update({
         where: { id: backup.id },
         data: {
@@ -140,23 +139,22 @@ export class BackupsService {
   }
 
   /**
-   * Enregistre le verdict rendu par le daemon.
+   * Records the verdict the daemon returned.
    *
-   * Appelé par la route distante, authentifiée par le jeton de node. Une
-   * sauvegarde déjà close n'est pas réécrite : un rappel dupliqué — le daemon
-   * réessaie — ne doit pas ressusciter une sauvegarde que la rétention a déjà
-   * effacée.
+   * Called by the remote route, authenticated by the node token. A backup
+   * already closed is not rewritten: a duplicate callback — the daemon retries
+   * — must not resurrect a backup retention has already erased.
    */
   async recordReport(backupUuid: string, report: BackupReport): Promise<void> {
     const backup = await this.prisma.backup.findUnique({ where: { uuid: backupUuid } });
 
     if (!backup) {
-      this.logger.warn(`Rapport reçu pour une sauvegarde inconnue : ${backupUuid}`);
+      this.logger.warn(`Report received for an unknown backup: ${backupUuid}`);
       return;
     }
 
     if (backup.successful !== null) {
-      this.logger.warn(`Rapport ignoré : la sauvegarde ${backupUuid} est déjà close.`);
+      this.logger.warn(`Report ignored: backup ${backupUuid} is already closed.`);
       return;
     }
 
@@ -202,7 +200,7 @@ export class BackupsService {
 
     if (backup.locked) {
       throw new ConflictException(
-        'Cette sauvegarde est verrouillée. Déverrouillez-la avant de la supprimer.',
+        'This backup is locked. Unlock it before deleting it.',
       );
     }
 
@@ -212,8 +210,8 @@ export class BackupsService {
 
     const node = await this.nodes.getConnection(server.node.uuid);
 
-    // L'archive part avant la ligne : l'inverse laisserait un fichier orphelin
-    // que plus rien ne référence, donc que personne ne supprimera jamais.
+    // The archive goes before the row: the reverse would leave an orphan file
+    // nothing references any more, so one nobody will ever delete.
     unwrapDaemonResponse(
       await this.client.proxy(node, BACKUP_ROUTES.backup(server.uuid, backupUuid), {
         method: 'DELETE',
@@ -224,11 +222,12 @@ export class BackupsService {
   }
 
   /**
-   * Restaure une sauvegarde.
+   * Restores a backup.
    *
-   * Le serveur doit être arrêté ; le daemon refuse sinon. Le panel transmet
-   * l'empreinte enregistrée, que le daemon vérifie avant d'écrire quoi que ce
-   * soit — une archive corrompue ne doit pas laisser le volume à moitié écrasé.
+   * The server has to be stopped; the daemon refuses otherwise. The panel
+   * passes the recorded digest, which the daemon checks before writing
+   * anything — a corrupt archive must not leave the volume half
+   * overwritten.
    */
   async restore(serverUuid: string, backupUuid: string, input: RestoreBackupRequest) {
     const server = await this.requireServer(serverUuid);
@@ -242,7 +241,7 @@ export class BackupsService {
 
     if (backup.successful !== true) {
       throw new ConflictException(
-        "Cette sauvegarde n'a pas abouti : elle ne peut pas être restaurée.",
+        'This backup did not complete: it cannot be restored.',
       );
     }
 
@@ -255,8 +254,8 @@ export class BackupsService {
       {
         method: 'POST',
         body: input,
-        // Extraire plusieurs gigaoctets prend du temps ; expirer ici laisserait
-        // l'utilisateur croire à un échec alors que la restauration se poursuit.
+        // Extracting several gigabytes takes time; timing out here would let
+        // the user believe it failed while the restore carries on.
         timeoutMs: 900_000,
       },
     );
@@ -265,20 +264,20 @@ export class BackupsService {
   }
 
   /**
-   * Fait de la place avant une nouvelle sauvegarde.
+   * Makes room before a new backup.
    *
-   * Les sauvegardes verrouillées ne comptent pas comme supprimables — c'est
-   * tout leur intérêt — mais elles occupent bien un emplacement. Un serveur
-   * dont toutes les sauvegardes sont verrouillées ne peut donc plus en créer,
-   * et le message doit le dire clairement plutôt que d'échouer sur un quota.
+   * Locked backups do not count as deletable — that is their whole point — but
+   * they do occupy a slot. A server whose backups are all locked can therefore
+   * create no more, and the message has to say so plainly rather than fail on a
+   * quota.
    */
   /**
-   * Fait de la place avant une nouvelle sauvegarde.
+   * Makes room before a new backup.
    *
-   * La décision — que retirer, et faut-il refuser — vit dans `planRetention`,
-   * qui ne touche à rien et se teste exhaustivement. Ici il ne reste que
-   * l'exécution : c'est la seule partie du module qui détruit des données, et
-   * la séparer est ce qui rend la règle vérifiable.
+   * The decision — what to remove, and whether to refuse — lives in
+   * `planRetention`, which touches nothing and can be tested exhaustively. Only
+   * the execution remains here: it is the only part of the module that destroys
+   * data, and separating it is what makes the rule checkable.
    */
   private async enforceRetention(serverId: number, limit: number): Promise<void> {
     const existing = await this.prisma.backup.findMany({
@@ -290,8 +289,8 @@ export class BackupsService {
 
     if (plan.kind === 'blocked') {
       throw new ConflictException(
-        `La limite de ${plan.limit} sauvegarde(s) est atteinte et ${plan.lockedCount} d'entre ` +
-          'elles sont verrouillées. Déverrouillez-en une, ou supprimez-en une manuellement.',
+        `The limit of ${plan.limit} backup(s) is reached and ${plan.lockedCount} of them ` +
+          'are locked. Unlock one, or delete one by hand.',
       );
     }
 
@@ -306,14 +305,14 @@ export class BackupsService {
     const node = await this.nodes.getConnection(server.node.uuid);
 
     for (const backup of plan.remove) {
-      // Un échec de suppression sur le node ne doit pas empêcher la nouvelle
-      // sauvegarde : l'archive orpheline est tracée, et le disque du node reste
-      // sous la surveillance de l'opérateur.
+      // A failed deletion on the node must not block the new backup: the orphan
+      // archive is logged, and the node's disk stays under the operator's
+      // watch.
       await this.client
         .proxy(node, BACKUP_ROUTES.backup(server.uuid, backup.uuid), { method: 'DELETE' })
         .catch((error: unknown) => {
           this.logger.error(
-            `Archive ${backup.uuid} non supprimée sur le node ${node.uuid} : ${String(error)}`,
+            `Archive ${backup.uuid} not deleted on node ${node.uuid}: ${String(error)}`,
           );
         });
 
@@ -357,8 +356,8 @@ function toPublicBackup(backup: BackupRow) {
     ignoredFiles: backup.ignoredFiles,
     sizeBytes: backup.sizeBytes,
     checksum: backup.checksum,
-    // `null` tant que le daemon n'a pas rendu son verdict : l'interface
-    // distingue « en cours » de « échouée », ce qu'un booléen ne permettrait pas.
+    // `null` until the daemon has returned its verdict: the interface tells
+    // "running" from "failed", which a boolean would not allow.
     successful: backup.successful,
     error: backup.errorDetail,
     locked: backup.locked,
@@ -368,9 +367,8 @@ function toPublicBackup(backup: BackupRow) {
 }
 
 function defaultBackupName(): string {
-  // Nom lisible et triable, dans le fuseau du panel : « Sauvegarde du
-  // 2026-08-03 21:40 ». L'utilisateur reconnaît la sienne sans avoir à lire un
-  // UUID.
+  // A readable, sortable name in the panel's time zone: "Backup of 2026-08-03
+  // 21:40". The user recognises theirs without having to read a UUID.
   const now = new Date();
   const pad = (value: number) => String(value).padStart(2, '0');
 
@@ -387,13 +385,13 @@ interface DaemonResponse {
 }
 
 /**
- * Traduit la réponse brute du daemon en résultat ou en erreur HTTP.
+ * Translates the daemon's raw answer into a result or an HTTP error.
  *
- * `proxy` rend un enveloppe `{ status, contentType, body }` : la retourner
- * telle quelle depuis un contrôleur Nest produisait un 201 contenant le
- * `Buffer` sérialisé du corps. Le client voyait donc « créé » là où le daemon
- * refusait — un refus qui ne refuse rien est pire qu'une erreur, puisqu'il
- * laisse croire que l'opération a eu lieu.
+ * `proxy` returns an envelope `{ status, contentType, body }`: returning it as
+ * is from a Nest controller produced a 201 containing the serialised `Buffer`
+ * of the body. The client therefore saw "created" where the daemon refused — a
+ * refusal that refuses nothing is worse than an error, since it suggests the
+ * operation took place.
  */
 function unwrapDaemonResponse(response: DaemonResponse): unknown {
   const text = response.body.toString('utf8');
@@ -410,7 +408,7 @@ function unwrapDaemonResponse(response: DaemonResponse): unknown {
   if (response.status >= 400) {
     const message =
       (parsed as { error?: { message?: string } } | undefined)?.error?.message ??
-      "Le node a refusé l'opération.";
+      'The node refused the operation.';
 
     throw new HttpException(message, response.status);
   }

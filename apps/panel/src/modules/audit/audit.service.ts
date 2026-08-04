@@ -3,11 +3,11 @@ import type { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service.js';
 
 /**
- * Identifiants d'événements journalisés.
+ * Identifiers of the logged events.
  *
- * Une constante plutôt que des chaînes libres : ces valeurs sont filtrées dans
- * l'interface et parfois surveillées par un SIEM. Une faute de frappe dans un
- * `event` rendrait l'action invisible aux alertes sans qu'aucun test n'échoue.
+ * A constant rather than free-form strings: these values are filtered in the
+ * interface and sometimes watched by a SIEM. A typo in an `event` would make
+ * the action invisible to alerts without a single test failing.
  */
 export const AUDIT_EVENTS = {
   LOGIN_SUCCESS: 'auth.login.success',
@@ -71,7 +71,7 @@ export type AuditEvent = (typeof AUDIT_EVENTS)[keyof typeof AUDIT_EVENTS];
 
 export interface AuditEntry {
   event: AuditEvent;
-  /** Null pour une action du système : planificateur, daemon, tâche de fond. */
+  /** Null for a system action: scheduler, daemon, background task. */
   actorId?: number | null;
   serverId?: number | null;
   ip?: string | null;
@@ -86,12 +86,11 @@ export class AuditService {
   constructor(private readonly prisma: PrismaService) {}
 
   /**
-   * Enregistre une entrée d'audit.
+   * Records an audit entry.
    *
-   * Volontairement tolérante : une écriture d'audit qui échoue ne doit pas
-   * faire échouer l'action métier qu'elle documente. Un échec de connexion doit
-   * rester un échec de connexion, pas une 500. L'erreur est journalisée pour
-   * que le problème reste visible.
+   * Deliberately tolerant: an audit write that fails must not fail the business
+   * action it documents. A failed sign-in has to stay a failed sign-in, not a
+   * 500. The error is logged so the problem stays visible.
    */
   async record(entry: AuditEntry): Promise<void> {
     try {
@@ -106,7 +105,7 @@ export class AuditService {
         },
       });
     } catch (error: unknown) {
-      this.logger.error(`Écriture d'audit impossible (${entry.event}) : ${String(error)}`);
+      this.logger.error(`Could not write the audit entry (${entry.event}): ${String(error)}`);
     }
   }
 }

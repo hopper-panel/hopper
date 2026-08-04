@@ -1,13 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { MAX_VARIABLE_LENGTH, parseRules, validateValue } from './variable-rules.js';
 
-/** Vrai si la valeur passe toutes les règles. */
+/** True if the value passes every rule. */
 function accepts(value: string, rules: string): boolean {
   return validateValue(value, rules).length === 0;
 }
 
 describe('parseRules', () => {
-  it('découpe sur la barre verticale', () => {
+  it('splits on the pipe', () => {
     expect(parseRules('required|string|max:20')).toEqual([
       { name: 'required', args: [] },
       { name: 'string', args: [] },
@@ -15,22 +15,22 @@ describe('parseRules', () => {
     ]);
   });
 
-  it('découpe les listes sur la virgule', () => {
+  it('splits the lists on the comma', () => {
     expect(parseRules('in:paper,purpur,folia')).toEqual([
       { name: 'in', args: ['paper', 'purpur', 'folia'] },
     ]);
   });
 
-  // Une expression régulière contient des virgules, des barres verticales et
-  // des deux-points : la découper la rendrait méconnaissable, et la règle
-  // n'accepterait plus rien — ou tout.
-  it('garde une expression régulière entière', () => {
+  // A regular expression contains commas, pipes and colons: splitting it would
+  // make it unrecognisable, and the rule would accept nothing — or
+  // everything.
+  it('keeps a regular expression whole', () => {
     const parsed = parseRules('required|regex:/^[a-z]{1,3}(,[a-z]+)?$/i');
 
     expect(parsed[1]).toEqual({ name: 'regex', args: ['/^[a-z]{1,3}(,[a-z]+)?$/i'] });
   });
 
-  it('ignore les segments vides et les espaces', () => {
+  it('ignores empty segments and spaces', () => {
     expect(parseRules(' required | | string ')).toEqual([
       { name: 'required', args: [] },
       { name: 'string', args: [] },
@@ -39,17 +39,17 @@ describe('parseRules', () => {
 });
 
 describe('validateValue', () => {
-  describe('présence', () => {
-    it('exige une valeur avec required', () => {
+  describe('presence', () => {
+    it('demands a value with required', () => {
       expect(accepts('', 'required|string')).toBe(false);
       expect(accepts('   ', 'required|string')).toBe(false);
       expect(accepts('paper', 'required|string')).toBe(true);
     });
 
-    // `nullable` doit court-circuiter les autres règles : les appliquer à une
-    // valeur vide autorisée le rendrait sans effet, et le champ deviendrait
-    // obligatoire sans que rien ne le dise.
-    it('laisse passer le vide avec nullable, sans appliquer le reste', () => {
+    // `nullable` has to short-circuit the other rules: applying them to an
+    // allowed empty value would make it pointless, and the field would become
+    // required with nothing to say so.
+    it('lets emptiness through with nullable, applying nothing else', () => {
       expect(accepts('', 'nullable|integer|in:1,2,3')).toBe(true);
     });
   });
@@ -82,9 +82,9 @@ describe('validateValue', () => {
   });
 
   /**
-   * Le piège de Laravel, repris tel quel par les eggs : `min`/`max` portent sur
-   * la **valeur** d'un nombre et sur la **longueur** d'un texte. Traiter les
-   * deux pareil ferait accepter `999` là où l'on attendait trois caractères.
+   * Laravel's trap, inherited as is by the eggs: `min`/`max` apply to a
+   * number's **value** and to a text's **length**. Treating the two alike would
+   * accept `999` where three characters were expected.
    */
   describe('min et max', () => {
     it('bornent la valeur d’un nombre', () => {
@@ -106,20 +106,20 @@ describe('validateValue', () => {
   });
 
   describe('in', () => {
-    it('n’accepte que les valeurs listées', () => {
+    it('accepts only the listed values', () => {
       expect(accepts('purpur', 'in:paper,purpur')).toBe(true);
       expect(accepts('spigot', 'in:paper,purpur')).toBe(false);
     });
 
-    // Comparaison exacte : accepter « Paper » pour « paper » ferait passer une
-    // valeur que le script d'installation ne reconnaîtra pas.
+    // An exact comparison: accepting "Paper" for "paper" would let through a
+    // value the install script will not recognise.
     it('distingue la casse', () => {
       expect(accepts('Paper', 'in:paper,purpur')).toBe(false);
     });
   });
 
   describe('regex', () => {
-    it('applique une expression délimitée', () => {
+    it('applies a delimited expression', () => {
       expect(accepts('1.21.4', 'regex:/^\\d+\\.\\d+(\\.\\d+)?$/')).toBe(true);
       expect(accepts('latest', 'regex:/^\\d+\\.\\d+(\\.\\d+)?$/')).toBe(false);
     });
@@ -128,37 +128,37 @@ describe('validateValue', () => {
       expect(accepts('PAPER', 'regex:/^paper$/i')).toBe(true);
     });
 
-    // Une expression illisible est une faute du template, pas de
-    // l'utilisateur : le bloquer sur une erreur qu'il ne peut pas corriger
-    // rendrait son serveur inconfigurable.
-    it('laisse passer quand l’expression est invalide', () => {
+    // An unreadable expression is the template's mistake, not the user's:
+    // blocking them on an error they cannot fix would make their server
+    // unconfigurable.
+    it('lets it through when the expression is invalid', () => {
       expect(accepts('peu importe', 'regex:/[/')).toBe(true);
     });
   });
 
-  // Une règle qu'on ne sait pas appliquer ne doit pas tout bloquer : les eggs
-  // importés en contiennent d'autres, et refuser rendrait le serveur
-  // inconfigurable pour une règle décorative.
-  it('ignore une règle inconnue', () => {
+  // A rule we cannot apply must not block everything: imported eggs contain
+  // others, and refusing would make the server unconfigurable over a decorative
+  // rule.
+  it('ignores an unknown rule', () => {
     expect(accepts('paper', 'required|string|starts_with:pa')).toBe(true);
   });
 
   /**
-   * Borne de longueur appliquée **avant** toute évaluation.
+   * Length bound applied **before** any evaluation.
    *
-   * Un template est écrit par un administrateur, mais rien ne garantit que son
-   * expression régulière soit saine : une expression mal formée peut prendre un
-   * temps exponentiel sur une entrée longue. La borne ferme cette porte sans
-   * avoir à juger chaque expression.
+   * A template is written by an administrator, but nothing guarantees their
+   * regular expression is sane: a badly formed one can take exponential time on
+   * a long input. The bound closes that door without having to judge each
+   * expression.
    */
-  it('refuse une valeur démesurée avant d’évaluer les règles', () => {
+  it('refuses an outsized value before evaluating the rules', () => {
     const huge = 'a'.repeat(MAX_VARIABLE_LENGTH + 1);
 
     expect(accepts(huge, 'nullable|string')).toBe(false);
     expect(validateValue(huge, 'nullable')[0]?.rule).toBe('max');
   });
 
-  it('rend toutes les règles enfreintes', () => {
+  it('returns every rule that was broken', () => {
     const violations = validateValue('x', 'integer|min:10');
 
     expect(violations.map((violation) => violation.rule).sort()).toEqual(['integer', 'min']);
@@ -166,14 +166,14 @@ describe('validateValue', () => {
 });
 
 /**
- * La règle appliquée à `SERVER_JARFILE` dans les templates livrés.
+ * The rule applied to `SERVER_JARFILE` in the shipped templates.
  *
- * Cette variable a été rendue modifiable, et c'est cette expression qui
- * remplace la protection retirée : elle impose un **nom de fichier**, jamais un
- * chemin. Un `.jar` déposé dans `plugins/` ne peut donc pas être lancé par
- * erreur, et aucune valeur ne peut désigner autre chose dans le volume.
+ * This variable was made editable, and this expression is what replaces the
+ * protection that was removed: it imposes a **file name**, never a path. A
+ * `.jar` dropped in `plugins/` therefore cannot be launched by mistake, and no
+ * value can name anything else in the volume.
  */
-describe('règle du fichier .jar des templates', () => {
+describe('the templates .jar file rule', () => {
   const RULES = String.raw`required|string|max:100|regex:/^[A-Za-z0-9._-]+\.jar$/`;
 
   it.each(['server.jar', 'proxy.jar', 'paper-1.21.4.jar', 'Mon_Serveur-2.jar'])(

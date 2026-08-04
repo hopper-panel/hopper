@@ -2,15 +2,16 @@ import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { z } from 'zod';
 
 /**
- * Clés d'API personnelles.
+ * Personal API keys.
  *
- * Format : `hpk_<identifiant>.<secret>`. Le préfixe est là pour que la clé soit
- * reconnaissable — par le garde d'authentification, qui doit la distinguer d'un
- * jeton de session, mais aussi par les outils de balayage de dépôts, qui
- * préviennent quand un secret est poussé par accident.
+ * Format: `hpk_<identifier>.<secret>`. The prefix is there so the key is
+ * recognisable — by the authentication guard, which has to tell it from a
+ * session token, but also by repository-scanning tools, which warn when a
+ * secret is pushed by accident.
  *
- * L'identifiant est public et stocké en clair : il permet de retrouver la ligne
- * sans comparer le secret à toute la table. Le secret n'est stocké que haché.
+ * The identifier is public and stored in the clear: it allows finding the row
+ * without comparing the secret against the whole table. The secret is only ever
+ * stored hashed.
  */
 
 export const API_KEY_PREFIX = 'hpk_';
@@ -22,12 +23,11 @@ const PATTERN = new RegExp(
 );
 
 /**
- * Portées d'une clé.
+ * A key's scopes.
  *
- * Trois seulement, et volontairement grossières : une clé n'accorde jamais plus
- * que ce que son propriétaire possède déjà, la question n'est donc pas *quoi*
- * mais *jusqu'où*. Un mécanisme plus fin donnerait l'illusion d'un contrôle que
- * personne ne relit.
+ * Three only, and deliberately coarse: a key never grants more than its owner
+ * already holds, so the question is not *what* but *how far*. A finer mechanism
+ * would give the illusion of a control nobody reads back.
  */
 export const API_KEY_SCOPES = ['read', 'write', 'admin'] as const;
 
@@ -47,7 +47,7 @@ export function generateApiKey(): { token: string; identifier: string; secret: s
   return { token: `${API_KEY_PREFIX}${identifier}.${secret}`, identifier, secret };
 }
 
-/** Découpe une clé. `null` sur un format invalide, sans distinguer la raison. */
+/** Splits a key. `null` on an invalid format, without saying why. */
 export function parseApiKey(token: string): ParsedApiKey | null {
   const match = PATTERN.exec(token);
 
@@ -65,17 +65,17 @@ export function looksLikeApiKey(token: string): boolean {
 }
 
 /**
- * Empreinte du secret.
+ * Digest of the secret.
  *
- * SHA-256 et non argon2, contrairement aux mots de passe : le secret fait 48
- * caractères tirés au hasard, une attaque par dictionnaire n'a aucune prise, et
- * un hachage lent serait payé à **chaque requête** d'API.
+ * SHA-256 and not argon2, unlike passwords: the secret is 48 random characters,
+ * a dictionary attack has no purchase, and a slow hash would be paid on
+ * **every** API request.
  */
 export function hashApiKeySecret(secret: string): string {
   return createHash('sha256').update(secret).digest('hex');
 }
 
-/** Comparaison à temps constant, pour ne pas laisser deviner l'empreinte. */
+/** Constant-time comparison, so the digest cannot be guessed. */
 export function apiKeySecretMatches(secret: string, hashed: string): boolean {
   const expected = Buffer.from(hashed, 'hex');
   const received = Buffer.from(hashApiKeySecret(secret), 'hex');
@@ -84,12 +84,12 @@ export function apiKeySecretMatches(secret: string, hashed: string): boolean {
 }
 
 /**
- * Vrai si la portée autorise la requête.
+ * True if the scope allows the request.
  *
- * `read` ne laisse passer que les lectures : une clé collée dans un tableau de
- * bord ne doit pas pouvoir éteindre un serveur. `admin` conditionne l'accès aux
- * routes d'administration — une clé d'un compte administrateur reste bornée à
- * ses propres serveurs tant que la portée n'est pas accordée explicitement.
+ * `read` lets only reads through: a key pasted into a dashboard must not be
+ * able to stop a server. `admin` gates access to the administration routes — a
+ * key from an administrator account stays bounded to their own servers until
+ * that scope is granted explicitly.
  */
 export function scopeAllows(scopes: readonly string[], method: string, path: string): boolean {
   const administrative = path.startsWith('/api/admin/');
@@ -104,16 +104,16 @@ export function scopeAllows(scopes: readonly string[], method: string, path: str
 }
 
 /**
- * Vrai si l'adresse source est autorisée.
+ * True if the source address is allowed.
  *
- * Une liste vide n'impose aucune restriction : c'est le cas par défaut, et il
- * doit rester lisible comme tel plutôt que comme « aucune adresse autorisée ».
+ * An empty list imposes no restriction: that is the default, and it has to read
+ * as such rather than as "no address allowed".
  */
 export function ipAllowed(allowedIps: readonly string[], ip: string | undefined): boolean {
   return allowedIps.length === 0 || (ip !== undefined && allowedIps.includes(ip));
 }
 
-/** Ce qu'on affiche d'une clé : son préfixe, jamais son secret. */
+/** What is displayed of a key: its prefix, never its secret. */
 export function displayableKey(identifier: string): string {
   return `${API_KEY_PREFIX}${identifier}.${'•'.repeat(8)}`;
 }
@@ -124,10 +124,9 @@ function randomString(length: number): string {
   let value = '';
 
   for (const byte of bytes) {
-    // Le modulo introduit un biais négligeable — 62 ne divise pas 256 — mais
-    // borné à un rapport de 1,03 entre les caractères les plus et les moins
-    // probables. Sur 48 caractères, l'entropie reste très au-delà de ce qui est
-    // attaquable.
+    // The modulo introduces a negligible bias — 62 does not divide 256 — but
+    // bounded to a ratio of 1.03 between the most and least likely characters.
+    // Over 48 characters, the entropy stays far beyond what is attackable.
     value += alphabet[byte % alphabet.length];
   }
 

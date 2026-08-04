@@ -17,13 +17,13 @@ import { apiKeyScopeSchema } from './api-key.js';
 import { ApiKeysService } from './api-keys.service.js';
 
 const createApiKeySchema = z.object({
-  /** À quoi sert cette clé — la seule façon de savoir laquelle révoquer. */
+  /** What this key is for — the only way to know which one to revoke. */
   memo: z.string().min(1).max(200),
   scopes: z.array(apiKeyScopeSchema).min(1),
   /**
-   * Restriction par adresse source. Chaque entrée est comparée telle quelle à
-   * l'adresse de la requête : pas de plage, qui donnerait l'illusion d'un
-   * filtrage réseau alors que le panel est souvent derrière un proxy.
+   * Restriction by source address. Each entry is compared as is to the
+   * request's address: no ranges, which would give the illusion of network
+   * filtering when the panel often sits behind a proxy.
    */
   allowedIps: z.array(z.string().min(1).max(45)).max(20).default([]),
   expiresAt: z.iso.datetime().optional(),
@@ -32,10 +32,10 @@ const createApiKeySchema = z.object({
 type CreateApiKeyDto = z.infer<typeof createApiKeySchema>;
 
 /**
- * Clés d'API personnelles.
+ * Personal API keys.
  *
- * Sous `/api/account` et non `/api/admin` : une clé appartient à un compte et
- * n'accorde jamais plus que ce que ce compte possède déjà.
+ * Under `/api/account` and not `/api/admin`: a key belongs to an account and
+ * never grants more than that account already holds.
  */
 @Controller('api/account/api-keys')
 export class ApiKeysController {
@@ -62,8 +62,8 @@ export class ApiKeysController {
       actorId: user.id,
       ip: request.ip,
       userAgent: request.headers['user-agent'],
-      // L'identifiant est public ; le jeton, lui, ne doit apparaître nulle part
-      // ailleurs que dans la réponse à cette requête.
+      // The identifier is public; the token must appear nowhere other than in
+      // the response to this request.
       metadata: { identifier: created.identifier, scopes: created.scopes, memo: created.memo },
     });
 
