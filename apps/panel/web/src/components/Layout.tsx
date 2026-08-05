@@ -1,9 +1,12 @@
-import { useState } from 'react';
+import { useState, type ComponentType, type SVGProps } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useTranslation } from '../i18n';
 import { useAuth } from '../lib/auth';
 import { cx } from '../lib/cx';
 import { SearchDialog } from './SearchDialog';
+import { LogoutIcon, SearchIcon, ServersIcon, SettingsIcon, UsersIcon } from './icons';
+
+type IconProps = SVGProps<SVGSVGElement>;
 
 /**
  * Application shell.
@@ -31,10 +34,14 @@ export function Layout() {
           </NavLink>
 
           <nav className="ml-auto flex items-center gap-1">
-            <IconButton label={t('nav.search')} icon="🔍" onClick={() => setSearching(true)} />
-            <IconLink to="/" label={t('nav.servers')} icon="▤" end />
-            {isAdmin ? <IconLink to="/admin" label={t('nav.admin')} icon="⚙" /> : null}
-            <IconLink to="/account" label={t('nav.account')} icon="◍" />
+            <IconButton
+              label={t('nav.search')}
+              icon={SearchIcon}
+              onClick={() => setSearching(true)}
+            />
+            <IconLink to="/" label={t('nav.servers')} icon={ServersIcon} end />
+            {isAdmin ? <IconLink to="/admin" label={t('nav.admin')} icon={SettingsIcon} /> : null}
+            <IconLink to="/account" label={t('nav.account')} icon={UsersIcon} />
 
             <span className="mx-2 hidden text-sm text-content-muted sm:inline">
               {user?.username}
@@ -42,7 +49,7 @@ export function Layout() {
 
             <IconButton
               label={t('nav.signOut')}
-              icon="⏻"
+              icon={LogoutIcon}
               onClick={() => {
                 void logout();
               }}
@@ -92,11 +99,11 @@ export function Layout() {
  */
 function IconButton({
   label,
-  icon,
+  icon: Icon,
   onClick,
 }: {
   label: string;
-  icon: string;
+  icon: ComponentType<IconProps>;
   onClick: () => void;
 }) {
   return (
@@ -107,7 +114,7 @@ function IconButton({
       onClick={onClick}
       className="rounded-lg px-3 py-2 text-content-muted transition-colors hover:bg-surface-hover hover:text-content"
     >
-      <span aria-hidden>{icon}</span>
+      <Icon className="size-5" />
     </button>
   );
 }
@@ -115,12 +122,12 @@ function IconButton({
 function IconLink({
   to,
   label,
-  icon,
+  icon: Icon,
   end,
 }: {
   to: string;
   label: string;
-  icon: string;
+  icon: ComponentType<IconProps>;
   end?: boolean;
 }) {
   return (
@@ -138,7 +145,7 @@ function IconLink({
         )
       }
     >
-      <span aria-hidden>{icon}</span>
+      <Icon className="size-5" />
     </NavLink>
   );
 }
