@@ -52,3 +52,57 @@ describe('PluginsController — install directory', () => {
     expect(() => directoryFor(['some-new-loader'])).toThrow(/some-new-loader/);
   });
 });
+
+/**
+ * A vanilla server reads neither `plugins/` nor `mods/`. The panel installed a
+ * Fabric mod onto one before this: the file landed in the folder that is right
+ * for Fabric, on a server with no loader to read it, and nothing said so.
+ *
+ * Found by installing a plugin on the test VPS and looking at where it went,
+ * which is the sort of thing a routing test cannot notice — the routing was
+ * correct.
+ */
+describe('PluginsController — what a server can load', () => {
+  const controller = new PluginsController(
+    null as never,
+    { server: { findUniqueOrThrow: () => Promise.resolve(template) } } as never,
+    null as never,
+    null as never,
+    null as never,
+  );
+
+  let template: { template: { key: string; name: string } };
+
+  const loaderFor = (): Promise<string> =>
+    (controller as unknown as { loaderFor: (s: unknown) => Promise<string> }).loaderFor({ id: 1 });
+
+  it.each([
+    ['paper', 'paper'],
+    ['purpur', 'purpur'],
+    ['fabric', 'fabric'],
+    ['neoforge', 'neoforge'],
+    ['velocity', 'velocity'],
+    ['bungeecord', 'bungeecord'],
+  ])('reads %s from the template', async (key, expected) => {
+    template = { template: { key, name: key } };
+    await expect(loaderFor()).resolves.toBe(expected);
+  });
+
+  it('refuses a vanilla server rather than offer it a catalogue it cannot use', async () => {
+    template = { template: { key: 'vanilla', name: 'Vanilla' } };
+    await expect(loaderFor()).rejects.toThrow(BadRequestException);
+  });
+
+  // The message has to name the template and say what would work, or an
+  // operator is told "no" with nowhere to go.
+  it('names the template and what to run instead', async () => {
+    template = { template: { key: 'vanilla', name: 'Vanilla' } };
+    await expect(loaderFor()).rejects.toThrow(/Vanilla/);
+    await expect(loaderFor()).rejects.toThrow(/Paper/);
+  });
+
+  it('refuses a template it does not know rather than guess', async () => {
+    template = { template: { key: 'some-new-server', name: 'Something' } };
+    await expect(loaderFor()).rejects.toThrow(BadRequestException);
+  });
+});
