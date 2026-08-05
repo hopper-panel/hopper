@@ -64,6 +64,8 @@ export const es: Partial<Messages> = {
   'plugins.install': 'Instalar',
   'plugins.installing': 'Instalando…',
   'plugins.installed': 'Instalado como {file}. Reinicie el servidor para que se cargue.',
+  'plugins.popular': 'Los más descargados para este servidor',
+  'plugins.results': 'Resultados',
   'plugins.noResults': 'Sin resultados.',
   'plugins.noChecksum': 'sin suma de verificación',
   'plugins.denied': 'No tiene permiso para añadir archivos a este servidor.',

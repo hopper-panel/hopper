@@ -75,6 +75,8 @@ export const en = {
   'plugins.install': 'Install',
   'plugins.installing': 'Installing…',
   'plugins.installed': 'Installed as {file}. Restart the server for it to load.',
+  'plugins.popular': 'Most downloaded for this server',
+  'plugins.results': 'Results',
   'plugins.noResults': 'Nothing found.',
   'plugins.noChecksum': 'no checksum',
   'plugins.denied': 'You do not have permission to add files to this server.',
