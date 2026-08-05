@@ -93,3 +93,30 @@ journalctl -u hopper-update -f
 An installation made before this existed has no `hopper-update.path`. The card
 says so rather than offering a button that would do nothing — rerun `install.sh`
 once by hand and it appears.
+
+## Versions
+
+Hopper is versioned with semver, and the version lives in three places that have
+to agree: every `package.json`, the `PANEL_VERSION` and `DAEMON_VERSION`
+constants, and a git tag `vX.Y.Z`.
+
+The administration compares its own constant against the **latest published
+release** on GitHub — not against the tag list, and not against the branch. A
+build claiming a version it is not would tell an operator they are current when
+they are not, which is the one failure this check exists to prevent.
+
+Cutting a release:
+
+```bash
+node scripts/release.mjs 0.2.0
+git commit -am "release: v0.2.0"
+git tag -a v0.2.0 -m "v0.2.0"
+git push origin main --follow-tags
+```
+
+Then publish a release for that tag on GitHub. The script refuses to run on a
+dirty tree: a tag pointing at a commit that does not contain what was published
+is a release nobody can reproduce.
+
+The updater follows the latest tag when one exists, and `main` otherwise — so
+what it installs is the version the administration just offered.
