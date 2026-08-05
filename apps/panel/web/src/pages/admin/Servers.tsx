@@ -91,7 +91,10 @@ export function AdminServersPage() {
                 return (
                   <tr key={server.uuid} className="border-b border-border-subtle/50 last:border-0">
                     <td className="px-5 py-3">
-                      <Link to={`/server/${server.uuid}`} className="text-content hover:underline">
+                      <Link
+                        to={`/admin/servers/${server.uuid}`}
+                        className="text-content hover:underline"
+                      >
                         {server.name}
                       </Link>
                       <p className="text-xs text-content-muted">{server.template.name}</p>
