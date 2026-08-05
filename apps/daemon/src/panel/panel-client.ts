@@ -38,7 +38,10 @@ export class PanelClient {
   async fetchServers(): Promise<ServerConfiguration[]> {
     const servers: ServerConfiguration[] = [];
     let page = 1;
-    let lastPage = 1;
+    // Set by the first response, which always happens before the condition is
+    // read: the loop is a do/while precisely so the panel decides how many
+    // pages there are, rather than this starting from a guess.
+    let lastPage: number;
 
     do {
       const url = new URL(REMOTE_ROUTES.servers, this.config.panel.url);

@@ -131,8 +131,12 @@ export class DockerClient {
       // from a public registry it nearly always means it was never published —
       // a message naming the image saves the operator half an hour of
       // searching.
+      // The detail stays in the message because that is what an operator
+      // reads in the log, and the original is attached as `cause` because that
+      // is what a stack trace needs to stay complete.
       throw new Error(
         `Could not download the image "${image}". Check that it exists and that this node can reach it. Detail: ${String(error)}`,
+        { cause: error },
       );
     }
   }
