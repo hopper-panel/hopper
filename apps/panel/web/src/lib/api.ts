@@ -58,7 +58,8 @@ async function refreshSession(): Promise<boolean> {
   return refreshInFlight;
 }
 
-async function parseError(response: Response): Promise<ApiError> {
+/** Exported for the tests: the two shapes it has to read are the whole point. */
+export async function parseError(response: Response): Promise<ApiError> {
   let body: ErrorBody = {};
 
   try {
