@@ -1,8 +1,20 @@
+import type { ComponentType, SVGProps } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
+import {
+  DashboardIcon,
+  DatabaseIcon,
+  NodesIcon,
+  ServersIcon,
+  SettingsIcon,
+  TemplatesIcon,
+  UsersIcon,
+} from '../../components/icons';
 import { Alert } from '../../components/ui';
 import { useTranslation, type MessageKey } from '../../i18n';
 import { useAuth } from '../../lib/auth';
 import { cx } from '../../lib/cx';
+
+type IconProps = SVGProps<SVGSVGElement>;
 
 /**
  * Administration area.
@@ -16,27 +28,27 @@ import { cx } from '../../lib/cx';
  */
 const SECTIONS: {
   title: MessageKey;
-  items: { to: string; label: MessageKey; icon: string; end?: boolean }[];
+  items: { to: string; label: MessageKey; icon: ComponentType<IconProps>; end?: boolean }[];
 }[] = [
   {
     title: 'admin.sectionAdministration',
     items: [
-      { to: '/admin', label: 'admin.overview', icon: '⌂', end: true },
-      { to: '/admin/settings', label: 'admin.settings', icon: '⚙' },
+      { to: '/admin', label: 'admin.overview', icon: DashboardIcon, end: true },
+      { to: '/admin/settings', label: 'admin.settings', icon: SettingsIcon },
     ],
   },
   {
     title: 'admin.sectionOperations',
     items: [
-      { to: '/admin/nodes', label: 'admin.nodes', icon: '▦' },
-      { to: '/admin/servers', label: 'admin.servers', icon: '▤' },
-      { to: '/admin/users', label: 'admin.users', icon: '◍' },
-      { to: '/admin/database-hosts', label: 'admin.databaseHosts', icon: '◫' },
+      { to: '/admin/nodes', label: 'admin.nodes', icon: NodesIcon },
+      { to: '/admin/servers', label: 'admin.servers', icon: ServersIcon },
+      { to: '/admin/users', label: 'admin.users', icon: UsersIcon },
+      { to: '/admin/database-hosts', label: 'admin.databaseHosts', icon: DatabaseIcon },
     ],
   },
   {
     title: 'admin.sectionCatalogue',
-    items: [{ to: '/admin/templates', label: 'admin.templates', icon: '❐' }],
+    items: [{ to: '/admin/templates', label: 'admin.templates', icon: TemplatesIcon }],
   },
 ];
 
@@ -92,13 +104,13 @@ export function AdminLayout() {
 function SidebarLink({
   to,
   label,
-  icon,
+  icon: Icon,
   end,
   compact,
 }: {
   to: string;
   label: MessageKey;
-  icon: string;
+  icon: ComponentType<IconProps>;
   end?: boolean;
   compact?: boolean;
 }) {
@@ -118,9 +130,7 @@ function SidebarLink({
         )
       }
     >
-      <span aria-hidden className="w-4 text-center">
-        {icon}
-      </span>
+      <Icon className="size-4 shrink-0" />
       {t(label)}
     </NavLink>
   );

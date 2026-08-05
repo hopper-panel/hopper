@@ -98,7 +98,7 @@ importers:
         version: 5.9.3
       vitest:
         specifier: ^4.1.10
-        version: 4.1.10(@types/node@22.20.1)(vite@8.2.0(@types/node@22.20.1)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.49.0)(tsx@4.23.5)(yaml@2.9.0))
+        version: 4.1.10(@types/node@22.20.1)(vite@8.2.0(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.0)(tsx@4.23.5)(yaml@2.9.0))
 
   apps/panel:
     dependencies:
@@ -233,6 +233,9 @@ importers:
       '@hopper/config':
         specifier: workspace:*
         version: link:../../../packages/config
+      '@material-symbols/svg-400':
+        specifier: ^0.45.10
+        version: 0.45.10
       '@tailwindcss/vite':
         specifier: ^4.1.13
         version: 4.3.3(vite@8.2.0(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.0)(tsx@4.23.5)(yaml@2.9.0))
@@ -315,7 +318,7 @@ importers:
         version: 5.9.3
       vitest:
         specifier: ^4.1.10
-        version: 4.1.10(@types/node@22.20.1)(vite@8.2.0(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.0)(tsx@4.23.5)(yaml@2.9.0))
+        version: 4.1.10(@types/node@22.20.1)(vite@8.2.0(@types/node@22.20.1)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.49.0)(tsx@4.23.5)(yaml@2.9.0))
 
   packages/templates:
     dependencies:
@@ -1009,6 +1012,9 @@ packages:
   '@lukeed/ms@2.0.2':
     resolution: {integrity: sha512-9I2Zn6+NJLfaGoz9jN3lpwDgAYvfGeNYdbAIjJOqzs4Tpc+VU3Jqq4IofSUBKajiDS8k9fZIg18/z13mpk1bsA==}
     engines: {node: '>=8'}
+
+  '@material-symbols/svg-400@0.45.10':
+    resolution: {integrity: sha512-tHxhd8cAquFQYpTdtxJbGFF023WW1RuScL9Lig5SZVrvP3RkogrVf26RC3pmFtNWiFOvooFWVBgMReeRcOG8Tg==}
 
   '@napi-rs/lzma-linux-x64-gnu@1.5.1':
     resolution: {integrity: sha512-oTXEIha4SsuXdTA4Iyskj0kpdx2yVXdhd75c2v3xGrHFfVMsbhTPZU/nMPL4sWKo4pBHm3aucLaqGlF696dTyQ==}
@@ -4548,6 +4554,8 @@ snapshots:
   '@lukeed/csprng@1.1.0': {}
 
   '@lukeed/ms@2.0.2': {}
+
+  '@material-symbols/svg-400@0.45.10': {}
 
   '@napi-rs/lzma-linux-x64-gnu@1.5.1':
     optional: true

@@ -5,6 +5,16 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { FileBreadcrumb } from '../components/FileBreadcrumb';
 import { KebabMenu } from '../components/KebabMenu';
 import { PageHeader } from '../components/PageHeader';
+import {
+  CompressIcon,
+  CopyIcon,
+  DeleteIcon,
+  DownloadIcon,
+  EditIcon,
+  ExtractIcon,
+  KeyIcon,
+  RenameIcon,
+} from '../components/icons';
 import { Alert, Badge, Button, Card, EmptyState, Spinner } from '../components/ui';
 import { ApiError, api } from '../lib/api';
 import { cx } from '../lib/cx';
@@ -522,7 +532,7 @@ export function ServerFilesPage() {
                           actions={[
                             {
                               label: t('files.rename'),
-                              icon: '✎',
+                              icon: <EditIcon className="size-4" />,
                               hidden: !can('file.update'),
                               onSelect: () => {
                                 const name = window.prompt(t('files.renamePrompt'), entry.name);
@@ -536,7 +546,7 @@ export function ServerFilesPage() {
                             },
                             {
                               label: t('files.repath'),
-                              icon: '↱',
+                              icon: <RenameIcon className="size-4" />,
                               hidden: !can('file.update'),
                               onSelect: () => {
                                 const target = window.prompt(
@@ -550,7 +560,7 @@ export function ServerFilesPage() {
                             },
                             {
                               label: t('files.copy'),
-                              icon: '⧉',
+                              icon: <CopyIcon className="size-4" />,
                               hidden: !can('file.create'),
                               onSelect: () =>
                                 copy.mutate({
@@ -560,7 +570,7 @@ export function ServerFilesPage() {
                             },
                             {
                               label: t('files.permissions'),
-                              icon: '⚿',
+                              icon: <KeyIcon className="size-4" />,
                               hidden: !can('file.update'),
                               onSelect: () => {
                                 const mode = window.prompt(
@@ -577,7 +587,7 @@ export function ServerFilesPage() {
                             },
                             {
                               label: t('files.download'),
-                              icon: '↓',
+                              icon: <DownloadIcon className="size-4" />,
                               hidden: entry.directory || !can('file.read-content'),
                               onSelect: () => {
                                 window.location.href = downloadUrl(uuid, entry.path);
@@ -585,13 +595,13 @@ export function ServerFilesPage() {
                             },
                             {
                               label: t('files.archive'),
-                              icon: '🗜',
+                              icon: <CompressIcon className="size-4" />,
                               hidden: !can('file.archive'),
                               onSelect: () => compress.mutate([entry.path]),
                             },
                             {
                               label: t('files.extract'),
-                              icon: '📦',
+                              icon: <ExtractIcon className="size-4" />,
                               hidden:
                                 entry.directory ||
                                 !ARCHIVE.test(entry.name) ||
@@ -600,7 +610,7 @@ export function ServerFilesPage() {
                             },
                             {
                               label: t('common.delete'),
-                              icon: '🗑',
+                              icon: <DeleteIcon className="size-4" />,
                               destructive: true,
                               hidden: !can('file.delete'),
                               onSelect: () => {
