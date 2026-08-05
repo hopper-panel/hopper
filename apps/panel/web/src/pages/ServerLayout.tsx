@@ -27,6 +27,7 @@ interface Tab {
 const TABS: Tab[] = [
   { path: '', label: 'tab.console' },
   { path: 'files', label: 'tab.files', permission: 'file.read' },
+  { path: 'plugins', label: 'tab.plugins', permission: 'file.create' },
   { path: 'databases', label: 'tab.databases', permission: 'database.read' },
   { path: 'backups', label: 'tab.backups', permission: 'backup.read' },
   { path: 'schedules', label: 'tab.schedules', permission: 'schedule.read' },

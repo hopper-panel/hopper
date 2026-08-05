@@ -13,6 +13,7 @@ import { ServerDatabasesPage } from './pages/ServerDatabases';
 import { ServerDetailPage } from './pages/ServerDetail';
 import { ServerFileEditPage } from './pages/ServerFileEdit';
 import { ServerFilesPage } from './pages/ServerFiles';
+import { ServerPluginsPage } from './pages/ServerPlugins';
 import { ServerLayout } from './pages/ServerLayout';
 import { ServerNetworkPage } from './pages/ServerNetwork';
 import { ServerSchedulesPage } from './pages/ServerSchedules';
@@ -73,6 +74,7 @@ export function App() {
         <Route path="server/:uuid" element={<ServerLayout />}>
           <Route index element={<ServerDetailPage />} />
           <Route path="files" element={<ServerFilesPage />} />
+          <Route path="plugins" element={<ServerPluginsPage />} />
           <Route path="files/edit" element={<ServerFileEditPage />} />
           <Route path="databases" element={<ServerDatabasesPage />} />
           <Route path="backups" element={<ServerBackupsPage />} />
