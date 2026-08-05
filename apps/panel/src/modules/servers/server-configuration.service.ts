@@ -37,9 +37,7 @@ export class ServerConfigurationService {
     });
 
     if (!server.primaryAllocation) {
-      throw new Error(
-        `Server ${serverUuid} has no primary allocation: it cannot be started.`,
-      );
+      throw new Error(`Server ${serverUuid} has no primary allocation: it cannot be started.`);
     }
 
     const environment = Object.fromEntries(
@@ -169,9 +167,7 @@ function parseConfigFiles(raw: unknown, serverUuid: string, logger: Logger): Con
       typeof candidate.parser !== 'string' ||
       !Array.isArray(candidate.replacements)
     ) {
-      logger.warn(
-        `Configuration file ignored for server ${serverUuid}: invalid entry.`,
-      );
+      logger.warn(`Configuration file ignored for server ${serverUuid}: invalid entry.`);
       continue;
     }
 

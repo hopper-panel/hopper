@@ -7,7 +7,7 @@ body:
     attributes:
       label: What problem does this solve?
       description: Describe the concrete annoyance, not the solution you have in mind.
-      placeholder: "Running 20 servers, I have no way of seeing which ones crashed last night."
+      placeholder: 'Running 20 servers, I have no way of seeing which ones crashed last night.'
     validations:
       required: true
 

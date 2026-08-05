@@ -50,9 +50,7 @@ export class MailService {
     }
 
     if (settings.mailHost === '' || settings.mailFromAddress === '') {
-      throw new BadRequestException(
-        'Fill in at least the SMTP server and the sending address.',
-      );
+      throw new BadRequestException('Fill in at least the SMTP server and the sending address.');
     }
 
     try {
@@ -89,9 +87,7 @@ export class MailService {
     const settings = await this.settings.all();
 
     if (!(await this.isConfigured())) {
-      this.logger.log(
-        `Welcome email not sent to ${input.to}: no SMTP server configured.`,
-      );
+      this.logger.log(`Welcome email not sent to ${input.to}: no SMTP server configured.`);
       return;
     }
 

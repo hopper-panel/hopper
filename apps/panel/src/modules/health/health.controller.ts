@@ -40,9 +40,7 @@ export class HealthController {
     const token = this.config.get('DEV_NODE_TOKEN', { infer: true });
 
     if (!url || !token) {
-      throw new ServiceUnavailableException(
-        'DEV_NODE_URL and DEV_NODE_TOKEN are not set in .env.',
-      );
+      throw new ServiceUnavailableException('DEV_NODE_URL and DEV_NODE_TOKEN are not set in .env.');
     }
 
     const connection: NodeConnection = { uuid: 'dev', url, token };

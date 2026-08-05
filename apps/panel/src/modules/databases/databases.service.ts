@@ -66,9 +66,7 @@ export class DatabasesService {
     const server = await this.requireServer(serverUuid);
 
     if (server.databaseLimit <= 0) {
-      throw new BadRequestException(
-        'This server is not allowed to hold databases.',
-      );
+      throw new BadRequestException('This server is not allowed to hold databases.');
     }
 
     const used = await this.prisma.database.count({ where: { serverId: server.id } });
@@ -84,8 +82,7 @@ export class DatabasesService {
 
     if (!host) {
       throw new ConflictException(
-        'No database server is declared for this node. ' +
-          'An administrator has to add one.',
+        'No database server is declared for this node. ' + 'An administrator has to add one.',
       );
     }
 

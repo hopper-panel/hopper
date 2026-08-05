@@ -96,9 +96,7 @@ export class SettingsService {
       });
 
       this.logger.error(`Reinstall of ${serverUuid} refused: ${String(error)}`);
-      throw new ConflictException(
-        'The reinstall could not be started. Is the node reachable?',
-      );
+      throw new ConflictException('The reinstall could not be started. Is the node reachable?');
     }
   }
 

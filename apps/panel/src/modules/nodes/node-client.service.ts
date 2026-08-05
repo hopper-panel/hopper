@@ -102,8 +102,7 @@ export class NodeClientService {
       if (!parsed.success) {
         return {
           reachable: false,
-          reason:
-            'Unreadable answer from the daemon: its version is probably too old.',
+          reason: 'Unreadable answer from the daemon: its version is probably too old.',
           latencyMs,
         };
       }

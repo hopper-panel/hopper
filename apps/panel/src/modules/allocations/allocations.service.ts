@@ -118,9 +118,7 @@ export class AllocationsService {
     const server = await this.requireServer(serverUuid);
 
     if (server.allocationLimit <= 0) {
-      throw new BadRequestException(
-        'This server is not allowed to hold additional ports.',
-      );
+      throw new BadRequestException('This server is not allowed to hold additional ports.');
     }
 
     const used = await this.prisma.allocation.count({ where: { serverId: server.id } });

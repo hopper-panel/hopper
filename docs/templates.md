@@ -61,11 +61,11 @@ typing `server.jar; rm -rf /` into a variable would get an unusable argument, no
 
 Three variables are supplied by Hopper:
 
-| Variable            | Value                                                       |
-| ------------------- | ----------------------------------------------------------- |
-| `{{SERVER_MEMORY}}` | Heap budget, in MiB — **lower** than the container's limit  |
-| `{{SERVER_IP}}`     | IP of the primary allocation                                |
-| `{{SERVER_PORT}}`   | Port of the primary allocation                              |
+| Variable            | Value                                                      |
+| ------------------- | ---------------------------------------------------------- |
+| `{{SERVER_MEMORY}}` | Heap budget, in MiB — **lower** than the container's limit |
+| `{{SERVER_IP}}`     | IP of the primary allocation                               |
+| `{{SERVER_PORT}}`   | Port of the primary allocation                             |
 
 `SERVER_MEMORY` is not the container's limit: the JVM consumes beyond its heap — metaspace, thread
 stacks, direct buffers — and the kernel's page cache counts towards the cgroup limit. Hopper

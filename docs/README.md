@@ -1,7 +1,7 @@
 # Hopper documentation
 
-| Document                          | Subject                                                |
-| --------------------------------- | ------------------------------------------------------ |
+| Document                          | Subject                                                 |
+| --------------------------------- | ------------------------------------------------------- |
 | [Installation](./installation.md) | Installing Hopper on a fresh machine, in one script     |
 | [Updating](./updating.md)         | Moving from one version to the next without losing data |
 | [Command line](./cli.md)          | `hopper doctor`, creating accounts, node tokens         |

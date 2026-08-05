@@ -261,9 +261,7 @@ async function redisChecks(config: ConfigService<Environment, true>): Promise<Ch
   const url = config.get('REDIS_URL', { infer: true });
 
   if (url === undefined) {
-    return [
-      warn('Redis', 'absent — the rate limit restarts from zero on every panel restart'),
-    ];
+    return [warn('Redis', 'absent — the rate limit restarts from zero on every panel restart')];
   }
 
   // `lazyConnect` and a short timeout: without them, ioredis retries forever
@@ -384,7 +382,10 @@ export function describeDockerProbe(probe: DockerProbe): Check {
     case 'forbidden':
       return ok('Docker', 'socket not readable by the panel — normal, hopperd queries it as root');
     case 'silent':
-      return fail('Docker', `socket present but nothing answers (${probe.reason}) — is it running?`);
+      return fail(
+        'Docker',
+        `socket present but nothing answers (${probe.reason}) — is it running?`,
+      );
     case 'unreadable':
       return warn('Docker', 'the socket answered something unexpected');
   }

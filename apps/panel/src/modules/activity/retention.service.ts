@@ -53,9 +53,7 @@ export class ActivityRetentionService implements OnModuleInit, OnModuleDestroy {
       .catch(() => ({ count: 0 }));
 
     if (count > 0) {
-      this.logger.log(
-        `${count} log entry/entries deleted, older than ${before.toISOString()}`,
-      );
+      this.logger.log(`${count} log entry/entries deleted, older than ${before.toISOString()}`);
     }
 
     return count;

@@ -12,11 +12,11 @@ curl -H "Authorization: Bearer hpk_xxxxxxxxxxxxxxxx.yyyy…" \
 
 Three scopes, which can be combined:
 
-| Scope   | What it allows                                                    |
-| ------- | ----------------------------------------------------------------- |
-| `read`  | `GET` requests — viewing servers, files, backups                  |
-| `write` | Requests that act — starting, writing a file, taking a backup     |
-| `admin` | The `/api/admin/*` routes, and only for an administrator account  |
+| Scope   | What it allows                                                   |
+| ------- | ---------------------------------------------------------------- |
+| `read`  | `GET` requests — viewing servers, files, backups                 |
+| `write` | Requests that act — starting, writing a file, taking a backup    |
+| `admin` | The `/api/admin/*` routes, and only for an administrator account |
 
 A read key cannot stop a server: that is the point of these scopes. The account's role is rechecked
 on every request, so a demotion takes effect without having to revoke keys one by one.

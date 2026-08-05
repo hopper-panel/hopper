@@ -109,9 +109,7 @@ export function describeEvent(event: string, metadata: Metadata): string {
     case AUDIT_EVENTS.BACKUP_RESTORED:
       return 'Restored a backup.';
     case AUDIT_EVENTS.BACKUP_LOCKED:
-      return metadata.locked === true
-        ? 'Locked a backup.'
-        : 'Unlocked a backup.';
+      return metadata.locked === true ? 'Locked a backup.' : 'Unlocked a backup.';
 
     // -- Databases -----------------------------------------------------------
     case AUDIT_EVENTS.DATABASE_CREATED:

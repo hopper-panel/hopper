@@ -145,9 +145,7 @@ async function seedTemplates(): Promise<void> {
     updated += 1;
   }
 
-  console.log(
-    `✓ Catalogue: ${created} template(s) created, ${updated} updated, ${skipped} kept.`,
-  );
+  console.log(`✓ Catalogue: ${created} template(s) created, ${updated} updated, ${skipped} kept.`);
 }
 
 /**

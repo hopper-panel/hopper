@@ -28,9 +28,9 @@ describe('updateInstanceSettingsSchema', () => {
   it('validates what it accepts', () => {
     expect(updateInstanceSettingsSchema.safeParse({ panelName: '' }).success).toBe(false);
     expect(updateInstanceSettingsSchema.safeParse({ mailPort: 70_000 }).success).toBe(false);
-    expect(updateInstanceSettingsSchema.safeParse({ twoFactorRequirement: 'sometimes' }).success).toBe(
-      false,
-    );
+    expect(
+      updateInstanceSettingsSchema.safeParse({ twoFactorRequirement: 'sometimes' }).success,
+    ).toBe(false);
     // A one-millisecond timeout would make every node look dead.
     expect(updateInstanceSettingsSchema.safeParse({ nodeTimeoutMs: 1 }).success).toBe(false);
   });

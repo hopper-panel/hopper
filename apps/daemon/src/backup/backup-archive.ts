@@ -126,8 +126,7 @@ export async function createBackupArchive(
     measure,
     createWriteStream(options.archivePath),
   ).catch((error: unknown) => {
-    writeError =
-      error instanceof Error ? error : new BackupError('Archive write interrupted.');
+    writeError = error instanceof Error ? error : new BackupError('Archive write interrupted.');
   });
 
   try {

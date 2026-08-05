@@ -55,9 +55,7 @@ export class SchedulerService implements OnModuleInit, OnModuleDestroy {
     });
 
     if (released.count > 0) {
-      this.logger.warn(
-        `${released.count} scheduled task(s) were marked as running: released.`,
-      );
+      this.logger.warn(`${released.count} scheduled task(s) were marked as running: released.`);
     }
 
     this.timer = setInterval(() => void this.tick(), SchedulerService.TICK_MS);

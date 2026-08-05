@@ -199,9 +199,7 @@ export class BackupsService {
     }
 
     if (backup.locked) {
-      throw new ConflictException(
-        'This backup is locked. Unlock it before deleting it.',
-      );
+      throw new ConflictException('This backup is locked. Unlock it before deleting it.');
     }
 
     if (backup.successful === null) {
@@ -240,9 +238,7 @@ export class BackupsService {
     }
 
     if (backup.successful !== true) {
-      throw new ConflictException(
-        'This backup did not complete: it cannot be restored.',
-      );
+      throw new ConflictException('This backup did not complete: it cannot be restored.');
     }
 
     const node = await this.nodes.getConnection(server.node.uuid);

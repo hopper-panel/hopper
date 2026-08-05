@@ -48,21 +48,21 @@ Hopper aims for the middle:
 
 ## Features
 
-|                              |                                                                    |
-| ---------------------------- | ------------------------------------------------------------------ |
-| 🖥️ **Live console**          | WebSocket straight to the daemon, history, command input           |
-| 📊 **Resources**             | CPU, RAM, disk and network in real time                            |
-| 📦 **One-click install**     | Paper, Purpur, Vanilla, Fabric, NeoForge, Velocity, BungeeCord     |
-| 🥚 **Egg import**            | Reuse the hundreds of existing Pterodactyl eggs                    |
-| 📁 **File manager**          | In-browser editing, upload, archives — behind a strict path jail   |
-| 🔌 **Built-in SFTP**         | Sign in with your panel credentials, permissions honoured          |
-| 💾 **Backups**               | Local or S3 (MinIO, Backblaze, Wasabi), one-click restore          |
-| ⏰ **Scheduler**             | Daily restart, nightly backup, scheduled commands                  |
-| 👥 **Subusers**              | Share a server with your staff, permission by permission           |
-| 🔔 **Notifications**         | Discord or a signed webhook: server down, backup finished          |
-| 🔑 **API keys**              | Drive your servers from a script, with scopes                      |
-| 🌍 **Five languages**        | English, French, Spanish, German, Russian                          |
-| 🖧 **Multi-machine**          | One panel, as many nodes as you need                               |
+|                          |                                                                  |
+| ------------------------ | ---------------------------------------------------------------- |
+| 🖥️ **Live console**      | WebSocket straight to the daemon, history, command input         |
+| 📊 **Resources**         | CPU, RAM, disk and network in real time                          |
+| 📦 **One-click install** | Paper, Purpur, Vanilla, Fabric, NeoForge, Velocity, BungeeCord   |
+| 🥚 **Egg import**        | Reuse the hundreds of existing Pterodactyl eggs                  |
+| 📁 **File manager**      | In-browser editing, upload, archives — behind a strict path jail |
+| 🔌 **Built-in SFTP**     | Sign in with your panel credentials, permissions honoured        |
+| 💾 **Backups**           | Local or S3 (MinIO, Backblaze, Wasabi), one-click restore        |
+| ⏰ **Scheduler**         | Daily restart, nightly backup, scheduled commands                |
+| 👥 **Subusers**          | Share a server with your staff, permission by permission         |
+| 🔔 **Notifications**     | Discord or a signed webhook: server down, backup finished        |
+| 🔑 **API keys**          | Drive your servers from a script, with scopes                    |
+| 🌍 **Five languages**    | English, French, Spanish, German, Russian                        |
+| 🖧 **Multi-machine**      | One panel, as many nodes as you need                             |
 
 ## Architecture
 

@@ -121,8 +121,7 @@ export const purpur: TemplateDefinition = {
   key: 'purpur',
   group: TEMPLATE_GROUPS.JAVA,
   name: 'Purpur',
-  description:
-    'A fork of Paper adding many gameplay settings. Compatible with Paper plugins.',
+  description: 'A fork of Paper adding many gameplay settings. Compatible with Paper plugins.',
   author: 'Hopper',
   dockerImages: JAVA_IMAGES,
   startup: JAVA_STARTUP,
@@ -153,8 +152,7 @@ export const vanilla: TemplateDefinition = {
   key: 'vanilla',
   group: TEMPLATE_GROUPS.JAVA,
   name: 'Vanilla',
-  description:
-    "Mojang's official server, unmodified. No plugin or mod can be installed on it.",
+  description: "Mojang's official server, unmodified. No plugin or mod can be installed on it.",
   author: 'Hopper',
   dockerImages: JAVA_IMAGES,
   startup: JAVA_STARTUP,

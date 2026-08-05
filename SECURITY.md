@@ -19,12 +19,12 @@ Please include:
 
 Our commitments:
 
-|                             |                                       |
-| --------------------------- | ------------------------------------- |
-| Acknowledgement             | within 48 hours                       |
-| First assessment            | within 7 days                         |
-| Fix for a critical flaw     | within 14 days                        |
-| Disclosure                  | coordinated, after the fix is released |
+|                         |                                        |
+| ----------------------- | -------------------------------------- |
+| Acknowledgement         | within 48 hours                        |
+| First assessment        | within 7 days                          |
+| Fix for a critical flaw | within 14 days                         |
+| Disclosure              | coordinated, after the fix is released |
 
 Whoever reports a flaw is credited in the security advisory, unless they ask otherwise.
 

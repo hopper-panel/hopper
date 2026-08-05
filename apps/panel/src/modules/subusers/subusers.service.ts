@@ -63,9 +63,7 @@ export class SubusersService {
     }
 
     if (user.id === server.ownerId) {
-      throw new BadRequestException(
-        'The server owner already holds every permission.',
-      );
+      throw new BadRequestException('The server owner already holds every permission.');
     }
 
     const existing = await this.prisma.subuser.findFirst({

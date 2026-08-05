@@ -61,10 +61,7 @@ export class BackupManager {
 
     this.compression = options.compression === 'zstd' && available === 'zstd' ? 'zstd' : 'gzip';
 
-    options.logger.info(
-      { compression: this.compression },
-      'Compression chosen for new backups',
-    );
+    options.logger.info({ compression: this.compression }, 'Compression chosen for new backups');
   }
 
   /** Path of a backup's archive, whatever its compression. */
@@ -205,7 +202,7 @@ export class BackupManager {
     const archive = await this.findArchive(input.backupUuid);
 
     if (!archive) {
-      throw new BackupError('This backup\'s archive cannot be found on this node.');
+      throw new BackupError("This backup's archive cannot be found on this node.");
     }
 
     const restoredFiles = await restoreBackupArchive({

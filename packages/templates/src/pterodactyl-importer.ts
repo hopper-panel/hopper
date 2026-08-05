@@ -217,9 +217,7 @@ function convertStartupDetection(raw: unknown, warnings: string[]): string | und
   }
 
   if (Array.isArray(done) && done.length > 1) {
-    warnings.push(
-      `The egg declares several startup markers; only the first ("${value}") is kept.`,
-    );
+    warnings.push(`The egg declares several startup markers; only the first ("${value}") is kept.`);
   }
 
   return escapeRegExp(value);

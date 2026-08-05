@@ -75,9 +75,7 @@ export class TemplateSyncService {
     }
 
     if (existing.modifiedByAdmin) {
-      this.logger.debug(
-        `Template "${definition.name}" kept: it was edited from the panel.`,
-      );
+      this.logger.debug(`Template "${definition.name}" kept: it was edited from the panel.`);
       return 'skipped';
     }
 

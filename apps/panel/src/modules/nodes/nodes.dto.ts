@@ -11,10 +11,7 @@ const fqdnSchema = z
   .string()
   .min(1)
   .max(255)
-  .regex(
-    /^[a-zA-Z0-9.-]+$/,
-    'The FQDN may only contain letters, digits, dots and hyphens.',
-  );
+  .regex(/^[a-zA-Z0-9.-]+$/, 'The FQDN may only contain letters, digits, dots and hyphens.');
 
 export const createNodeSchema = z.object({
   name: z.string().min(1).max(100),
@@ -89,9 +86,7 @@ export function expandPortRanges(ports: string[]): number[] {
     }
 
     if (end - start + 1 > MAX_ALLOCATIONS_PER_REQUEST) {
-      throw new Error(
-        `Range ${entry} exceeds ${MAX_ALLOCATIONS_PER_REQUEST} ports. Split it up.`,
-      );
+      throw new Error(`Range ${entry} exceeds ${MAX_ALLOCATIONS_PER_REQUEST} ports. Split it up.`);
     }
 
     for (let port = start; port <= end; port += 1) {

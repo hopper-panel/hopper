@@ -66,9 +66,7 @@ export class UsersController {
     // An administrator removing their own role would lose access mid-action.
     // Demotion goes through another account.
     if (uuid === actor.uuid && (body.role === 'USER' || body.suspended === true)) {
-      throw new ForbiddenException(
-        'You cannot remove your own rights nor suspend yourself.',
-      );
+      throw new ForbiddenException('You cannot remove your own rights nor suspend yourself.');
     }
 
     return this.users.update(uuid, body, actor.id, contextOf(request));

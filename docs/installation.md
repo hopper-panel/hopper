@@ -43,15 +43,15 @@ sudo HOPPER_NONINTERACTIVE=1 \
      bash install/install.sh
 ```
 
-| Variable                | Role                                | Default            |
-| ----------------------- | ----------------------------------- | ------------------ |
-| `HOPPER_DOMAIN`         | Domain or IP of the panel           | host name          |
-| `HOPPER_WEBSERVER`      | `nginx`, `apache` or `none`         | `nginx`            |
-| `HOPPER_TLS`            | `yes` to request a certificate      | `yes` with a domain |
-| `HOPPER_ADMIN_PASSWORD` | Password of the account created     | generated          |
-| `HOPPER_ROOT`           | Installation directory              | `/opt/hopper`      |
-| `HOPPER_PORT`           | Port the panel listens on           | `8080`             |
-| `HOPPER_DAEMON_PORT`    | Port the daemon listens on          | `8443`             |
+| Variable                | Role                            | Default             |
+| ----------------------- | ------------------------------- | ------------------- |
+| `HOPPER_DOMAIN`         | Domain or IP of the panel       | host name           |
+| `HOPPER_WEBSERVER`      | `nginx`, `apache` or `none`     | `nginx`             |
+| `HOPPER_TLS`            | `yes` to request a certificate  | `yes` with a domain |
+| `HOPPER_ADMIN_PASSWORD` | Password of the account created | generated           |
+| `HOPPER_ROOT`           | Installation directory          | `/opt/hopper`       |
+| `HOPPER_PORT`           | Port the panel listens on       | `8080`              |
+| `HOPPER_DAEMON_PORT`    | Port the daemon listens on      | `8443`              |
 
 ### Without a web server
 
