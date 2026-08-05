@@ -15,7 +15,7 @@ Docker container.
 ---
 
 > ⚠️ **Status: under active development, pre-alpha.** Nothing here is ready for production yet.
-> Follow the [roadmap](#roadmap) to see where the project stands.
+> The [releases](https://github.com/hopper-panel/hopper/releases) say what each version changed.
 
 ## Installation
 
@@ -145,18 +145,6 @@ development, and `hopper <command>` on an installed machine — see [docs/cli.md
 
 See [CONTRIBUTING.md](./CONTRIBUTING.md) for the commit conventions, the tests and the review
 process.
-
-## Roadmap
-
-- [x] **Phase 0** — Monorepo foundations, shared contract, panel & daemon skeletons
-- [x] **Phase 1** — Data schema, authentication, 2FA, RBAC, interface shell
-- [x] **Phase 2** — Docker runtime, live console, statistics _(the milestone that validates it all)_
-- [x] **Phase 3** — Server templates and automatic installation
-- [x] **Phase 4** — File manager and SFTP
-- [x] **Phase 5** — Backups, scheduler, subusers
-- [x] **Phase 6** — System installer (nginx/apache), `hopper` CLI, documentation
-- [x] **Phase 7** — Per-server MySQL databases, interface in five languages, disk quotas, plugin
-      and mod installer, passkeys, server transfer between nodes
 
 ## Security
 
