@@ -385,7 +385,19 @@ install -m 644 "$HOPPER_ROOT/install/hopper-panel.service" /etc/systemd/system/h
 install -m 644 "$HOPPER_ROOT/install/hopperd.service" /etc/systemd/system/hopperd.service
 install -m 755 "$HOPPER_ROOT/install/hopper" /usr/local/bin/hopper
 systemctl daemon-reload
-systemctl enable --now hopper-panel >/dev/null
+
+# `enable --now` starts a stopped service and leaves a running one alone, which
+# made the script useless as the updater it advertises: the files on disk were
+# new, the process serving them was not.
+#
+# The interface made it visible. Vite stamps a digest into every asset name, and
+# @fastify/static registers one route per file present when it starts. After an
+# update the panel still answered for the previous names while the freshly built
+# index.html asked for the new ones — so every asset fell through to the SPA
+# fallback and came back as index.html. The browser received HTML where it
+# expected JavaScript, and the panel showed a blank page.
+systemctl enable hopper-panel >/dev/null
+systemctl restart hopper-panel
 good "hopper-panel"
 
 # The local node is declared from the command line: on a single machine,
@@ -405,7 +417,8 @@ else
   note "daemon.yml already present, kept"
 fi
 
-systemctl enable --now hopperd >/dev/null
+systemctl enable hopperd >/dev/null
+systemctl restart hopperd
 good "hopperd"
 
 # ---------------------------------------------------------------------------
