@@ -184,9 +184,13 @@ describe('importPterodactylEgg', () => {
   });
 
   describe('warnings', () => {
-    it('flags images foreign to Hopper', () => {
+    // Hopper imposes the user, the capabilities and PID 1 whatever the image,
+    // so the warning is no longer about hardening — it is about what the image
+    // has to carry for the server to run: the right Java version, and curl for
+    // the plugins that download at startup.
+    it('flags the images an egg brings of its own', () => {
       const result = importPterodactylEgg(makeEgg(), OPTIONS);
-      expect(result.warnings.some((w) => w.includes('hardening'))).toBe(true);
+      expect(result.warnings.some((w) => w.includes('images of its own'))).toBe(true);
     });
 
     it('flags the configuration files that were not carried over', () => {

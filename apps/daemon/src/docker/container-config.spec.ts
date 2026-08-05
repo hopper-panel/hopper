@@ -18,7 +18,7 @@ function makeConfiguration(overrides: Record<string, unknown> = {}): ServerConfi
     environment: { SERVER_JARFILE: 'server.jar' },
     allocations: { default: { ip: '0.0.0.0', port: 25565 } },
     build: { memoryBytes: 4 * GIB, swapBytes: 0, cpuPercent: 200, diskBytes: 10 * GIB },
-    container: { image: 'ghcr.io/hopper-panel/java:21' },
+    container: { image: 'eclipse-temurin:21-jre-noble' },
     stop: { type: 'command', value: 'stop' },
     ...overrides,
   });
@@ -134,6 +134,17 @@ describe('buildContainerOptions', () => {
 
   it('runs the server as an unprivileged user', () => {
     expect(options.User).toBe('988:988');
+  });
+
+  // The JVM must never be PID 1. A PID 1 does not adopt orphan processes, so
+  // every subprocess a plugin spawns and abandons stays a zombie until
+  // `PidsLimit` is reached and the server can no longer create a thread — a
+  // symptom that appears hours later and looks nothing like its cause.
+  //
+  // This used to come from a tini baked into an image built in this repository.
+  // Docker supplies the same binary, which is what made that image unnecessary.
+  it('asks Docker for an init process', () => {
+    expect(options.HostConfig?.Init).toBe(true);
   });
 
   describe('hardening', () => {
