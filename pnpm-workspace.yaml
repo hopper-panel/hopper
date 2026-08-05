@@ -3,15 +3,14 @@ packages:
   - 'apps/panel/web'
   - 'packages/*'
 
-# These packages run an install script; it is allowed explicitly
-# (pnpm >= 10 blocks postinstall by default).
 # One single version of Fastify across the repository. Without this,
 # @nestjs/platform-fastify and the daemon install two, and TypeScript treats
-# their `FastifyInstance`
-# as distinct types: no plugin registers any more.
+# their `FastifyInstance` as distinct types: no plugin registers any more.
 overrides:
   fastify: ^5.11.2
 
+# These packages run an install script; it is allowed explicitly
+# (pnpm >= 10 blocks postinstall by default).
 onlyBuiltDependencies:
   - '@prisma/client'
   - '@prisma/engines'

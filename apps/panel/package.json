@@ -3,9 +3,10 @@
   "version": "0.0.0",
   "private": true,
   "license": "AGPL-3.0-or-later",
-  "description": "Panel Hopper — API NestJS et interface web",
+  "description": "Hopper panel — NestJS API and web interface",
   "main": "./dist/main.js",
   "scripts": {
+    "postinstall": "prisma generate",
     "build": "nest build",
     "dev": "nest start --watch",
     "start": "node dist/main.js",
