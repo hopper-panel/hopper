@@ -80,10 +80,14 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      # No test touches Docker. `docker/client.ts` — every call the daemon makes
-      # to dockerode — has no spec at all; only `container-config.ts`, which
-      # builds a configuration in memory, is covered. This comment used to claim
-      # the opposite, which made a green run on a dockerode upgrade look like
-      # evidence it was safe. It was evidence that TypeScript compiled.
+      # `docker/client.spec.ts` drives the runner's Docker engine for real —
+      # pulls, networks, containers — and is skipped, loudly, wherever no engine
+      # answers.
+      #
+      # This comment has now been wrong in both directions. It first claimed
+      # Testcontainers coverage that never existed, which made a green run on a
+      # dockerode upgrade look like evidence; correcting it left it claiming
+      # nothing touched Docker, which stopped being true the moment those tests
+      # landed. Whoever changes what runs here changes these lines with it.
       - name: Run tests
         run: pnpm test
