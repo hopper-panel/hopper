@@ -49,6 +49,9 @@ export function ServerPluginsPage() {
       api.get<SearchHit[]>(
         `/api/servers/${server.uuid}/plugins/search?query=${encodeURIComponent(submitted)}`,
       ),
+    // A refusal is deterministic: a server that loads no plugins will load none
+    // on the third attempt either, and retrying only delays the explanation.
+    retry: (count, error) => !(error instanceof ApiError && error.status < 500) && count < 2,
   });
 
   const versions = useQuery({
@@ -105,6 +108,19 @@ export function ServerPluginsPage() {
 
       {install.error instanceof ApiError ? (
         <Alert tone="danger">{install.error.message}</Alert>
+      ) : null}
+
+      {/* The search's own failure, which used to go nowhere.
+
+          A server whose template loads neither plugins nor mods is refused with
+          a message naming what to run instead — and that message was written,
+          returned, and thrown away: only the *install* error was rendered. The
+          page came up blank, on the one screen whose whole job was to explain
+          why there was nothing to show. */}
+      {results.error instanceof ApiError ? (
+        <Alert tone={results.error.status === 400 ? 'info' : 'danger'}>
+          {results.error.message}
+        </Alert>
       ) : null}
 
       {/* Named for what it is. A list sorted by downloads is not a list of
