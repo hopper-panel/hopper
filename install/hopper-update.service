@@ -22,10 +22,22 @@ Group=root
 ExecStartPre=/bin/rm -f /var/lib/hopper/updates/requested
 ExecStartPre=/bin/sh -c 'printf "{\\"state\\":\\"running\\",\\"startedAt\\":\\"%%s\\"}" "$(date -Is)" > /var/lib/hopper/updates/status.json'
 
-# `git pull` before the installer: the checkout is what install.sh copies from,
-# so without it the script would faithfully reinstall the version already there.
-ExecStart=/usr/bin/git -C /opt/hopper pull --ff-only
-ExecStart=/bin/bash /opt/hopper/install/install.sh
+# The update works from its own clone, not from /opt/hopper.
+#
+# install.sh copies the sources with `--exclude=.git`, so /opt/hopper is not a
+# checkout and never can be pulled — the first version of this unit assumed it
+# was and failed with "not a git repository" the first time an operator pressed
+# the button. This clone is the updater's own, kept beside the data where root
+# owns everything, and install.sh run from it copies over /opt/hopper exactly as
+# a fresh installation does.
+ExecStart=/bin/bash -c 'if [ -d /var/lib/hopper/source/.git ]; then \
+    git -C /var/lib/hopper/source fetch --depth 1 origin main && \
+    git -C /var/lib/hopper/source reset --hard origin/main; \
+  else \
+    rm -rf /var/lib/hopper/source && \
+    git clone --depth 1 https://github.com/hopper-panel/hopper.git /var/lib/hopper/source; \
+  fi'
+ExecStart=/bin/bash /var/lib/hopper/source/install/install.sh
 
 ExecStopPost=/bin/sh -c 'if [ "$EXIT_STATUS" = "0" ]; then S=succeeded; else S=failed; fi; \
   printf "{\\"state\\":\\"%%s\\",\\"finishedAt\\":\\"%%s\\",\\"log\\":\\"%%s\\"}" \
