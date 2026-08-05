@@ -227,7 +227,7 @@ DB_PASSWORD="${HOPPER_DB_PASSWORD:-$(openssl rand -hex 24)}"
 
 # The role already exists when the script is rerun: the password is left alone,
 # otherwise the kept .env would point at a changed password.
-if su - postgres -c "psql -tAc \"SELECT 1 FROM pg_roles WHERE rolname='$DB_USER'\"" | grep -q 1; then
+if [ "$(su - postgres -c "psql -tAc \"SELECT 1 FROM pg_roles WHERE rolname='$DB_USER'\"")" = 1 ]; then
   note "role $DB_USER already present, unchanged"
   DB_PASSWORD=''
 else
@@ -235,7 +235,7 @@ else
   good "role $DB_USER created"
 fi
 
-if su - postgres -c "psql -tAc \"SELECT 1 FROM pg_database WHERE datname='$DB_NAME'\"" | grep -q 1; then
+if [ "$(su - postgres -c "psql -tAc \"SELECT 1 FROM pg_database WHERE datname='$DB_NAME'\"")" = 1 ]; then
   note "database $DB_NAME already present"
 else
   su - postgres -c "createdb -O $DB_USER $DB_NAME" >/dev/null
@@ -344,10 +344,28 @@ good "schema up to date"
 ADMIN_PASSWORD="${HOPPER_ADMIN_PASSWORD:-$(openssl rand -base64 18 | tr -d '\n/+=' | cut -c1-20)}"
 ADMIN_CREATED=0
 
-if HOPPER_ADMIN_EMAIL="$ADMIN_EMAIL" HOPPER_ADMIN_USERNAME="$ADMIN_USERNAME" \
-   HOPPER_ADMIN_PASSWORD="$ADMIN_PASSWORD" pnpm exec prisma db seed 2>&1 | tee /tmp/hopper-seed.log | grep -q 'HOPPER_SEED_ADMIN_CREATED=1'; then
+# The seed writes to a file that is searched afterwards, and is never piped
+# into `grep -q`. Piping looks equivalent and is not: grep exits at the first
+# match, the seed dies of SIGPIPE on its next write, and `pipefail` turns that
+# into a failed pipeline (status 141). The installer read that as "an
+# administrator already exists", so a fresh installation never printed the
+# generated password — an instance nobody could sign in to, reported as a
+# success.
+SEED_LOG=/tmp/hopper-seed.log
+SEED_STATUS=0
+
+HOPPER_ADMIN_EMAIL="$ADMIN_EMAIL" HOPPER_ADMIN_USERNAME="$ADMIN_USERNAME" \
+  HOPPER_ADMIN_PASSWORD="$ADMIN_PASSWORD" pnpm exec prisma db seed \
+  >"$SEED_LOG" 2>&1 || SEED_STATUS=$?
+
+if grep -q 'HOPPER_SEED_ADMIN_CREATED=1' "$SEED_LOG"; then
   ADMIN_CREATED=1
   good "administrator account created"
+elif [ "$SEED_STATUS" -ne 0 ]; then
+  # Without this branch a seed that genuinely failed was announced as "already
+  # present" and the installation carried on, leaving no administrator at all.
+  sed 's/^/    /' "$SEED_LOG" >&2
+  die "the seed failed (status $SEED_STATUS) — full output in $SEED_LOG"
 else
   note "administrator account already present, unchanged"
 fi
