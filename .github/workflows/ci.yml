@@ -80,7 +80,10 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      # The daemon is tested against a real Docker daemon (Testcontainers),
-      # not against a dockerode mock: the GitHub runners provide one.
+      # No test touches Docker. `docker/client.ts` — every call the daemon makes
+      # to dockerode — has no spec at all; only `container-config.ts`, which
+      # builds a configuration in memory, is covered. This comment used to claim
+      # the opposite, which made a green run on a dockerode upgrade look like
+      # evidence it was safe. It was evidence that TypeScript compiled.
       - name: Run tests
         run: pnpm test
