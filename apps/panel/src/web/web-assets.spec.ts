@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cacheControlFor, isApiPath, resolveWebRoot } from './web-assets.js';
+import { cacheControlFor, isApiPath, resolveWebRoot, setHeaders } from './web-assets.js';
 
 /**
  * These tests exist because the deployed panel answered 404 on `/`: the API was
@@ -55,5 +55,37 @@ describe('resolveWebRoot', () => {
   it('honours an absolute path', () => {
     const resolved = resolveWebRoot('/srv/hopper-ui', '/opt/hopper/apps/panel').replace(/\\/g, '/');
     expect(resolved).toMatch(/\/srv\/hopper-ui$/);
+  });
+});
+
+/**
+ * The cache policy was applied through a callback whose shape changed with
+ * @fastify/static 10 — a raw response became a FastifyReply. Nothing covered
+ * it, so only the type checker stood between a silent regression and browsers
+ * revalidating every digest-stamped asset on every page load.
+ */
+describe('setHeaders', () => {
+  function capture(path: string): Record<string, string> {
+    const headers: Record<string, string> = {};
+    setHeaders({ header: (name, value) => (headers[name] = value) }, path);
+    return headers;
+  }
+
+  it('freezes a digest-stamped asset', () => {
+    expect(capture('/srv/web/assets/index-CdzQcqeH.js')['cache-control']).toBe(
+      cacheControlFor('/assets/'),
+    );
+  });
+
+  it('keeps the entry point revalidated', () => {
+    expect(capture('/srv/web/index.html')['cache-control']).toBe(cacheControlFor('/'));
+  });
+
+  // The plugin hands Windows separators on Windows; without normalising, the
+  // `/assets/` probe would miss and every asset would lose its long cache.
+  it('recognises assets behind Windows separators', () => {
+    expect(capture(String.raw`C:\srv\web\assets\index-CdzQcqeH.js`)['cache-control']).toBe(
+      cacheControlFor('/assets/'),
+    );
   });
 });
