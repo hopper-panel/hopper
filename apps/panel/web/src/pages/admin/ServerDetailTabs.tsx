@@ -239,13 +239,31 @@ interface Allocation {
   primary: boolean;
 }
 
+/**
+ * Both list endpoints answer with `{ data, meta }`, not with a bare array.
+ *
+ * These two tabs declared the array shape and read `.map` straight off the
+ * response, so opening either one threw and took the whole page down — the
+ * administration could not reach a server at all through these tabs. The types
+ * said array, TypeScript believed the types, and nothing rendered them until an
+ * operator clicked.
+ *
+ * The envelope is not noise to unwrap and discard: `meta` carries the limit and
+ * what the node still has free, which is what decides whether adding another
+ * port is even possible.
+ */
+interface AllocationList {
+  data: Allocation[];
+  meta: { limit: number; used: number; availableOnNode: number };
+}
+
 export function NetworkTab({ server }: { server: AdminServerSummary }) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
 
   const allocations = useQuery({
     queryKey: ['admin', 'server', server.uuid, 'allocations'],
-    queryFn: () => api.get<Allocation[]>(`/api/servers/${server.uuid}/allocations`),
+    queryFn: () => api.get<AllocationList>(`/api/servers/${server.uuid}/allocations`),
   });
 
   const reload = (): Promise<void> =>
@@ -262,6 +280,11 @@ export function NetworkTab({ server }: { server: AdminServerSummary }) {
     onSuccess: reload,
   });
 
+  const add = useMutation({
+    mutationFn: () => api.post(`/api/servers/${server.uuid}/allocations`, {}),
+    onSuccess: reload,
+  });
+
   if (allocations.isPending) {
     return <Spinner />;
   }
@@ -270,14 +293,28 @@ export function NetworkTab({ server }: { server: AdminServerSummary }) {
     return <Alert tone="danger">{allocations.error.message}</Alert>;
   }
 
+  const { data: list, meta } = allocations.data!;
+
+  // The node hands out a free port; nobody picks the number. An administrator
+  // choosing one could collide with another server on the same node, and the
+  // pool exists precisely so that cannot happen.
+  const atLimit = meta.limit > 0 && meta.used >= meta.limit;
+  const noneFree = meta.availableOnNode === 0;
+
   return (
     <Card>
-      {allocations.data?.length === 0 ? (
+      <p className="mb-3 text-sm text-content-muted">
+        {meta.limit > 0
+          ? t('network.countLimited', { used: meta.used, limit: meta.limit })
+          : t('network.count', { used: meta.used })}
+      </p>
+
+      {list.length === 0 ? (
         <p className="text-sm text-content-muted">{t('adminServer.noAllocations')}</p>
       ) : null}
 
       <ul className="grid gap-2">
-        {allocations.data?.map((allocation) => (
+        {list.map((allocation) => (
           <li
             key={allocation.id}
             className="flex flex-wrap items-center justify-between gap-2 border-b border-border-subtle/50 pb-2 text-sm last:border-0 last:pb-0"
@@ -303,16 +340,45 @@ export function NetworkTab({ server }: { server: AdminServerSummary }) {
           </li>
         ))}
       </ul>
+
+      {add.error instanceof ApiError ? (
+        <div className="mt-3">
+          <Alert tone="danger">{add.error.message}</Alert>
+        </div>
+      ) : null}
+
+      <div className="mt-4 flex items-center gap-3">
+        <Button
+          variant="primary"
+          disabled={add.isPending || atLimit || noneFree}
+          onClick={() => add.mutate()}
+        >
+          {add.isPending ? t('network.adding') : t('network.add')}
+        </Button>
+
+        {/* Why it is greyed out, rather than a dead button. The two reasons ask
+            for different things: raise the limit on this server, or add ports
+            to the node. */}
+        {noneFree && !atLimit ? (
+          <span className="text-xs text-content-subtle">{t('network.noFreePorts')}</span>
+        ) : null}
+      </div>
     </Card>
   );
 }
 
+/** `name`, not `database` — the API has never called it that. */
 interface ServerDatabase {
   uuid: string;
-  database: string;
+  name: string;
   username: string;
   remote: string;
-  host: { name: string };
+  host: { name: string; address: string; port: number };
+}
+
+interface DatabaseList {
+  data: ServerDatabase[];
+  meta: { limit: number; used: number; hostsAvailable: number };
 }
 
 export function DatabasesTab({ server }: { server: AdminServerSummary }) {
@@ -320,7 +386,7 @@ export function DatabasesTab({ server }: { server: AdminServerSummary }) {
 
   const databases = useQuery({
     queryKey: ['admin', 'server', server.uuid, 'databases'],
-    queryFn: () => api.get<ServerDatabase[]>(`/api/servers/${server.uuid}/databases`),
+    queryFn: () => api.get<DatabaseList>(`/api/servers/${server.uuid}/databases`),
   });
 
   if (databases.isPending) {
@@ -331,17 +397,24 @@ export function DatabasesTab({ server }: { server: AdminServerSummary }) {
     return <Alert tone="danger">{databases.error.message}</Alert>;
   }
 
+  const { data: list, meta } = databases.data!;
+
   return (
     <Card>
-      {databases.data?.length === 0 ? (
+      <p className="mb-3 text-sm text-content-muted">
+        {t('databases.count', { used: meta.used, limit: meta.limit })}
+      </p>
+
+      {list.length === 0 ? (
         <p className="text-sm text-content-muted">{t('adminServer.noDatabases')}</p>
       ) : (
         <ul className="grid gap-2 text-sm">
-          {databases.data?.map((database) => (
+          {list.map((database) => (
             <li key={database.uuid} className="border-b border-border-subtle/50 pb-2 last:border-0">
-              <span className="font-mono text-content">{database.database}</span>
+              <span className="font-mono text-content">{database.name}</span>
               <span className="ml-2 text-content-subtle">
-                {database.username}@{database.remote} · {database.host.name}
+                {database.username}@{database.remote} · {database.host.name} (
+                {database.host.address}:{database.host.port})
               </span>
             </li>
           ))}
