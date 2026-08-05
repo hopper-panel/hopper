@@ -985,4 +985,8 @@ export const fr: Partial<Messages> = {
   'adminServer.transferring': 'Déplacement… gardez cette page ouverte',
   'adminServer.transferConfirm': 'Tapez {name} pour déplacer ce serveur. Il sera arrêté.',
   'adminServer.transferDone': 'Le serveur tourne maintenant sur {node}.',
+
+  'plugins.downloads': '{count} téléchargements',
+  'plugins.hideVersions': 'Masquer les versions',
+  'plugins.viewOnModrinth': 'Sur Modrinth',
 };

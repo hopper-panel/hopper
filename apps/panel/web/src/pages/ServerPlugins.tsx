@@ -1,19 +1,11 @@
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { PageHeader } from '../components/PageHeader';
-import { Alert, Badge, Button, Card, Spinner } from '../components/ui';
+import { PluginCard, type PluginHit } from '../components/PluginCard';
+import { Alert, Badge, Button, Spinner } from '../components/ui';
 import { useTranslation } from '../i18n';
 import { api, ApiError } from '../lib/api';
 import { useServerContext } from '../lib/server-context';
-
-interface SearchHit {
-  projectId: string;
-  slug: string;
-  title: string;
-  description: string;
-  downloads: number;
-  iconUrl: string | null;
-}
 
 interface PluginVersion {
   versionId: string;
@@ -37,7 +29,7 @@ export function ServerPluginsPage() {
   const { t } = useTranslation();
   const [query, setQuery] = useState('');
   const [submitted, setSubmitted] = useState('');
-  const [selected, setSelected] = useState<SearchHit | null>(null);
+  const [selected, setSelected] = useState<PluginHit | null>(null);
   const [installed, setInstalled] = useState<string | null>(null);
 
   // Runs with an empty query too. The catalogue then answers with what is most
@@ -46,7 +38,7 @@ export function ServerPluginsPage() {
   const results = useQuery({
     queryKey: ['plugins', server.uuid, submitted],
     queryFn: () =>
-      api.get<SearchHit[]>(
+      api.get<PluginHit[]>(
         `/api/servers/${server.uuid}/plugins/search?query=${encodeURIComponent(submitted)}`,
       ),
     // A refusal is deterministic: a server that loads no plugins will load none
@@ -138,72 +130,53 @@ export function ServerPluginsPage() {
         <p className="text-sm text-content-muted">{t('plugins.noResults')}</p>
       ) : null}
 
-      <div className="grid gap-3">
+      {/* Two columns once there is room. A single column of full-width cards
+          showed four plugins on a laptop screen and made a catalogue of
+          hundreds feel like a queue. */}
+      <div className="grid gap-3 xl:grid-cols-2">
         {results.data?.map((hit) => (
-          <Card key={hit.projectId}>
-            <div className="flex items-start gap-3">
-              {hit.iconUrl ? (
-                <img src={hit.iconUrl} alt="" className="size-10 shrink-0 rounded-lg" />
-              ) : (
-                <div className="size-10 shrink-0 rounded-lg bg-surface" />
-              )}
+          <PluginCard
+            key={hit.projectId}
+            hit={hit}
+            expanded={selected?.projectId === hit.projectId}
+            onToggle={() => setSelected(selected?.projectId === hit.projectId ? null : hit)}
+          >
+            {versions.isPending ? <Spinner /> : null}
 
-              <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-center gap-2">
-                  <h3 className="font-medium text-content">{hit.title}</h3>
-                  <Badge>{hit.downloads.toLocaleString()}</Badge>
-                </div>
-                <p className="mt-1 text-sm text-content-muted">{hit.description}</p>
-              </div>
+            <ul className="grid gap-2">
+              {versions.data?.slice(0, 8).map((version) => (
+                <li
+                  key={version.versionId}
+                  className="flex flex-wrap items-center justify-between gap-2 text-sm"
+                >
+                  <span className="text-content">
+                    {version.versionNumber}
+                    <span className="ml-2 text-content-subtle">
+                      {version.loaders.join(', ')} · {version.gameVersions.slice(0, 3).join(', ')}
+                    </span>
+                  </span>
 
-              <Button
-                onClick={() => setSelected(selected?.projectId === hit.projectId ? null : hit)}
-              >
-                {t('plugins.versions')}
-              </Button>
-            </div>
+                  <div className="flex items-center gap-2">
+                    {/* A version the catalogue publishes no checksum for is
+                        installed all the same — refusing would rule out a good
+                        part of the catalogue — but it is said, because the
+                        daemon can then verify nothing. */}
+                    {version.file.sha512 === null ? (
+                      <Badge tone="warn">{t('plugins.noChecksum')}</Badge>
+                    ) : null}
 
-            {selected?.projectId === hit.projectId ? (
-              <div className="mt-4 border-t border-border-subtle pt-3">
-                {versions.isPending ? <Spinner /> : null}
-
-                <ul className="grid gap-2">
-                  {versions.data?.slice(0, 8).map((version) => (
-                    <li
-                      key={version.versionId}
-                      className="flex flex-wrap items-center justify-between gap-2 text-sm"
+                    <Button
+                      variant="primary"
+                      disabled={install.isPending}
+                      onClick={() => install.mutate(version.versionId)}
                     >
-                      <span className="text-content">
-                        {version.versionNumber}
-                        <span className="ml-2 text-content-subtle">
-                          {version.loaders.join(', ')} ·{' '}
-                          {version.gameVersions.slice(0, 3).join(', ')}
-                        </span>
-                      </span>
-
-                      <div className="flex items-center gap-2">
-                        {/* A version the catalogue publishes no checksum for is
-                            installed all the same — refusing would rule out a
-                            good part of the catalogue — but it is said, because
-                            the daemon can then verify nothing. */}
-                        {version.file.sha512 === null ? (
-                          <Badge tone="warn">{t('plugins.noChecksum')}</Badge>
-                        ) : null}
-
-                        <Button
-                          variant="primary"
-                          disabled={install.isPending}
-                          onClick={() => install.mutate(version.versionId)}
-                        >
-                          {install.isPending ? t('plugins.installing') : t('plugins.install')}
-                        </Button>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ) : null}
-          </Card>
+                      {install.isPending ? t('plugins.installing') : t('plugins.install')}
+                    </Button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </PluginCard>
         ))}
       </div>
     </>
