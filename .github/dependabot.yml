@@ -35,6 +35,13 @@ updates:
         update-types: [version-update:semver-major]
       - dependency-name: '@prisma/*'
         update-types: [version-update:semver-major]
+      # @types/node tracks the Node major it describes, so its version is not
+      # ours to choose: it has to match the runtime, which is pinned to 22 in
+      # package.json, the CI workflow and install.sh. Taking @types/node 26 on
+      # Node 22 makes the compiler accept APIs that are not there at run time —
+      # a crash that typechecks cleanly. It moves when the runtime moves.
+      - dependency-name: '@types/node'
+        update-types: [version-update:semver-major]
 
   - package-ecosystem: github-actions
     directory: /
