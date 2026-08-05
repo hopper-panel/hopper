@@ -911,4 +911,23 @@ export const de: Partial<Messages> = {
   'passkeys.neverUsed': 'Nie verwendet',
   'passkeys.registerFailed': 'Dieser Passkey konnte nicht registriert werden.',
   'passkeys.unsupported': 'Dieser Browser unterstützt keine Passkeys.',
+
+  // Server auf einen anderen Node verschieben
+  'adminServer.transfer': 'Auf einen anderen Node verschieben',
+  'adminServer.transferHint':
+    'Kopiert den Server auf eine andere Maschine und entfernt ihn von dieser. Die Adresse ändert sich; Kennung und Dateien nicht.',
+  'adminServer.transferTarget': 'Ziel-Node',
+  'adminServer.transferPick': 'Node wählen…',
+  'adminServer.transferNoNode': 'Es gibt keinen anderen Node, auf den dieser Server passt.',
+  'adminServer.transferPorts': '{count} freie(r) Port(s) auf diesem Node. Einer wird zugewiesen.',
+  'adminServer.transferNoPort':
+    'Dieser Node hat keinen freien Port. Füge erst einen zu seinem Pool hinzu.',
+  'adminServer.transferStranded':
+    'Diese Datenbanken bleiben auf dem aktuellen Node und antworten danach nicht mehr: {databases}. Verschiebe ihren Inhalt selbst oder lege sie neu an.',
+  'adminServer.transferStops':
+    'Der Server wird zuerst gestoppt, und die Welt wird erst danach archiviert. Eine große Welt dauert mehrere Minuten.',
+  'adminServer.transferStart': 'Server verschieben',
+  'adminServer.transferring': 'Wird verschoben… lass diese Seite offen',
+  'adminServer.transferConfirm': 'Tippe {name}, um diesen Server zu verschieben. Er wird gestoppt.',
+  'adminServer.transferDone': 'Der Server läuft jetzt auf {node}.',
 };

@@ -892,4 +892,23 @@ export const ru: Partial<Messages> = {
   'passkeys.neverUsed': 'Не использовался',
   'passkeys.registerFailed': 'Не удалось зарегистрировать этот ключ доступа.',
   'passkeys.unsupported': 'Этот браузер не поддерживает ключи доступа.',
+
+  // Перенос сервера на другой узел
+  'adminServer.transfer': 'Перенести на другой узел',
+  'adminServer.transferHint':
+    'Копирует сервер на другую машину и удаляет с этой. Адрес меняется; идентификатор и файлы — нет.',
+  'adminServer.transferTarget': 'Узел назначения',
+  'adminServer.transferPick': 'Выберите узел…',
+  'adminServer.transferNoNode': 'Нет другого узла, куда можно перенести этот сервер.',
+  'adminServer.transferPorts': 'Свободных портов на этом узле: {count}. Один будет назначен.',
+  'adminServer.transferNoPort':
+    'На этом узле нет свободных портов. Сначала добавьте порт в его пул.',
+  'adminServer.transferStranded':
+    'Эти базы останутся на текущем узле и перестанут отвечать: {databases}. Перенесите их содержимое сами или создайте заново.',
+  'adminServer.transferStops':
+    'Сначала сервер останавливается, и только потом мир архивируется. Большой мир займёт несколько минут.',
+  'adminServer.transferStart': 'Перенести сервер',
+  'adminServer.transferring': 'Перенос… не закрывайте страницу',
+  'adminServer.transferConfirm': 'Введите {name}, чтобы перенести сервер. Он будет остановлен.',
+  'adminServer.transferDone': 'Сервер теперь работает на {node}.',
 };

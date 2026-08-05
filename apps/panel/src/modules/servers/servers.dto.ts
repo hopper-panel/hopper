@@ -104,3 +104,16 @@ export const powerActionSchema = z.object({
 });
 
 export type PowerActionDto = z.infer<typeof powerActionSchema>;
+
+/**
+ * The target node, by uuid.
+ *
+ * Only the node is chosen. Which port the server lands on is the panel's to
+ * pick from the target's free pool: an administrator naming one could collide
+ * with a server already there, and the pool exists so that cannot happen.
+ */
+export const transferServerSchema = z.object({
+  node: z.string().uuid(),
+});
+
+export type TransferServerDto = z.infer<typeof transferServerSchema>;

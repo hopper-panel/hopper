@@ -46,6 +46,7 @@ export const AUDIT_EVENTS = {
   SERVER_REINSTALLED: 'server.reinstalled',
   SERVER_POWER: 'server.power',
   SERVER_COMMAND: 'server.command',
+  SERVER_TRANSFERRED: 'server.transferred',
 
   BACKUP_CREATED: 'backup.created',
   BACKUP_DELETED: 'backup.deleted',
