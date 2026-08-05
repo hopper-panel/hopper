@@ -6,6 +6,7 @@ import { Alert, Badge, Button, Card, Spinner } from '../../components/ui';
 import { useTranslation, type MessageKey } from '../../i18n';
 import { api, ApiError } from '../../lib/api';
 import { formatBytes } from '../../lib/format';
+import { DatabasesTab, DetailsTab, NetworkTab, StartupTab } from './ServerDetailTabs';
 
 interface AdminServer {
   uuid: string;
@@ -22,6 +23,25 @@ interface AdminServer {
 }
 
 const MIB = 1024 * 1024;
+
+/**
+ * The tabs, in the order an administrator walks them.
+ *
+ * Identity first, then what the server may consume, then what it runs, then
+ * what it is reachable on — and the irreversible actions last, where a misclick
+ * has to travel furthest.
+ */
+const TABS = [
+  ['about', 'adminServer.about'],
+  ['details', 'adminServer.details'],
+  ['build', 'adminServer.build'],
+  ['startup', 'adminServer.startup'],
+  ['network', 'adminServer.network'],
+  ['databases', 'adminServer.databases'],
+  ['manage', 'adminServer.manage'],
+] as const;
+
+type Tab = (typeof TABS)[number][0];
 
 /** The build fields, with the unit each is entered in. */
 interface BuildForm {
@@ -52,12 +72,16 @@ export function AdminServerDetailPage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const [tab, setTab] = useState<'about' | 'build' | 'manage'>('about');
+  const [tab, setTab] = useState<Tab>('about');
 
   const server = useQuery({
     queryKey: ['admin', 'server', uuid],
     queryFn: () => api.get<AdminServer>(`/api/admin/servers/${uuid}`),
   });
+
+  const reload = (): void => {
+    void queryClient.invalidateQueries({ queryKey: ['admin', 'server', uuid] });
+  };
 
   if (server.isPending) {
     return <Spinner />;
@@ -86,13 +110,7 @@ export function AdminServerDetailPage() {
       />
 
       <div className="mb-4 flex gap-1 border-b border-border-subtle">
-        {(
-          [
-            ['about', 'adminServer.about'],
-            ['build', 'adminServer.build'],
-            ['manage', 'adminServer.manage'],
-          ] as const
-        ).map(([key, label]) => (
+        {TABS.map(([key, label]) => (
           <button
             key={key}
             type="button"
@@ -109,14 +127,11 @@ export function AdminServerDetailPage() {
       </div>
 
       {tab === 'about' ? <About server={data} /> : null}
-      {tab === 'build' ? (
-        <Build
-          server={data}
-          onSaved={() => {
-            void queryClient.invalidateQueries({ queryKey: ['admin', 'server', uuid] });
-          }}
-        />
-      ) : null}
+      {tab === 'build' ? <Build server={data} onSaved={reload} /> : null}
+      {tab === 'details' ? <DetailsTab server={data} onSaved={reload} /> : null}
+      {tab === 'startup' ? <StartupTab server={data} /> : null}
+      {tab === 'network' ? <NetworkTab server={data} /> : null}
+      {tab === 'databases' ? <DatabasesTab server={data} /> : null}
       {tab === 'manage' ? (
         <Manage
           server={data}

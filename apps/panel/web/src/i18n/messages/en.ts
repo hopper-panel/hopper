@@ -802,6 +802,24 @@ export const en = {
   'adminNodes.configSteps':
     'Write this file to /etc/hopper/daemon.yml on the machine, then chmod 600 it and restart hopperd.',
 
+  'adminServer.details': 'Details',
+  'adminServer.startup': 'Startup',
+  'adminServer.network': 'Network',
+  'adminServer.databases': 'Databases',
+  'adminServer.name': 'Name',
+  'adminServer.description': 'Description',
+  'adminServer.command': 'Startup command',
+  'adminServer.commandHint':
+    'Comes from the template and is not edited here: a server whose command diverges stops being reproducible, and reinstalling it would silently change how it starts.',
+  'adminServer.image': 'Docker image',
+  'adminServer.imageHint': 'The Java version the server runs on.',
+  'adminServer.primary': 'primary',
+  'adminServer.makePrimary': 'Make primary',
+  'adminServer.remove': 'Remove',
+  'adminServer.noAllocations': 'No port assigned.',
+  'adminServer.noDatabases': 'No database.',
+  'adminServer.databasesHint':
+    'Creating one is done from the server’s own Databases tab, which shows the password once.',
   'adminServer.about': 'About',
   'adminServer.build': 'Limits',
   'adminServer.manage': 'Manage',

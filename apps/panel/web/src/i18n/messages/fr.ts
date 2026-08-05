@@ -811,6 +811,24 @@ export const fr: Partial<Messages> = {
   'adminNodes.configSteps':
     'Écrivez ce fichier dans /etc/hopper/daemon.yml sur la machine, puis chmod 600 et redémarrage de hopperd.',
 
+  'adminServer.details': 'Détails',
+  'adminServer.startup': 'Démarrage',
+  'adminServer.network': 'Réseau',
+  'adminServer.databases': 'Bases de données',
+  'adminServer.name': 'Nom',
+  'adminServer.description': 'Description',
+  'adminServer.command': 'Commande de démarrage',
+  'adminServer.commandHint':
+    'Vient du template et ne se modifie pas ici : un serveur dont la commande diverge cesse d’être reproductible, et le réinstaller changerait silencieusement sa façon de démarrer.',
+  'adminServer.image': 'Image Docker',
+  'adminServer.imageHint': 'La version de Java sur laquelle tourne le serveur.',
+  'adminServer.primary': 'principale',
+  'adminServer.makePrimary': 'Rendre principale',
+  'adminServer.remove': 'Retirer',
+  'adminServer.noAllocations': 'Aucun port attribué.',
+  'adminServer.noDatabases': 'Aucune base.',
+  'adminServer.databasesHint':
+    'La création se fait depuis l’onglet Bases de données du serveur, qui affiche le mot de passe une fois.',
   'adminServer.about': 'À propos',
   'adminServer.build': 'Limites',
   'adminServer.manage': 'Gérer',
