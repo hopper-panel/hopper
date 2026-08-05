@@ -19,12 +19,19 @@ import type { JailedFilesystem } from '../fs/jailed-filesystem.js';
  * trusted" is not a reason to hand it a path the rest of the daemon would not
  * accept — and an imported Pterodactyl egg is written by a stranger.
  *
- * Rewriting is deliberate about what it does **not** do. A file that does not
- * exist yet is skipped rather than created: the install script owns the first
- * version of these files, and a half-file written before it would be worse
- * than none. A file that cannot be parsed is left exactly as it is, and said
- * so on the console — an operator who broke their own YAML gets an error, not
- * a silently reformatted file with their comments gone.
+ * A missing file is created, but only for `properties`. Minecraft writes
+ * `server.properties` itself on its first run, so on a brand-new server there
+ * was nothing to rewrite: the very first start bound the default port, and the
+ * port only became right on the second one. That reads to an operator exactly
+ * like the bug this file exists to fix — nobody restarts a server that has
+ * just started. A flat key-value file is safe to write from nothing, because
+ * the server fills in every key it does not find. A YAML or a JSON invented
+ * from scratch is a different proposition and is still skipped.
+ *
+ * Beyond that, rewriting is deliberate about what it does **not** do. A file
+ * that cannot be parsed is left exactly as it is, and said so on the console —
+ * an operator who broke their own YAML gets an error, not a silently
+ * reformatted file with their comments gone.
  */
 
 export interface ConfigWriteReport {
@@ -33,6 +40,8 @@ export interface ConfigWriteReport {
   changed: number;
   /** Why nothing was written, when nothing was. */
   skipped?: string;
+  /** The file did not exist and was written from the template's keys alone. */
+  created?: boolean;
 }
 
 /** Substitutes `{{variables}}`; the daemon passes `invocation.ts`'s own. */
@@ -61,21 +70,19 @@ async function applyOne(
   // before a byte is read.
   const absolute = await jail.absolutePathFor(config.file);
 
-  let original: string;
-
-  try {
-    original = await readFile(absolute, 'utf8');
-  } catch {
-    // Not an error. The install script has not run yet, or this template
-    // declares a file only some versions of the game write.
-    return { file: config.file, changed: 0, skipped: 'file not present' };
-  }
-
   const replacements = config.replacements.map((replacement) => ({
     match: replacement.match,
     ifValue: replacement.ifValue,
     replaceWith: substitute(replacement.replaceWith),
   }));
+
+  let original: string;
+
+  try {
+    original = await readFile(absolute, 'utf8');
+  } catch {
+    return createMissing(jail, config, replacements);
+  }
 
   let result: { text: string; changed: number };
 
@@ -123,6 +130,40 @@ function asScalar(value: unknown): string | null {
   }
 
   return null;
+}
+
+/**
+ * Writes the declared keys into a file the server has not created yet.
+ *
+ * Only for `properties`. The game writes every key it does not find on its
+ * first run, so a file holding nothing but the port is complete enough to
+ * start from — and the alternative is a first start on the wrong port.
+ *
+ * A replacement carrying `ifValue` is left out: it asks to change a value that
+ * is a certain thing, and a file that does not exist holds no value at all.
+ */
+async function createMissing(
+  jail: JailedFilesystem,
+  config: ConfigFile,
+  replacements: readonly Replacement[],
+): Promise<ConfigWriteReport> {
+  if (config.parser !== 'properties') {
+    // A YAML or a JSON invented from nothing would be a structure the server
+    // never agreed to. The install script owns those.
+    return { file: config.file, changed: 0, skipped: 'file not present' };
+  }
+
+  const lines = replacements
+    .filter((replacement) => replacement.ifValue === undefined)
+    .map((replacement) => `${replacement.match}=${replacement.replaceWith}`);
+
+  if (lines.length === 0) {
+    return { file: config.file, changed: 0, skipped: 'file not present' };
+  }
+
+  await jail.writeFile(config.file, `${lines.join('\n')}\n`);
+
+  return { file: config.file, changed: lines.length, created: true };
 }
 
 interface Replacement {
