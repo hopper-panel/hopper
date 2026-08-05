@@ -13,6 +13,23 @@ import { NodesService } from '../nodes/nodes.service.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { ModrinthService, type PluginSearchHit, type PluginVersion } from './modrinth.service.js';
 
+/**
+ * What a template can load, by its key.
+ *
+ * `vanilla` is absent on purpose, and that absence is the feature: a vanilla
+ * server reads neither `plugins/` nor `mods/`. Without this the panel happily
+ * installed a Fabric mod onto one — the file landed in the right folder for
+ * Fabric, on a server with no loader to read it, and nothing anywhere said so.
+ */
+const LOADER_FOR_TEMPLATE: Record<string, string> = {
+  paper: 'paper',
+  purpur: 'purpur',
+  fabric: 'fabric',
+  neoforge: 'neoforge',
+  velocity: 'velocity',
+  bungeecord: 'bungeecord',
+};
+
 /** Where a loader expects its additions to live. */
 const DIRECTORY_FOR_LOADER: Record<string, string> = {
   paper: 'plugins',
@@ -52,22 +69,28 @@ export class PluginsController {
 
   @Get('search')
   @RequireServerPermission(PERMISSIONS.FILE_READ)
-  search(
+  async search(
+    @CurrentServer() server: RequestServer,
     @Query('query') query?: string,
-    @Query('loader') loader?: string,
     @Query('gameVersion') gameVersion?: string,
   ): Promise<PluginSearchHit[]> {
+    // The loader is the server's, never the caller's. Searching without it
+    // returns whatever the catalogue ranks highest — which is how a Fabric mod
+    // ends up offered for a Paper server, installed into the folder that is
+    // right for Fabric, and never loaded.
+    const loader = await this.loaderFor(server);
+
     return this.modrinth.search(query ?? '', loader, gameVersion);
   }
 
   @Get(':projectId/versions')
   @RequireServerPermission(PERMISSIONS.FILE_READ)
-  versions(
+  async versions(
     @Param('projectId') projectId: string,
-    @Query('loader') loader?: string,
+    @CurrentServer() server: RequestServer,
     @Query('gameVersion') gameVersion?: string,
   ): Promise<PluginVersion[]> {
-    return this.modrinth.versions(projectId, loader, gameVersion);
+    return this.modrinth.versions(projectId, await this.loaderFor(server), gameVersion);
   }
 
   /**
@@ -90,7 +113,17 @@ export class PluginsController {
       throw new BadRequestException('A version to install is required.');
     }
 
+    const loader = await this.loaderFor(server);
     const version = await this.modrinth.version(body.versionId);
+
+    // Checked again at install: the search is filtered, but the version id
+    // arrives in a request and a filtered list is not a guarantee.
+    if (!version.loaders.some((candidate) => candidate.toLowerCase() === loader)) {
+      throw new BadRequestException(
+        `This version targets ${version.loaders.join(', ')}, and this server runs ${loader}. It would be installed and never loaded.`,
+      );
+    }
+
     const directory = this.directoryFor(version.loaders);
 
     const node = await this.prisma.node.findUniqueOrThrow({
@@ -132,6 +165,30 @@ export class PluginsController {
     });
 
     return { installed: `${directory}/${version.file.filename}` };
+  }
+
+  /**
+   * What this server can load, from its template.
+   *
+   * A template with no loader — vanilla — is refused outright rather than
+   * offered a catalogue it cannot use. Saying so beats installing a file that
+   * disappears into a folder nothing reads.
+   */
+  private async loaderFor(server: RequestServer): Promise<string> {
+    const record = await this.prisma.server.findUniqueOrThrow({
+      where: { id: server.id },
+      select: { template: { select: { key: true, name: true } } },
+    });
+
+    const loader = LOADER_FOR_TEMPLATE[record.template.key];
+
+    if (!loader) {
+      throw new BadRequestException(
+        `${record.template.name} loads neither plugins nor mods. Recreate the server on Paper, Purpur, Fabric or NeoForge to install any.`,
+      );
+    }
+
+    return loader;
   }
 
   /**
