@@ -65,6 +65,19 @@ export const en = {
 
   // Server tabs
   'tab.console': 'Console',
+  'tab.plugins': 'Plugins',
+  'plugins.title': 'Plugins and mods',
+  'plugins.subtitle':
+    'Searched on Modrinth. The file is downloaded by the node, never by the panel.',
+  'plugins.search': 'Search',
+  'plugins.searchPlaceholder': 'Name of a plugin or a mod…',
+  'plugins.versions': 'Versions',
+  'plugins.install': 'Install',
+  'plugins.installing': 'Installing…',
+  'plugins.installed': 'Installed as {file}. Restart the server for it to load.',
+  'plugins.noResults': 'Nothing found.',
+  'plugins.noChecksum': 'no checksum',
+  'plugins.denied': 'You do not have permission to add files to this server.',
   'tab.files': 'Files',
   'tab.databases': 'Databases',
   'tab.backups': 'Backups',
