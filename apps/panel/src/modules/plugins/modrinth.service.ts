@@ -72,6 +72,13 @@ export class ModrinthService {
     url.searchParams.set('limit', '20');
     url.searchParams.set('facets', JSON.stringify(facets));
 
+    // Relevance is meaningless without a query: Modrinth would rank an empty
+    // string against every project and return an arbitrary slice. Sorting by
+    // downloads is what makes the page useful before anyone has typed —
+    // "what does everyone else run on this loader" is the question a new
+    // operator actually has.
+    url.searchParams.set('index', query.trim() === '' ? 'downloads' : 'relevance');
+
     const body = await this.get<{
       hits: {
         project_id: string;

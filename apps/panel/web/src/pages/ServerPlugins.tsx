@@ -40,13 +40,15 @@ export function ServerPluginsPage() {
   const [selected, setSelected] = useState<SearchHit | null>(null);
   const [installed, setInstalled] = useState<string | null>(null);
 
+  // Runs with an empty query too. The catalogue then answers with what is most
+  // downloaded for this server's loader, which beats a blank page and a box:
+  // someone opening this tab for the first time has no name to type yet.
   const results = useQuery({
     queryKey: ['plugins', server.uuid, submitted],
     queryFn: () =>
       api.get<SearchHit[]>(
         `/api/servers/${server.uuid}/plugins/search?query=${encodeURIComponent(submitted)}`,
       ),
-    enabled: submitted.length > 0,
   });
 
   const versions = useQuery({
@@ -105,7 +107,16 @@ export function ServerPluginsPage() {
         <Alert tone="danger">{install.error.message}</Alert>
       ) : null}
 
-      {results.isPending && submitted ? <Spinner /> : null}
+      {/* Named for what it is. A list sorted by downloads is not a list of
+          search results, and letting someone believe otherwise makes the page
+          look broken when their query is what returned nothing. */}
+      {results.data && results.data.length > 0 ? (
+        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-content-subtle">
+          {submitted ? t('plugins.results') : t('plugins.popular')}
+        </h2>
+      ) : null}
+
+      {results.isPending ? <Spinner /> : null}
 
       {results.data?.length === 0 ? (
         <p className="text-sm text-content-muted">{t('plugins.noResults')}</p>
