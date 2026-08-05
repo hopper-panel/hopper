@@ -405,6 +405,24 @@ export class ServerInstance extends EventEmitter {
     }
   }
 
+  /**
+   * Tells the panel how the install ended.
+   *
+   * Never throws. The verdict is worth an entry in the log if it cannot be
+   * delivered, but a report that fails must not turn a successful install into
+   * a failed one — nor stop a failed install from being recorded as failed.
+   */
+  private async reportInstall(successful: boolean): Promise<void> {
+    try {
+      await this.options.panel.reportInstall(this.uuid, successful);
+    } catch (error: unknown) {
+      this.logger.error(
+        { server: this.uuid, successful, err: error },
+        'Install report failed: the panel still believes this server is installing',
+      );
+    }
+  }
+
   private async attach(): Promise<void> {
     if (this.stream) {
       return;
@@ -657,6 +675,12 @@ export class ServerInstance extends EventEmitter {
       this.setState(successful ? 'offline' : 'install_failed');
 
       if (!successful) {
+        // Reported on the way out, not only on the way through. This used to
+        // return here, and the only `reportInstall(false)` sat in an outer
+        // `.catch` that the inner one above made unreachable — so a server
+        // whose install script failed stayed INSTALLING in the panel for ever,
+        // with no reinstall route to retry from.
+        await this.reportInstall(false);
         return;
       }
 
@@ -666,17 +690,17 @@ export class ServerInstance extends EventEmitter {
       // Reported to the panel before starting: this is what moves the server
       // from INSTALLING to READY in the interface. A failed report must not
       // prevent the server from starting.
-      await this.options.panel
-        .reportInstall(this.uuid, true)
-        .catch((error: unknown) =>
-          this.logger.error({ server: this.uuid, err: error }, 'Install report failed'),
-        );
+      await this.reportInstall(true);
 
       if (startOnCompletion) {
         await this.doStart();
       }
     }).catch(async (error: unknown) => {
-      await this.options.panel.reportInstall(this.uuid, false).catch(() => undefined);
+      // Anything that escaped the block above — the container could not be
+      // built, the image could not be pulled. The panel still has to be told,
+      // or the row stays INSTALLING.
+      this.setState('install_failed');
+      await this.reportInstall(false);
       throw error;
     });
   }
