@@ -39,6 +39,10 @@ const ICONS = {
   SearchIcon: 'search',
   LanguageIcon: 'language',
   LogoutIcon: 'power_settings_new',
+  // Paging through a list. `chevron` rather than `arrow`: Material's arrows are
+  // heavier and read as "go back a page in the browser" next to a page number.
+  PreviousIcon: 'chevron_left',
+  NextIcon: 'chevron_right',
 
   // Server statistics
   AddressIcon: 'lan',

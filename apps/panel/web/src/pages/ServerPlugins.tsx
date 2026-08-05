@@ -1,11 +1,18 @@
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { PageHeader } from '../components/PageHeader';
+import { Pagination } from '../components/Pagination';
 import { PluginCard, type PluginHit } from '../components/PluginCard';
 import { Alert, Badge, Button, Spinner } from '../components/ui';
 import { useTranslation } from '../i18n';
 import { api, ApiError } from '../lib/api';
 import { useServerContext } from '../lib/server-context';
+
+/** Matches what the panel returns; the search has been paged since v0.2.2. */
+interface PluginSearchPage {
+  data: PluginHit[];
+  meta: { currentPage: number; perPage: number; lastPage: number; total: number };
+}
 
 interface PluginVersion {
   versionId: string;
@@ -31,16 +38,21 @@ export function ServerPluginsPage() {
   const [submitted, setSubmitted] = useState('');
   const [selected, setSelected] = useState<PluginHit | null>(null);
   const [installed, setInstalled] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
 
   // Runs with an empty query too. The catalogue then answers with what is most
   // downloaded for this server's loader, which beats a blank page and a box:
   // someone opening this tab for the first time has no name to type yet.
   const results = useQuery({
-    queryKey: ['plugins', server.uuid, submitted],
+    queryKey: ['plugins', server.uuid, submitted, page],
     queryFn: () =>
-      api.get<PluginHit[]>(
-        `/api/servers/${server.uuid}/plugins/search?query=${encodeURIComponent(submitted)}`,
+      api.get<PluginSearchPage>(
+        `/api/servers/${server.uuid}/plugins/search?query=${encodeURIComponent(submitted)}&page=${page}`,
       ),
+    // The previous page stays on screen while the next one loads. Without it
+    // the list empties and the layout jumps on every click, which reads as the
+    // search having failed.
+    placeholderData: (previous) => previous,
     // A refusal is deterministic: a server that loads no plugins will load none
     // on the third attempt either, and retrying only delays the explanation.
     retry: (count, error) => !(error instanceof ApiError && error.status < 500) && count < 2,
@@ -80,6 +92,7 @@ export function ServerPluginsPage() {
           event.preventDefault();
           setSelected(null);
           setInstalled(null);
+          setPage(1);
           setSubmitted(query.trim());
         }}
       >
@@ -118,7 +131,7 @@ export function ServerPluginsPage() {
       {/* Named for what it is. A list sorted by downloads is not a list of
           search results, and letting someone believe otherwise makes the page
           look broken when their query is what returned nothing. */}
-      {results.data && results.data.length > 0 ? (
+      {results.data && results.data.data.length > 0 ? (
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-content-subtle">
           {submitted ? t('plugins.results') : t('plugins.popular')}
         </h2>
@@ -126,7 +139,7 @@ export function ServerPluginsPage() {
 
       {results.isPending ? <Spinner /> : null}
 
-      {results.data?.length === 0 ? (
+      {results.data?.data.length === 0 ? (
         <p className="text-sm text-content-muted">{t('plugins.noResults')}</p>
       ) : null}
 
@@ -134,7 +147,7 @@ export function ServerPluginsPage() {
           showed four plugins on a laptop screen and made a catalogue of
           hundreds feel like a queue. */}
       <div className="grid gap-3 xl:grid-cols-2">
-        {results.data?.map((hit) => (
+        {results.data?.data.map((hit) => (
           <PluginCard
             key={hit.projectId}
             hit={hit}
@@ -179,6 +192,21 @@ export function ServerPluginsPage() {
           </PluginCard>
         ))}
       </div>
+      {results.data ? (
+        <Pagination
+          currentPage={results.data.meta.currentPage}
+          lastPage={results.data.meta.lastPage}
+          perPage={results.data.meta.perPage}
+          total={results.data.meta.total}
+          onChange={(next) => {
+            setSelected(null);
+            setPage(next);
+            // The bar is at the bottom of a long list; without this, clicking
+            // "2" leaves the reader at the foot of a page they have not seen.
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+          }}
+        />
+      ) : null}
     </>
   );
 }
