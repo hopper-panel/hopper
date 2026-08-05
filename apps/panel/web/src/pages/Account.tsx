@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { ApiKeysCard } from '../components/ApiKeysCard';
 import { LanguageCard } from '../components/LanguageCard';
 import { PageHeader } from '../components/PageHeader';
+import { PasskeysCard } from '../components/PasskeysCard';
 import { Alert, Badge, Button, Card, Field, Input } from '../components/ui';
 import { ApiError, api } from '../lib/api';
 import { useTranslation } from '../i18n';
@@ -30,6 +31,10 @@ export function AccountPage() {
       <div className="grid gap-4 lg:grid-cols-2">
         <PasswordCard />
         <TwoFactorCard />
+      </div>
+
+      <div className="mt-4 grid gap-4">
+        <PasskeysCard />
       </div>
 
       <div className="mt-4 grid gap-4">

@@ -5,6 +5,8 @@ import { RateLimiterService } from '../../common/rate-limit/rate-limiter.service
 import { AuditModule } from '../audit/audit.module.js';
 import { AuthController } from './auth.controller.js';
 import { AuthService } from './auth.service.js';
+import { PasskeyController } from './passkey.controller.js';
+import { PasskeyService } from './passkey.service.js';
 import { JwtAuthGuard } from './guards/jwt-auth.guard.js';
 import { ServerPermissionGuard } from './guards/server-permission.guard.js';
 import { PasswordService } from './password.service.js';
@@ -24,9 +26,10 @@ import { TotpService } from './totp.service.js';
 @Global()
 @Module({
   imports: [AuditModule],
-  controllers: [AuthController],
+  controllers: [AuthController, PasskeyController],
   providers: [
     AuthService,
+    PasskeyService,
     PasswordService,
     TokenService,
     TotpService,
