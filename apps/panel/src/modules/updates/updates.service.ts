@@ -18,8 +18,18 @@ const run = promisify(execFile);
 const REPOSITORY = 'hopper-panel/hopper';
 const GITHUB_API = 'https://api.github.com';
 
-/** How long a check is reused. GitHub allows sixty unauthenticated calls an hour. */
-const CACHE_MS = 30 * 60 * 1000;
+/**
+ * A floor between calls, not a cache anyone waits behind.
+ *
+ * The overview asks on every load, which is the only behaviour that cannot
+ * mislead: it was cached for thirty minutes before, and an operator opening the
+ * page right after a release read "Up to date" and believed it.
+ *
+ * A minute remains, and only to stop a held-down reload from spending GitHub's
+ * sixty unauthenticated calls an hour — a limit that belongs to the panel, so
+ * one person refreshing takes it from everyone using that panel.
+ */
+const CACHE_MS = 60 * 1000;
 
 /** The panel writes here; a root unit watches the directory. See `requestUpdate`. */
 const TRIGGER_NAME = 'requested';

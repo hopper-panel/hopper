@@ -34,9 +34,15 @@ export function UpdateCard() {
   const queryClient = useQueryClient();
   const [applied, setApplied] = useState(false);
 
+  // Asked afresh on every mount, never served from the browser's cache. The
+  // question is "is there an update right now", and any answer kept from
+  // earlier is an answer to a different question. The panel keeps a one-minute
+  // floor so a held-down reload cannot spend the API quota it shares.
   const check = useQuery({
     queryKey: ['admin', 'updates'],
-    queryFn: () => api.get<UpdateCheck>('/api/admin/updates'),
+    queryFn: () => api.get<UpdateCheck>('/api/admin/updates?refresh=true'),
+    staleTime: 0,
+    refetchOnMount: 'always',
   });
 
   const status = useQuery({
@@ -54,11 +60,6 @@ export function UpdateCard() {
       setApplied(true);
       void queryClient.invalidateQueries({ queryKey: ['admin', 'updates', 'status'] });
     },
-  });
-
-  const refresh = useMutation({
-    mutationFn: () => api.get<UpdateCheck>('/api/admin/updates?refresh=true'),
-    onSuccess: (data) => queryClient.setQueryData(['admin', 'updates'], data),
   });
 
   const data = check.data;
@@ -96,6 +97,17 @@ export function UpdateCard() {
           <div>
             <dt className="text-content-subtle">{t('adminUpdates.latest')}</dt>
             <dd className="font-mono text-content">{data?.latest ?? '—'}</dd>
+            {/* When the answer was obtained, not just what it was. "Up to date"
+                with no time on it is a claim about now, and the check is
+                cached: an operator who has just released something reads it as
+                current and concludes their release never landed. */}
+            {data?.checkedAt ? (
+              <dd className="mt-0.5 text-xs text-content-subtle">
+                {t('adminUpdates.checkedAt', {
+                  time: new Date(data.checkedAt).toLocaleTimeString(),
+                })}
+              </dd>
+            ) : null}
           </div>
         </dl>
       )}
@@ -114,10 +126,6 @@ export function UpdateCard() {
           disabled={running || unsupported || data?.updateAvailable !== true}
         >
           {running ? t('adminUpdates.applying') : t('adminUpdates.apply')}
-        </Button>
-
-        <Button variant="ghost" onClick={() => refresh.mutate()} disabled={refresh.isPending}>
-          {t('adminUpdates.recheck')}
         </Button>
       </div>
 
