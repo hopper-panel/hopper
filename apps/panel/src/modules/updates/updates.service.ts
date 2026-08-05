@@ -118,7 +118,33 @@ export class UpdatesService {
     return remote.ref !== null && remote.ref !== PANEL_VERSION;
   }
 
-  private async localCommit(): Promise<{ commit: string; date: string } | null> {
+  /**
+   * The commit this installation is running.
+   *
+   * Read from a file install.sh writes, **not** from git: the installer copies
+   * the sources with `--exclude=.git`, so an installed panel sits in a
+   * directory that is not a checkout and cannot say which revision it holds.
+   *
+   * The first version of this asked git and got nothing, which left the
+   * comparison falling back to tags — and a tag compared against `0.0.0-dev`
+   * differs always, so the administration announced an update on an
+   * installation that was perfectly current.
+   *
+   * git is still tried afterwards, for the development checkout where no
+   * installer has run.
+   */
+  private async localCommit(): Promise<{ commit: string; date: string | null } | null> {
+    try {
+      const recorded = (await readFile(join(this.root, '.hopper-commit'), 'utf8')).trim();
+
+      if (/^[0-9a-f]{40}$/.test(recorded)) {
+        return { commit: recorded, date: null };
+      }
+    } catch {
+      // No file: either a development checkout, or an installation made before
+      // the installer recorded it. git answers for the first case.
+    }
+
     try {
       const { stdout } = await run('git', ['-C', this.root, 'log', '-1', '--format=%H %cI'], {
         timeout: 5000,
@@ -127,8 +153,6 @@ export class UpdatesService {
 
       return commit && date ? { commit, date } : null;
     } catch {
-      // Not a checkout, or no git: the panel still reports its version, and the
-      // comparison falls back to tags.
       return null;
     }
   }
