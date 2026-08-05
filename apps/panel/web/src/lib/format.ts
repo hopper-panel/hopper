@@ -120,3 +120,18 @@ type StatusKey =
 export function describeStatus(status: string): { key: StatusKey; tone: Tone } {
   return STATUSES[status] ?? { key: 'status.installing', tone: 'offline' };
 }
+
+/**
+ * A download count someone can read at a glance.
+ *
+ * The catalogue answers with figures like 68699360. Printed in full they are
+ * eight characters of noise beside a plugin's name, and nobody compares two of
+ * them; what matters is the order of magnitude. `Intl` picks the right suffix
+ * per language — "68.7M" in English, "68,7 M" in French.
+ */
+export function formatCompact(value: number, locale = 'en'): string {
+  return new Intl.NumberFormat(locale, {
+    notation: 'compact',
+    maximumFractionDigits: 1,
+  }).format(value);
+}

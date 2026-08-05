@@ -975,6 +975,10 @@ export const en = {
   'adminServer.transferring': 'Moving… keep this page open',
   'adminServer.transferConfirm': 'Type {name} to move this server. It will be stopped.',
   'adminServer.transferDone': 'The server now runs on {node}.',
+
+  'plugins.downloads': '{count} downloads',
+  'plugins.hideVersions': 'Hide versions',
+  'plugins.viewOnModrinth': 'On Modrinth',
 } as const;
 
 export type MessageKey = keyof typeof en;

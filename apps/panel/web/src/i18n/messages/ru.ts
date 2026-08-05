@@ -911,4 +911,8 @@ export const ru: Partial<Messages> = {
   'adminServer.transferring': 'Перенос… не закрывайте страницу',
   'adminServer.transferConfirm': 'Введите {name}, чтобы перенести сервер. Он будет остановлен.',
   'adminServer.transferDone': 'Сервер теперь работает на {node}.',
+
+  'plugins.downloads': 'загрузок: {count}',
+  'plugins.hideVersions': 'Скрыть версии',
+  'plugins.viewOnModrinth': 'На Modrinth',
 };
