@@ -45,10 +45,7 @@ updates:
       actions:
         patterns: ['*']
 
-  # The Java image the Minecraft servers run in. A base image left unpatched is
-  # the one an operator never thinks to update.
-  - package-ecosystem: docker
-    directory: /docker/java
-    schedule:
-      interval: weekly
-      day: monday
+  # No docker ecosystem entry: the servers run the official eclipse-temurin
+  # images, named in `packages/templates`, and nothing in this repository builds
+  # a Dockerfile. Those images are pulled by tag, so a base image patch reaches
+  # a server on its next restart without anything to update here.
