@@ -956,6 +956,25 @@ export const en = {
   'passkeys.neverUsed': 'Never used',
   'passkeys.registerFailed': 'This passkey could not be registered.',
   'passkeys.unsupported': 'This browser does not support passkeys.',
+
+  // Transferring a server between nodes
+  'adminServer.transfer': 'Move to another node',
+  'adminServer.transferHint':
+    'Copies the server to another machine and removes it from this one. The address changes; the identifier and the files do not.',
+  'adminServer.transferTarget': 'Destination node',
+  'adminServer.transferPick': 'Choose a node…',
+  'adminServer.transferNoNode': 'There is no other node to move this server to.',
+  'adminServer.transferPorts': '{count} free port(s) on that node. One will be assigned.',
+  'adminServer.transferNoPort':
+    'That node has no free port. Add one to its pool before moving a server there.',
+  'adminServer.transferStranded':
+    'These databases stay on the current node and will stop answering: {databases}. Move their contents yourself, or recreate them afterwards.',
+  'adminServer.transferStops':
+    'The server is stopped first, and its world is only archived once it has. A large world takes several minutes.',
+  'adminServer.transferStart': 'Move the server',
+  'adminServer.transferring': 'Moving… keep this page open',
+  'adminServer.transferConfirm': 'Type {name} to move this server. It will be stopped.',
+  'adminServer.transferDone': 'The server now runs on {node}.',
 } as const;
 
 export type MessageKey = keyof typeof en;

@@ -120,3 +120,38 @@ is a release nobody can reproduce.
 
 The updater follows the latest tag when one exists, and `main` otherwise — so
 what it installs is the version the administration just offered.
+
+## Moving a server to another node
+
+**Administration → Servers → _the server_ → Manage → Move to another node.**
+
+Pick the destination and the panel says what it would cost before anything happens: how many free
+ports that node has, and which databases would stay behind. Then type the server's name to confirm.
+
+What happens, in order:
+
+1. The server is **stopped**, and the panel waits until it really has stopped. Archiving a running
+   world copies region files mid-write; what arrives on the other side would load with holes in it.
+   If the server ignores the stop for two minutes the transfer is abandoned rather than forced —
+   killing it there would produce exactly that damage.
+2. Its files are compressed on the source node.
+3. The archive is streamed **through the panel** to the target. No node ever talks to another node:
+   a daemon that could be told "fetch this URL" would be a request forger sitting inside your
+   private network. The bytes are relayed, never held in memory, so the panel's memory does not
+   grow with the size of the world.
+4. The archive is extracted on the target, and a free port there is assigned.
+5. Only then is the old copy deleted.
+
+A failure at any step before the last leaves the server exactly where it was, files intact — start
+it again in place. If the move succeeds but the old copy cannot be removed, the transfer still
+counts as done and the leftover volume is logged; the server is already running on the target, and
+undoing a completed move to satisfy a cleanup would be the worse outcome.
+
+Two things do not follow the server:
+
+- **Its address.** The port comes from the destination node's pool, so players need the new one.
+- **Databases on a host tied to the old node.** Their address is often reachable from that machine
+  only. The panel names them before you confirm; move their contents yourself, or recreate them.
+
+The server's identifier does not change, so backups, subusers, schedules and API keys all still
+point at it.

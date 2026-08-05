@@ -902,4 +902,23 @@ export const es: Partial<Messages> = {
   'passkeys.neverUsed': 'Nunca usada',
   'passkeys.registerFailed': 'No se pudo registrar esta llave de acceso.',
   'passkeys.unsupported': 'Este navegador no admite llaves de acceso.',
+
+  // Traslado de un servidor entre nodos
+  'adminServer.transfer': 'Mover a otro nodo',
+  'adminServer.transferHint':
+    'Copia el servidor a otra máquina y lo retira de esta. La dirección cambia; el identificador y los archivos no.',
+  'adminServer.transferTarget': 'Nodo de destino',
+  'adminServer.transferPick': 'Elige un nodo…',
+  'adminServer.transferNoNode': 'No hay otro nodo al que mover este servidor.',
+  'adminServer.transferPorts': '{count} puerto(s) libre(s) en ese nodo. Se asignará uno.',
+  'adminServer.transferNoPort':
+    'Ese nodo no tiene ningún puerto libre. Añade uno a su grupo antes de mover un servidor ahí.',
+  'adminServer.transferStranded':
+    'Estas bases de datos se quedan en el nodo actual y dejarán de responder: {databases}. Mueve su contenido tú mismo, o vuelve a crearlas después.',
+  'adminServer.transferStops':
+    'El servidor se detiene primero, y su mundo solo se archiva cuando ya lo está. Un mundo grande tarda varios minutos.',
+  'adminServer.transferStart': 'Mover el servidor',
+  'adminServer.transferring': 'Moviendo… deja esta página abierta',
+  'adminServer.transferConfirm': 'Escribe {name} para mover este servidor. Se detendrá.',
+  'adminServer.transferDone': 'El servidor ahora se ejecuta en {node}.',
 };

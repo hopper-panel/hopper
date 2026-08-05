@@ -22,11 +22,14 @@ import { AdminOnly } from '../auth/decorators.js';
 import { CurrentUser, type AuthenticatedRequest, type RequestUser } from '../auth/request-user.js';
 import {
   createServerSchema,
+  transferServerSchema,
   updateServerBuildSchema,
   type CreateServerDto,
+  type TransferServerDto,
   type UpdateServerBuildDto,
 } from './servers.dto.js';
 import { ServersService, type ServerListItem } from './servers.service.js';
+import { TransferService, type TransferPlan } from './transfer.service.js';
 
 /**
  * Server administration: creation, limits, suspension, deletion.
@@ -39,7 +42,10 @@ import { ServersService, type ServerListItem } from './servers.service.js';
 @Controller('api/admin/servers')
 @AdminOnly()
 export class AdminServersController {
-  constructor(private readonly servers: ServersService) {}
+  constructor(
+    private readonly servers: ServersService,
+    private readonly transfers: TransferService,
+  ) {}
 
   @Get()
   list(
@@ -102,6 +108,36 @@ export class AdminServersController {
     @Req() request: AuthenticatedRequest,
   ): Promise<void> {
     return this.servers.remove(uuid, actor.id, contextOf(request));
+  }
+
+  /**
+   * What a transfer to `node` would involve, without starting one.
+   *
+   * A separate read so the interface can warn before the button rather than
+   * after: the server stops, gigabytes move, and a database tied to the old
+   * node does not follow.
+   */
+  @Get(':uuid/transfer')
+  plan(@Param('uuid') uuid: string, @Query('node') node: string): Promise<TransferPlan> {
+    return this.transfers.plan(uuid, node);
+  }
+
+  /**
+   * Moves the server to another node.
+   *
+   * Held open until it is done — minutes for a large world. The alternative is
+   * a job whose failure nobody is watching for, and the failure of a
+   * half-moved server is the one that must not be missed.
+   */
+  @Post(':uuid/transfer')
+  @HttpCode(HttpStatus.OK)
+  transfer(
+    @Param('uuid') uuid: string,
+    @Body(new ZodValidationPipe(transferServerSchema)) body: TransferServerDto,
+    @CurrentUser() actor: RequestUser,
+    @Req() request: AuthenticatedRequest,
+  ): Promise<{ node: string }> {
+    return this.transfers.transfer(uuid, body.node, actor.id, contextOf(request));
   }
 }
 
