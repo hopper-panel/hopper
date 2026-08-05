@@ -96,8 +96,21 @@ export async function registerWebAssets(
   return { served: true, root };
 }
 
-function setHeaders(response: { setHeader: (name: string, value: string) => void }, path: string) {
+/**
+ * Cache policy of a served file.
+ *
+ * Typed structurally rather than as a `FastifyReply`: setting one header is all
+ * this needs, and a structural type keeps the function testable without
+ * standing up a whole reply object.
+ *
+ * @fastify/static 10 hands a `FastifyReply` where 8 handed a raw response —
+ * hence `header` and no longer `setHeader`.
+ */
+export function setHeaders(
+  reply: { header: (name: string, value: string) => unknown },
+  path: string,
+) {
   const normalized = path.replace(/\\/g, '/');
   const assetsAt = normalized.lastIndexOf('/assets/');
-  response.setHeader('cache-control', cacheControlFor(assetsAt === -1 ? '/' : '/assets/'));
+  reply.header('cache-control', cacheControlFor(assetsAt === -1 ? '/' : '/assets/'));
 }
