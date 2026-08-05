@@ -26,6 +26,7 @@ import { AdminDatabaseHostsPage } from './pages/admin/DatabaseHosts';
 import { AdminNodeDetailPage } from './pages/admin/NodeDetail';
 import { AdminNodesPage } from './pages/admin/Nodes';
 import { AdminOverviewPage } from './pages/admin/Overview';
+import { AdminServerDetailPage } from './pages/admin/ServerDetail';
 import { AdminServersPage } from './pages/admin/Servers';
 import { AdminSettingsPage } from './pages/admin/Settings';
 import { AdminTemplatesPage } from './pages/admin/Templates';
@@ -95,6 +96,7 @@ export function App() {
           <Route path="nodes" element={<AdminNodesPage />} />
           <Route path="nodes/:uuid" element={<AdminNodeDetailPage />} />
           <Route path="servers" element={<AdminServersPage />} />
+          <Route path="servers/:uuid" element={<AdminServerDetailPage />} />
           <Route path="users" element={<AdminUsersPage />} />
           <Route path="database-hosts" element={<AdminDatabaseHostsPage />} />
           <Route path="settings" element={<AdminSettingsPage />} />
