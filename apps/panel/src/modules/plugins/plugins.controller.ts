@@ -11,7 +11,7 @@ import {
 import { NodeClientService } from '../nodes/node-client.service.js';
 import { NodesService } from '../nodes/nodes.service.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
-import { ModrinthService, type PluginSearchHit, type PluginVersion } from './modrinth.service.js';
+import { ModrinthService, type PluginSearchPage, type PluginVersion } from './modrinth.service.js';
 
 /**
  * What a template can load, by its key.
@@ -73,14 +73,25 @@ export class PluginsController {
     @CurrentServer() server: RequestServer,
     @Query('query') query?: string,
     @Query('gameVersion') gameVersion?: string,
-  ): Promise<PluginSearchHit[]> {
+    @Query('page') page?: string,
+  ): Promise<PluginSearchPage> {
     // The loader is the server's, never the caller's. Searching without it
     // returns whatever the catalogue ranks highest — which is how a Fabric mod
     // ends up offered for a Paper server, installed into the folder that is
     // right for Fabric, and never loaded.
     const loader = await this.loaderFor(server);
 
-    return this.modrinth.search(query ?? '', loader, gameVersion);
+    // A page that does not parse is page one, not an error: the number comes
+    // from a link, and an operator who lands on a broken one wants the
+    // catalogue rather than a stack trace.
+    const requested = Number.parseInt(page ?? '1', 10);
+
+    return this.modrinth.search(
+      query ?? '',
+      loader,
+      gameVersion,
+      Number.isFinite(requested) && requested > 0 ? requested : 1,
+    );
   }
 
   @Get(':projectId/versions')
