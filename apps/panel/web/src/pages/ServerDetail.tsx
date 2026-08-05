@@ -26,6 +26,55 @@ const POWER_PERMISSIONS: Record<PowerAction, Permission> = {
   kill: 'control.stop',
 };
 
+/**
+ * How long a stop is given before Kill is offered in its place.
+ *
+ * The daemon already escalates on its own: it waits `stopTimeoutSeconds` — 30
+ * by default — then sends SIGKILL itself. So a server still stopping past that
+ * window is one whose own escalation did not take, which is the only situation
+ * where a person killing it by hand adds anything.
+ *
+ * The margin covers the SIGKILL and the state change finding its way back
+ * through the WebSocket. The front does not receive the configured value; if
+ * that default moves, this moves with it.
+ */
+const KILL_OFFERED_AFTER_MS = 45_000;
+
+/**
+ * Milliseconds spent in `stopping`, or null outside that state.
+ *
+ * A ticking clock rather than a timer armed on the click: the console survives
+ * tab changes and reconnections, so a timer tied to the button would be lost
+ * the moment someone looked at another tab.
+ *
+ * It counts from when this page *noticed* the state, not from when the stop
+ * began — the daemon reports the state but not when it was entered. Opening the
+ * console on a server that has been stuck for five minutes therefore still
+ * waits the full delay. Fixing that means carrying the timestamp in the state
+ * message, which is a change to the panel↔daemon contract.
+ */
+function useStoppingFor(state: string): number | null {
+  const [since, setSince] = useState<number | null>(null);
+  const [, tick] = useState(0);
+
+  useEffect(() => {
+    if (state !== 'stopping') {
+      setSince(null);
+      return;
+    }
+
+    setSince((current) => current ?? Date.now());
+
+    // One second is enough: the threshold is counted in tens of seconds, and a
+    // faster interval would re-render the page under a live console for
+    // nothing.
+    const timer = setInterval(() => tick((value) => value + 1), 1000);
+    return () => clearInterval(timer);
+  }, [state]);
+
+  return since === null ? null : Date.now() - since;
+}
+
 /** Curve colours, read from the theme rather than hard-coded. */
 const PRIMARY_LINE = 'var(--color-accent)';
 const SECONDARY_LINE = 'var(--color-online)';
@@ -42,6 +91,13 @@ export function ServerDetailPage() {
 
   const busy = controller.state === 'starting' || controller.state === 'stopping';
   const unlimited = '∞';
+
+  // Kill is not a button of its own any more. Offered permanently it gets
+  // clicked instead of Stop — it is quicker and it always works — and every
+  // such click is a world saved to disk in whatever state it was in. It now
+  // replaces Stop, and only once Stop has visibly failed.
+  const stoppingFor = useStoppingFor(controller.state);
+  const stopIsStuck = stoppingFor !== null && stoppingFor > KILL_OFFERED_AFTER_MS;
 
   return (
     <>
@@ -64,30 +120,28 @@ export function ServerDetailPage() {
             can={can}
             disabled={busy || controller.state === 'offline'}
           />
-          <PowerButton
-            action="stop"
-            label="console.stop"
-            controller={controller}
-            can={can}
-            variant="danger"
-            disabled={busy || controller.state === 'offline'}
-          />
-          {/* Kill only appears when it can serve: an offline server has
-              nothing to kill, and a button that is always there ends up being
-              clicked instead of Stop. */}
-          {controller.state !== 'offline' ? (
+          {stopIsStuck ? (
             <PowerButton
               action="kill"
               label="console.kill"
               controller={controller}
               can={can}
-              variant="ghost"
+              variant="danger"
               disabled={false}
-              // A SIGKILL during a region save corrupts the map: this asks
-              // for confirmation rather than exposing an ordinary button.
+              // A SIGKILL during a region save corrupts the map: this asks for
+              // confirmation rather than exposing an ordinary button.
               confirm="console.killConfirm"
             />
-          ) : null}
+          ) : (
+            <PowerButton
+              action="stop"
+              label="console.stop"
+              controller={controller}
+              can={can}
+              variant="danger"
+              disabled={busy || controller.state === 'offline'}
+            />
+          )}
         </div>
       </div>
 
