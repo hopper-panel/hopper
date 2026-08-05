@@ -2,6 +2,18 @@ import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vite';
 
+/**
+ * Third-party code grouped into chunks that change at different rates.
+ *
+ * Order matters: the first match wins, so a package that is a prefix of
+ * another has to come after it.
+ */
+const CHUNKS: [string, string[]][] = [
+  ['terminal', ['@xterm/xterm', '@xterm/addon-fit']],
+  ['data', ['@tanstack/react-query', 'zod']],
+  ['react', ['react-router-dom', 'react-dom', 'react']],
+];
+
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   server: {
@@ -36,10 +48,25 @@ export default defineConfig({
          * route would force lazy imports everywhere, for a smaller gain — it is
          * the third-party code that weighs, not ours.
          */
-        manualChunks: {
-          terminal: ['@xterm/xterm', '@xterm/addon-fit'],
-          react: ['react', 'react-dom', 'react-router-dom'],
-          data: ['@tanstack/react-query', 'zod'],
+        // Vite 8 dropped the object form and takes a function only. The
+        // mapping is spelled out rather than derived from the module id so a
+        // dependency landing in the wrong chunk stays a visible mistake in this
+        // table, not a regex that silently stopped matching.
+        manualChunks: (id) => {
+          if (!id.includes('node_modules')) {
+            return undefined;
+          }
+
+          for (const [chunk, packages] of CHUNKS) {
+            // Matched on the path segment, not on a bare substring: `react` as
+            // a substring also appears in `react-router-dom` and
+            // `@tanstack/react-query`, which belong to other chunks.
+            if (packages.some((name) => id.includes(`node_modules/${name}/`))) {
+              return chunk;
+            }
+          }
+
+          return undefined;
         },
       },
     },
