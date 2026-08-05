@@ -104,7 +104,7 @@ hopper/
 │   ├── shared/           # Zod panel↔daemon contract, permissions
 │   ├── templates/        # server templates + Pterodactyl egg import
 │   └── config/           # shared ESLint / TypeScript
-├── docker/               # Java images, dev compose
+├── docker/               # dev compose (PostgreSQL, Redis, MinIO)
 ├── install/              # install.sh, systemd units, nginx & apache vhosts
 └── docs/                 # installation, updating, CLI, templates, security
 ```

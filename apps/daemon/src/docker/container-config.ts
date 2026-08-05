@@ -180,6 +180,16 @@ export function buildContainerOptions(
       PidsLimit: configuration.build.pidsLimit,
       OomKillDisable: configuration.build.oomKillDisabled,
 
+      // Docker runs its own tini as PID 1. Without it the JVM takes that role,
+      // and a PID 1 does not adopt orphans: every subprocess a plugin spawns
+      // and abandons stays a zombie, consuming a slot until `PidsLimit` is
+      // reached and the server can no longer create a thread. It also relays
+      // signals, which is what makes a clean stop work.
+      //
+      // This used to come from a tini baked into an image built here. Asking
+      // Docker for the same binary removes the need for that image entirely.
+      Init: true,
+
       // --- Hardening --------------------------------------------------------
       Privileged: false,
       // The server needs no capability: it listens on a port above 1024 and

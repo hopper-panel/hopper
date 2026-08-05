@@ -127,11 +127,16 @@ function convertImages(egg: PterodactylEgg, warnings: string[]): DockerImageOpti
     throw new EggImportError('This egg declares no Docker image.');
   }
 
-  const foreign = images.filter((option) => !option.image.startsWith('ghcr.io/hopper-panel/'));
+  // Hopper imposes the user, the capabilities and PID 1 on the container
+  // itself, so an image from elsewhere is not less safe for being foreign. What
+  // it can lack is what a server needs at runtime — a JRE of the right major
+  // version, and curl for the plugins that fetch their resources on first
+  // start.
+  const foreign = images.filter((option) => !option.image.startsWith('eclipse-temurin:'));
 
   if (foreign.length > 0) {
     warnings.push(
-      `This egg's images come from elsewhere (${foreign[0]!.image}). They will work, but they do not benefit from the hardening of Hopper's images: check that they run a non-root user with UID 988.`,
+      `This egg names images of its own (${foreign[0]!.image}). They will work — Hopper sets the user, drops every capability and supplies PID 1 regardless of the image — but check the Java version matches the server, and that the image carries curl if a plugin downloads anything at startup.`,
     );
   }
 

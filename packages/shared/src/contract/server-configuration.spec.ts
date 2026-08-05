@@ -12,7 +12,7 @@ const MINIMAL = {
     cpuPercent: 200,
     diskBytes: 10 * 1024 ** 3,
   },
-  container: { image: 'ghcr.io/hopper-panel/java:21' },
+  container: { image: 'eclipse-temurin:21-jre-noble' },
   stop: { type: 'command', value: 'stop' },
 };
 
