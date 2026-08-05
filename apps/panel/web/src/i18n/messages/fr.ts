@@ -966,4 +966,23 @@ export const fr: Partial<Messages> = {
   'passkeys.neverUsed': 'Jamais utilisée',
   'passkeys.registerFailed': 'Cette clé d’accès n’a pas pu être enregistrée.',
   'passkeys.unsupported': 'Ce navigateur ne gère pas les clés d’accès.',
+
+  // Transfert d'un serveur entre nodes
+  'adminServer.transfer': 'Déplacer vers un autre node',
+  'adminServer.transferHint':
+    'Copie le serveur sur une autre machine puis le retire de celle-ci. L’adresse change ; l’identifiant et les fichiers non.',
+  'adminServer.transferTarget': 'Node de destination',
+  'adminServer.transferPick': 'Choisir un node…',
+  'adminServer.transferNoNode': 'Il n’existe aucun autre node vers lequel déplacer ce serveur.',
+  'adminServer.transferPorts': '{count} port(s) libre(s) sur ce node. Un sera attribué.',
+  'adminServer.transferNoPort':
+    'Ce node n’a aucun port libre. Ajoutez-en un à son pool avant d’y déplacer un serveur.',
+  'adminServer.transferStranded':
+    'Ces bases restent sur le node actuel et cesseront de répondre : {databases}. Déplacez leur contenu vous-même, ou recréez-les ensuite.',
+  'adminServer.transferStops':
+    'Le serveur est arrêté d’abord, et le monde n’est archivé qu’une fois l’arrêt effectif. Un gros monde prend plusieurs minutes.',
+  'adminServer.transferStart': 'Déplacer le serveur',
+  'adminServer.transferring': 'Déplacement… gardez cette page ouverte',
+  'adminServer.transferConfirm': 'Tapez {name} pour déplacer ce serveur. Il sera arrêté.',
+  'adminServer.transferDone': 'Le serveur tourne maintenant sur {node}.',
 };

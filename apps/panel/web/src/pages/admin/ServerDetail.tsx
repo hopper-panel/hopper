@@ -6,6 +6,7 @@ import { Alert, Badge, Button, Card, Spinner } from '../../components/ui';
 import { useTranslation, type MessageKey } from '../../i18n';
 import { api, ApiError } from '../../lib/api';
 import { formatBytes } from '../../lib/format';
+import { TransferCard } from './TransferCard';
 import { DatabasesTab, DetailsTab, NetworkTab, StartupTab } from './ServerDetailTabs';
 
 interface AdminServer {
@@ -369,6 +370,8 @@ function Manage({ server, onDeleted }: { server: AdminServer; onDeleted: () => v
 
   return (
     <div className="grid gap-4">
+      <TransferCard server={server} currentNode={server.node.name} />
+
       <Card>
         <h2 className="mb-1 text-sm font-semibold uppercase tracking-wide text-content">
           {t(suspended ? 'adminServer.unsuspend' : 'adminServer.suspend')}

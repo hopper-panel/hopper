@@ -6,11 +6,12 @@ import { FilesController } from './files.controller.js';
 import { ServerConfigurationService } from './server-configuration.service.js';
 import { ServersController } from './servers.controller.js';
 import { ServersService } from './servers.service.js';
+import { TransferService } from './transfer.service.js';
 
 @Module({
   imports: [NodesModule],
   controllers: [ServersController, AdminServersController, ConsoleController, FilesController],
-  providers: [ServersService, ServerConfigurationService],
+  providers: [ServersService, ServerConfigurationService, TransferService],
   exports: [ServersService, ServerConfigurationService],
 })
 export class ServersModule {}
