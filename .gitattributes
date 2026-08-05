@@ -1,0 +1,23 @@
+# Normalisation des fins de ligne.
+#
+# The install scripts and the Docker entrypoints are run by bash under Linux:
+# a CRLF there produces an unreadable error (`/bin/bash^M: bad interpreter`).
+# So LF is forced everywhere, Windows workstations included.
+* text=auto eol=lf
+
+*.sh    text eol=lf
+*.bash  text eol=lf
+Dockerfile text eol=lf
+
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+*.jar binary
+
+# Generated: excluded from diffs and from GitHub's language statistics.
+pnpm-lock.yaml -diff linguist-generated=true
+LICENSE linguist-vendored=true

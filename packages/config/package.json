@@ -1,0 +1,33 @@
+{
+  "name": "@hopper/config",
+  "version": "0.0.0",
+  "private": true,
+  "license": "AGPL-3.0-or-later",
+  "type": "commonjs",
+  "exports": {
+    "./eslint": "./eslint.base.js",
+    "./eslint-react": "./eslint.react.js",
+    "./tsconfig/node.json": "./tsconfig/node.json",
+    "./tsconfig/nest.json": "./tsconfig/nest.json",
+    "./tsconfig/library.json": "./tsconfig/library.json",
+    "./tsconfig/react.json": "./tsconfig/react.json"
+  },
+  "files": [
+    "eslint.base.js",
+    "eslint.react.js",
+    "tsconfig"
+  ],
+  "dependencies": {
+    "@eslint/js": "^9.35.0",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-import-x": "^4.16.1",
+    "eslint-plugin-react-hooks": "^5.2.0",
+    "eslint-plugin-react-refresh": "^0.4.20",
+    "globals": "^16.3.0",
+    "typescript-eslint": "^8.42.0"
+  },
+  "peerDependencies": {
+    "eslint": "^9.35.0",
+    "typescript": "^5.9.2"
+  }
+}

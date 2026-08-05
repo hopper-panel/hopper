@@ -1,0 +1,50 @@
+[Unit]
+Description=Hopper Daemon
+Documentation=https://github.com/hopper-panel/hopper
+# `hopper-panel.service` does not exist on a machine hosting only a node: an
+# `After=` on an absent unit is simply ignored. Where the two live together, it
+# narrows the window in which the daemon starts before the panel — the daemon
+# recovers on its own either way.
+After=network-online.target docker.service hopper-panel.service
+Requires=docker.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+
+# The daemon runs as root, and that is not a shortcut.
+#
+# It writes into the server volumes, which belong to the container UID (988 by
+# default) and not to its own, and takes ownership of the files back after every
+# installation. Under an ordinary account, the first file upload fails with
+# EACCES.
+#
+# The security gain one might expect from running it unprivileged is illusory
+# anyway: that account would have to belong to the "docker" group, and that
+# membership is already equivalent to root — starting a privileged container
+# that mounts "/" is enough to prove it.
+User=root
+Group=root
+
+WorkingDirectory=/opt/hopper/apps/daemon
+ExecStart=/usr/bin/node dist/index.js --config /etc/hopper/daemon.yml
+
+Restart=on-failure
+RestartSec=5
+# A daemon restarting in a loop has to give up eventually, otherwise the failure
+# stays invisible in the logs, drowned under the restarts.
+StartLimitBurst=5
+StartLimitIntervalSec=120
+
+# Minecraft servers open a lot of descriptors: player sockets, region files,
+# console streams. The systemd default is reached at around twenty servers.
+LimitNOFILE=65535
+
+NoNewPrivileges=false
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=hopperd
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,34 @@
+name: ✨ Feature request
+description: Suggest an improvement
+labels: ['enhancement', 'triage']
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve?
+      description: Describe the concrete annoyance, not the solution you have in mind.
+      placeholder: 'Running 20 servers, I have no way of seeing which ones crashed last night.'
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Solution you have in mind
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Checks
+      options:
+        - label: I have read the roadmap in the README and this feature is not already on it.
+          required: true
+        - label: I have searched the existing issues and discussions.
+          required: true
