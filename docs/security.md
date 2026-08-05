@@ -57,8 +57,8 @@ Two things to know before relying on one:
 
 - **Passkeys need HTTPS.** Browsers refuse them over plain http, except on `localhost`. If `APP_URL`
   is not https, registration fails in the browser and the panel says so in its log at startup.
-- **A device-bound passkey dies with the device.** The account page marks each one *synchronised* or
-  *this device only*. If your only passkey is the second kind, register another — your password
+- **A device-bound passkey dies with the device.** The account page marks each one _synchronised_ or
+  _this device only_. If your only passkey is the second kind, register another — your password
   still works, but a lost phone should not be the thing you find that out from.
 
 ### 6. Backups, off the machine
