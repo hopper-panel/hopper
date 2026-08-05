@@ -45,6 +45,28 @@ export function registerServerRoutes(app: FastifyInstance, manager: ServerManage
     return reply.code(201).send({ uuid: server.uuid, state: server.currentState });
   });
 
+  /**
+   * Runs the install script again over an existing server.
+   *
+   * The panel has posted here since reinstall existed and the route was never
+   * registered, so every attempt answered 404 — which the interface reports as
+   * "is the node reachable?". That left a server whose install had failed with
+   * no way back: stuck INSTALLING or INSTALL_FAILED, and no button that worked.
+   *
+   * Not awaited, for the same reason as creation: an install runs for minutes
+   * and the verdict arrives on `/api/remote/servers/:uuid/install`.
+   */
+  app.post('/api/servers/:uuid/reinstall', async (request, reply) => {
+    const { uuid } = request.params as { uuid: string };
+    const server = manager.require(uuid);
+
+    void server.install(false).catch((error: unknown) => {
+      request.log.error({ server: server.uuid, err: error }, 'Reinstallation failed');
+    });
+
+    return reply.code(202).send({ uuid: server.uuid, state: server.currentState });
+  });
+
   app.get('/api/servers/:uuid', async (request, reply) => {
     const { uuid } = request.params as { uuid: string };
     const server = manager.require(uuid);
