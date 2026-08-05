@@ -930,4 +930,8 @@ export const de: Partial<Messages> = {
   'adminServer.transferring': 'Wird verschoben… lass diese Seite offen',
   'adminServer.transferConfirm': 'Tippe {name}, um diesen Server zu verschieben. Er wird gestoppt.',
   'adminServer.transferDone': 'Der Server läuft jetzt auf {node}.',
+
+  'plugins.downloads': '{count} Downloads',
+  'plugins.hideVersions': 'Versionen ausblenden',
+  'plugins.viewOnModrinth': 'Auf Modrinth',
 };

@@ -3,6 +3,7 @@ import 'reflect-metadata';
 import fastifyCookie from '@fastify/cookie';
 import fastifyCors from '@fastify/cors';
 import fastifyHelmet from '@fastify/helmet';
+import { ALLOWED_FETCH_HOSTS } from '@hopper/shared';
 import { Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
@@ -66,6 +67,16 @@ async function bootstrap(): Promise<void> {
             // Since nodes are declared at runtime, their origins cannot be
             // enumerated here.
             'connect-src': ["'self'", 'ws:', 'wss:'],
+            // The catalogue's icons. helmet's default is `'self' data:`, which
+            // showed a broken image on every plugin in the list — the browser
+            // refused them and said nothing anywhere the panel could see.
+            //
+            // Taken from the same constant the daemon checks its downloads
+            // against, so the host the browser may load an icon from and the
+            // host the node may take a jar from cannot drift apart. The images
+            // carry `referrerpolicy="no-referrer"`, so Modrinth learns that
+            // somebody wanted an icon and not which panel they were looking at.
+            'img-src': ["'self'", 'data:', ...ALLOWED_FETCH_HOSTS],
             // Vite emits no inline script; the default value is enough and
             // forbids injection.
             'script-src': ["'self'"],
