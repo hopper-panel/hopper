@@ -43,6 +43,24 @@ The database and Redis have no reason to be reachable.
 An administrator account can create a server, and therefore run code on the host. **My account →
 Two-factor authentication**; it also protects SFTP, which shares the credentials.
 
+Or a **passkey**, which is stronger and less work. The key lives in your phone, your laptop's
+secure enclave or a USB key, and the private half never reaches the panel — there is nothing in the
+database for a stolen dump to replay. It is registered and used with user verification required, so
+the device asks for a PIN or a biometric every time: possession and knowledge both, before the
+browser has said anything to us. That is why a passkey login asks for no code afterwards.
+
+The signature covers the origin. A convincing copy of the sign-in page on another domain gets a
+signature that verifies against that domain and nowhere else, so the phishing attempt that works
+against a password and a code produces nothing usable here.
+
+Two things to know before relying on one:
+
+- **Passkeys need HTTPS.** Browsers refuse them over plain http, except on `localhost`. If `APP_URL`
+  is not https, registration fails in the browser and the panel says so in its log at startup.
+- **A device-bound passkey dies with the device.** The account page marks each one _synchronised_ or
+  _this device only_. If your only passkey is the second kind, register another — your password
+  still works, but a lost phone should not be the thing you find that out from.
+
 ### 6. Backups, off the machine
 
 A backup on the same disk as the data protects only against human error. Point the daemon's

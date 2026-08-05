@@ -888,4 +888,27 @@ export const de: Partial<Messages> = {
   'fileEdit.loading': 'Datei wird geladen…',
 
   'fileEdit.backToFiles': 'Zurück zu den Dateien',
+
+  // Passkeys
+  'login.or': 'oder',
+  'login.passkey': 'Mit einem Passkey anmelden',
+  'login.passkeyWaiting': 'Warten auf dein Gerät…',
+  'login.passkeyFailed': 'Dieser Passkey wurde abgelehnt.',
+  'passkeys.title': 'Passkeys',
+  'passkeys.intro':
+    'Melde dich mit deinem Gerät statt mit einem Passwort an — Fingerabdruck, Gesicht oder PIN. Der Schlüssel verlässt dein Gerät nie und funktioniert nur auf dieser Seite: Eine gefälschte Anmeldeseite bekommt nichts.',
+  'passkeys.add': 'Passkey hinzufügen',
+  'passkeys.continue': 'Weiter',
+  'passkeys.waiting': 'Warten auf dein Gerät…',
+  'passkeys.name': 'Name',
+  'passkeys.nameHint': 'Zur Unterscheidung von den anderen — Arbeitslaptop, Telefon.',
+  'passkeys.defaultName': 'Mein Passkey',
+  'passkeys.empty': 'Noch kein Passkey. Dein Passwort funktioniert weiterhin.',
+  'passkeys.remove': 'Entfernen',
+  'passkeys.synced': 'synchronisiert',
+  'passkeys.deviceBound': 'nur dieses Gerät',
+  'passkeys.lastUsed': 'Zuletzt verwendet am {date}',
+  'passkeys.neverUsed': 'Nie verwendet',
+  'passkeys.registerFailed': 'Dieser Passkey konnte nicht registriert werden.',
+  'passkeys.unsupported': 'Dieser Browser unterstützt keine Passkeys.',
 };

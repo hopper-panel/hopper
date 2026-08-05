@@ -21,6 +21,14 @@ export const AUDIT_EVENTS = {
   TWO_FACTOR_FAILED: 'auth.2fa.failed',
   RECOVERY_CODE_USED: 'auth.2fa.recovery-code-used',
 
+  PASSKEY_REGISTERED: 'auth.passkey.registered',
+  PASSKEY_REMOVED: 'auth.passkey.removed',
+  PASSKEY_LOGIN: 'auth.passkey.login',
+  /// A counter that went backwards: the credential exists twice, and one of
+  /// the copies is not the user's. Separate from a failed login because it
+  /// says something a wrong password never does.
+  PASSKEY_CLONE_SUSPECTED: 'auth.passkey.clone-suspected',
+
   USER_CREATED: 'user.created',
   USER_UPDATED: 'user.updated',
   USER_DELETED: 'user.deleted',

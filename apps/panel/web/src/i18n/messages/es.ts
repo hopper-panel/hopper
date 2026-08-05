@@ -879,4 +879,27 @@ export const es: Partial<Messages> = {
   'fileEdit.loading': 'Cargando el archivo…',
 
   'fileEdit.backToFiles': 'Volver a los archivos',
+
+  // Llaves de acceso
+  'login.or': 'o',
+  'login.passkey': 'Iniciar sesión con una llave de acceso',
+  'login.passkeyWaiting': 'Esperando a tu dispositivo…',
+  'login.passkeyFailed': 'Esa llave de acceso no fue aceptada.',
+  'passkeys.title': 'Llaves de acceso',
+  'passkeys.intro':
+    'Inicia sesión con tu dispositivo en lugar de una contraseña — huella, cara o PIN. La llave nunca sale de tu dispositivo y solo funciona en este sitio, así que una página de inicio de sesión falsa no obtiene nada.',
+  'passkeys.add': 'Añadir una llave de acceso',
+  'passkeys.continue': 'Continuar',
+  'passkeys.waiting': 'Esperando a tu dispositivo…',
+  'passkeys.name': 'Nombre',
+  'passkeys.nameHint': 'Para distinguirla de las demás: portátil del trabajo, teléfono.',
+  'passkeys.defaultName': 'Mi llave de acceso',
+  'passkeys.empty': 'Todavía no hay ninguna. Tu contraseña sigue funcionando.',
+  'passkeys.remove': 'Eliminar',
+  'passkeys.synced': 'sincronizada',
+  'passkeys.deviceBound': 'solo este dispositivo',
+  'passkeys.lastUsed': 'Usada por última vez el {date}',
+  'passkeys.neverUsed': 'Nunca usada',
+  'passkeys.registerFailed': 'No se pudo registrar esta llave de acceso.',
+  'passkeys.unsupported': 'Este navegador no admite llaves de acceso.',
 };

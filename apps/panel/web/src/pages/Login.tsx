@@ -3,6 +3,7 @@ import { useState, type FormEvent } from 'react';
 import { useTranslation } from '../i18n';
 import { ApiError, api } from '../lib/api';
 import { useAuth } from '../lib/auth';
+import { authenticateWithPasskey, passkeysSupported, wasCancelled } from '../lib/passkeys';
 import { Alert, Button, Card, Field, Input } from '../components/ui';
 
 /**
@@ -12,7 +13,7 @@ import { Alert, Button, Card, Field, Input } from '../components/ui';
  * from the session: there is none yet.
  */
 export function LoginPage() {
-  const { login } = useAuth();
+  const { login, adopt } = useAuth();
   const { t } = useTranslation();
 
   const branding = useQuery({
@@ -28,6 +29,33 @@ export function LoginPage() {
   const [needsTotp, setNeedsTotp] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [passkeyBusy, setPasskeyBusy] = useState(false);
+
+  const canUsePasskeys = passkeysSupported();
+
+  /**
+   * No identifier is asked for first.
+   *
+   * The credential is discoverable: the authenticator knows which account it
+   * belongs to and says so. Asking who they are before letting them prove it
+   * would put back the step passkeys exist to remove — and would tell anyone
+   * who asks whether a given address has an account here.
+   */
+  async function signInWithPasskey(): Promise<void> {
+    setError(null);
+    setPasskeyBusy(true);
+
+    try {
+      adopt(await authenticateWithPasskey());
+    } catch (caught) {
+      // Dismissing the browser's prompt is a choice, not a failure.
+      if (!wasCancelled(caught)) {
+        setError(caught instanceof ApiError ? caught.message : t('login.passkeyFailed'));
+      }
+    } finally {
+      setPasskeyBusy(false);
+    }
+  }
 
   async function handleSubmit(event: FormEvent): Promise<void> {
     event.preventDefault();
@@ -124,6 +152,28 @@ export function LoginPage() {
               >
                 {t('login.back')}
               </Button>
+            ) : null}
+
+            {/* Hidden during the code step: a passkey login is already
+                two-factor, so offering it there would look like a way around
+                the code rather than a different door. */}
+            {canUsePasskeys && !needsTotp ? (
+              <>
+                <div className="flex items-center gap-3 text-xs text-content-subtle">
+                  <span className="h-px flex-1 bg-border-subtle" />
+                  {t('login.or')}
+                  <span className="h-px flex-1 bg-border-subtle" />
+                </div>
+
+                <Button
+                  type="button"
+                  className="w-full"
+                  disabled={passkeyBusy}
+                  onClick={() => void signInWithPasskey()}
+                >
+                  {passkeyBusy ? t('login.passkeyWaiting') : t('login.passkey')}
+                </Button>
+              </>
             ) : null}
           </form>
         </Card>
