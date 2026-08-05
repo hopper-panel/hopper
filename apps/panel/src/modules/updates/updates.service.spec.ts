@@ -77,6 +77,47 @@ describe('UpdatesService', () => {
     });
   });
 
+  // The installer copies the sources without `.git`, so an installed panel
+  // cannot ask git which revision it runs. It reads what install.sh recorded.
+  // Getting this wrong is not harmless: with no local commit the comparison
+  // falls back to tags, a tag never equals `0.0.0-dev`, and the administration
+  // announces an update on an installation that is perfectly current.
+  describe('the installed commit', () => {
+    let root: string;
+
+    beforeEach(async () => {
+      root = await mkdtemp(join(tmpdir(), 'hopper-root-'));
+      process.env.HOPPER_ROOT = root;
+    });
+
+    afterEach(async () => {
+      delete process.env.HOPPER_ROOT;
+      await rm(root, { recursive: true, force: true });
+    });
+
+    it('reads the commit the installer recorded', async () => {
+      const sha = 'a'.repeat(40);
+      await writeFile(
+        join(root, '.hopper-commit'),
+        `${sha}
+`,
+        'utf8',
+      );
+
+      const check = await new UpdatesService().check(true);
+
+      expect(check.commit).toBe(sha);
+    });
+
+    it('ignores a file that does not hold a commit', async () => {
+      await writeFile(join(root, '.hopper-commit'), 'not-a-sha', 'utf8');
+
+      const check = await new UpdatesService().check(true);
+
+      expect(check.commit).not.toBe('not-a-sha');
+    });
+  });
+
   describe('the manual command', () => {
     it('names the installer of this installation', () => {
       expect(service.manualCommand()).toMatch(/install\.sh$/);

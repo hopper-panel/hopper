@@ -269,6 +269,17 @@ elif [ ! -f "$HOPPER_ROOT/pnpm-workspace.yaml" ]; then
   info "Cloning from $REPOSITORY"
   git clone --depth 1 "$REPOSITORY" "$HOPPER_ROOT"
 fi
+
+# The commit that was installed, recorded because the answer is not readable
+# afterwards: the copy above deliberately leaves `.git` behind, so $HOPPER_ROOT
+# is not a checkout and nothing there can say which revision it holds. The
+# administration reads this file to tell an operator whether they are behind.
+if [ -d "$SOURCE_DIR/.git" ]; then
+  git -C "$SOURCE_DIR" rev-parse HEAD > "$HOPPER_ROOT/.hopper-commit" 2>/dev/null || true
+elif [ -d "$HOPPER_ROOT/.git" ]; then
+  git -C "$HOPPER_ROOT" rev-parse HEAD > "$HOPPER_ROOT/.hopper-commit" 2>/dev/null || true
+fi
+
 good "sources in $HOPPER_ROOT"
 
 id hopper >/dev/null 2>&1 || useradd --system --home-dir "$HOPPER_ROOT" --shell /usr/sbin/nologin hopper
