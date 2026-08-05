@@ -99,7 +99,10 @@ export async function createBackupArchive(
   const packer = pack();
   const hash = createHash('sha256');
   let sizeBytes = 0;
-  let fileCount = 0;
+  // Left undeclared rather than zeroed: the only path that reaches the return
+  // has assigned it, and a placeholder zero would be a plausible file count for
+  // an archive that failed to pack.
+  let fileCount: number;
 
   // The digest covers the **compressed** archive, the one that will be read
   // back on restore. Computing it on the uncompressed stream would not catch a

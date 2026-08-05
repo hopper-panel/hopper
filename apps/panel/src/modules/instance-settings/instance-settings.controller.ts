@@ -14,6 +14,12 @@ import {
 import { InstanceSettingsService } from './instance-settings.service.js';
 import { MailService } from './mail.service.js';
 
+// eslint 10's `no-useless-assignment` does not see references made from a
+// parameter decorator, and this schema is read from one — `@Body(new
+// ZodValidationPipe(testMailSchema))` further down. Removing it to satisfy the
+// rule would delete the validation on an endpoint that sends mail to an
+// address the caller supplies.
+// eslint-disable-next-line no-useless-assignment
 const testMailSchema = z.object({ to: z.email().max(255) });
 
 /**
