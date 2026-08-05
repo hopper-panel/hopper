@@ -86,10 +86,10 @@ export const TEMPLATE_GROUPS = {
  * very common in PvP.
  */
 export const JAVA_IMAGES: DockerImageOption[] = [
-  { name: 'Java 21', image: 'ghcr.io/hopper-panel/java:21' },
-  { name: 'Java 17', image: 'ghcr.io/hopper-panel/java:17' },
-  { name: 'Java 11', image: 'ghcr.io/hopper-panel/java:11' },
-  { name: 'Java 8', image: 'ghcr.io/hopper-panel/java:8' },
+  { name: 'Java 21', image: 'eclipse-temurin:21-jre-noble' },
+  { name: 'Java 17', image: 'eclipse-temurin:17-jre-noble' },
+  { name: 'Java 11', image: 'eclipse-temurin:11-jre-noble' },
+  { name: 'Java 8', image: 'eclipse-temurin:8-jre-noble' },
 ];
 
 /**
