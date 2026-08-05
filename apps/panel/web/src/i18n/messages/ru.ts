@@ -65,6 +65,8 @@ export const ru: Partial<Messages> = {
   'plugins.install': 'Установить',
   'plugins.installing': 'Установка…',
   'plugins.installed': 'Установлено как {file}. Перезапустите сервер, чтобы оно загрузилось.',
+  'plugins.popular': 'Самые скачиваемые для этого сервера',
+  'plugins.results': 'Результаты',
   'plugins.noResults': 'Ничего не найдено.',
   'plugins.noChecksum': 'без контрольной суммы',
   'plugins.denied': 'У вас нет прав добавлять файлы на этот сервер.',

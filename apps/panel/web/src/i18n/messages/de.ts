@@ -65,6 +65,8 @@ export const de: Partial<Messages> = {
   'plugins.install': 'Installieren',
   'plugins.installing': 'Wird installiert…',
   'plugins.installed': 'Als {file} installiert. Server neu starten, damit es geladen wird.',
+  'plugins.popular': 'Am häufigsten geladen für diesen Server',
+  'plugins.results': 'Ergebnisse',
   'plugins.noResults': 'Nichts gefunden.',
   'plugins.noChecksum': 'ohne Prüfsumme',
   'plugins.denied': 'Sie dürfen diesem Server keine Dateien hinzufügen.',

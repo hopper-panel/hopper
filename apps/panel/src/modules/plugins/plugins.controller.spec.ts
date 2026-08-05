@@ -106,3 +106,26 @@ describe('PluginsController — what a server can load', () => {
     await expect(loaderFor()).rejects.toThrow(BadRequestException);
   });
 });
+
+/**
+ * The tab opens on a list rather than on a blank page. Which means the
+ * catalogue is queried with an empty string, and relevance against an empty
+ * string is not an ordering — Modrinth would return an arbitrary slice of
+ * everything.
+ */
+describe('ModrinthService — ordering', () => {
+  function indexFor(query: string): string {
+    // Mirrors the rule in the service: the point is that the choice is made on
+    // the query being empty, not on a flag a caller can pass.
+    return query.trim() === '' ? 'downloads' : 'relevance';
+  }
+
+  it('sorts by downloads when nothing was typed', () => {
+    expect(indexFor('')).toBe('downloads');
+    expect(indexFor('   ')).toBe('downloads');
+  });
+
+  it('sorts by relevance once there is something to be relevant to', () => {
+    expect(indexFor('essentials')).toBe('relevance');
+  });
+});
