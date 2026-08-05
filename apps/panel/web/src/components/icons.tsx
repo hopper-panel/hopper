@@ -28,14 +28,19 @@ function Icon({ children, ...props }: IconProps) {
   );
 }
 
-/** Connection address. */
+/**
+ * Connection address.
+ *
+ * A globe, not the wifi arcs this used to draw: the field holds `host:port`,
+ * which is where a player connects from anywhere — nothing to do with a radio
+ * link. The arcs also thinned to almost nothing at the top of their sweep.
+ */
 export function AddressIcon(props: IconProps) {
   return (
     <Icon {...props}>
-      <path d="M4.5 9a10.5 10.5 0 0 1 15 0" />
-      <path d="M7.5 12.5a6.5 6.5 0 0 1 9 0" />
-      <path d="M10.5 16a2.5 2.5 0 0 1 3 0" />
-      <circle cx="12" cy="19" r="0.6" fill="currentColor" />
+      <circle cx="12" cy="12" r="8.5" />
+      <ellipse cx="12" cy="12" rx="4" ry="8.5" />
+      <path d="M3.5 12h17" />
     </Icon>
   );
 }
@@ -59,11 +64,19 @@ export function CpuIcon(props: IconProps) {
   );
 }
 
+/**
+ * Memory.
+ *
+ * The contact pins sit below the body. They used to be drawn inside it, ending
+ * mid-board, which read as a chip with four stray marks across it rather than
+ * as a module — and two stubs floated above the top edge, attached to nothing.
+ */
 export function MemoryIcon(props: IconProps) {
   return (
     <Icon {...props}>
-      <rect x="3" y="8" width="18" height="9" rx="1.5" />
-      <path d="M7 12v3M11 12v3M15 12v3M19 12v3M6 8V6M18 8V6" />
+      <rect x="2.5" y="7" width="19" height="8" rx="1.5" />
+      <path d="M7 10.5v1.5M12 10.5v1.5M17 10.5v1.5" />
+      <path d="M7 15v2.5M12 15v2.5M17 15v2.5" />
     </Icon>
   );
 }
@@ -78,22 +91,32 @@ export function DiskIcon(props: IconProps) {
   );
 }
 
-/** Inbound traffic. */
+/**
+ * Inbound traffic.
+ *
+ * An arrow onto a line, not the cloud these used to draw. That cloud's outline
+ * never closed — the path ran from one lower corner to the other with nothing
+ * along the bottom — so at the 20px these render at, it showed as an arc with
+ * two loose ends, and the arrow crossed the gap. A cloud also says "remote
+ * storage", where the figure means bytes over the wire.
+ */
 export function DownloadIcon(props: IconProps) {
   return (
     <Icon {...props}>
-      <path d="M7 17.5a4 4 0 0 1-.4-7.98 5.5 5.5 0 0 1 10.66-1.4A3.75 3.75 0 0 1 17.5 17.5" />
-      <path d="M12 10.5v6.5M9.5 14.5 12 17l2.5-2.5" />
+      <path d="M12 3.5v11" />
+      <path d="M7.5 10 12 14.5 16.5 10" />
+      <path d="M4.5 18.5h15" />
     </Icon>
   );
 }
 
-/** Outbound traffic. */
+/** Outbound traffic. Mirrors the inbound arrow so the pair reads as one. */
 export function UploadIcon(props: IconProps) {
   return (
     <Icon {...props}>
-      <path d="M7 17.5a4 4 0 0 1-.4-7.98 5.5 5.5 0 0 1 10.66-1.4A3.75 3.75 0 0 1 17.5 17.5" />
-      <path d="M12 17.5V11M9.5 13.5 12 11l2.5 2.5" />
+      <path d="M12 14.5v-11" />
+      <path d="M7.5 8 12 3.5 16.5 8" />
+      <path d="M4.5 18.5h15" />
     </Icon>
   );
 }
