@@ -695,6 +695,22 @@ export const ru: Partial<Messages> = {
   'adminOverview.unreachable': 'недоступна',
   'adminOverview.containersRunning': 'контейнеров запущено: {count}',
   'adminOverview.serverCount': 'серверов: {count}',
+  'adminUpdates.title': 'Версия панели',
+  'adminUpdates.subtitle': 'Сверяется с публичным репозиторием. Ничего не отправляется.',
+  'adminUpdates.installed': 'Установлена',
+  'adminUpdates.latest': 'Доступна',
+  'adminUpdates.available': 'Доступно обновление',
+  'adminUpdates.upToDate': 'Актуальна',
+  'adminUpdates.apply': 'Обновить',
+  'adminUpdates.applying': 'Обновление…',
+  'adminUpdates.recheck': 'Проверить снова',
+  'adminUpdates.restarting':
+    'Обновление выполняется. Панель перезапустится сама — страница вернётся.',
+  'adminUpdates.failed': 'Обновление не удалось. Смотрите journalctl -u hopper-update.',
+  'adminUpdates.unknown': 'Не удалось определить: {reason}',
+  'adminUpdates.manualOnly':
+    'В этой установке нет системного обновлятора. Запустите install.sh снова.',
+
   'adminTemplates.title': 'Шаблоны',
   'adminTemplates.subtitle':
     'Что сервер устанавливает и запускает: образ Docker, скрипт установки, переменные.',

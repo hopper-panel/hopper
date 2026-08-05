@@ -711,6 +711,22 @@ export const de: Partial<Messages> = {
   'adminOverview.unreachable': 'nicht erreichbar',
   'adminOverview.containersRunning': '{count} Container laufen',
   'adminOverview.serverCount': '{count} Server',
+  'adminUpdates.title': 'Panel-Version',
+  'adminUpdates.subtitle': 'Gegen das öffentliche Repository geprüft. Es wird nichts gesendet.',
+  'adminUpdates.installed': 'Installiert',
+  'adminUpdates.latest': 'Verfügbar',
+  'adminUpdates.available': 'Update verfügbar',
+  'adminUpdates.upToDate': 'Aktuell',
+  'adminUpdates.apply': 'Jetzt aktualisieren',
+  'adminUpdates.applying': 'Wird aktualisiert…',
+  'adminUpdates.recheck': 'Erneut prüfen',
+  'adminUpdates.restarting':
+    'Das Update läuft. Das Panel startet von selbst neu — diese Seite kommt zurück.',
+  'adminUpdates.failed': 'Das Update ist fehlgeschlagen. Siehe journalctl -u hopper-update.',
+  'adminUpdates.unknown': 'Nicht feststellbar: {reason}',
+  'adminUpdates.manualOnly':
+    'Diese Installation hat keinen System-Updater. install.sh erneut ausführen.',
+
   'adminTemplates.title': 'Vorlagen',
   'adminTemplates.subtitle':
     'Was ein Server installiert und ausführt: Docker-Image, Installationsskript, Variablen.',
