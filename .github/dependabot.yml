@@ -1,0 +1,46 @@
+version: 2
+
+# Hopper runs arbitrary code in containers and holds encrypted secrets, so a
+# dependency with a known hole matters more here than on an ordinary web app.
+#
+# Updates are grouped: one pull request per ecosystem for the routine minor and
+# patch bumps, and a separate one per major, which needs to be read. Ungrouped,
+# a monorepo of this size produces a dozen pull requests a week and they stop
+# being read at all.
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
+    ignore:
+      # Major bumps of these land through a deliberate migration, never through
+      # an automated pull request: each one changes behaviour the panel relies
+      # on, and the CI would go green on a change nobody read.
+      - dependency-name: '@nestjs/*'
+        update-types: [version-update:semver-major]
+      - dependency-name: prisma
+        update-types: [version-update:semver-major]
+      - dependency-name: '@prisma/*'
+        update-types: [version-update:semver-major]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    groups:
+      actions:
+        patterns: ['*']
+
+  # The Java image the Minecraft servers run in. A base image left unpatched is
+  # the one an operator never thinks to update.
+  - package-ecosystem: docker
+    directory: /docker/java
+    schedule:
+      interval: weekly
+      day: monday
