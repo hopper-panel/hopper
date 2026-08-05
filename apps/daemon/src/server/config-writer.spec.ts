@@ -95,12 +95,37 @@ describe('server.properties — the file the bug was about', () => {
     expect(report?.changed).toBe(0);
   });
 
-  it('skips a file the install script has not written yet', async () => {
-    // Normal before a first install. Creating it here would put a half-file
-    // where the server expects its own.
+  it('writes the file when the server has not created it yet', async () => {
+    // The one that let the bug through a first time. Minecraft writes
+    // server.properties on its first run, so on a brand-new server there was
+    // nothing to rewrite: the first start bound 25565 and the port only became
+    // right on the second. Nobody restarts a server that has just started.
     const [report] = await applyConfigFiles(jail, CONFIG, substitute);
 
-    expect(report?.skipped).toBe('file not present');
+    expect(report?.created).toBe(true);
+    expect(await read('server.properties')).toBe('server-ip=0.0.0.0\nserver-port=25570\n');
+  });
+
+  it('leaves out a replacement conditioned on a value that cannot exist', async () => {
+    // `ifValue` asks to change a value that is a certain thing; a file that
+    // does not exist holds no value at all.
+    const [report] = await applyConfigFiles(
+      jail,
+      [
+        {
+          file: 'server.properties',
+          parser: 'properties' as const,
+          replacements: [
+            { match: 'server-port', replaceWith: '25570' },
+            { match: 'motd', ifValue: 'old', replaceWith: 'new' },
+          ],
+        },
+      ],
+      substitute,
+    );
+
+    expect(report?.created).toBe(true);
+    expect(await read('server.properties')).toBe('server-port=25570\n');
   });
 
   it('honours ifValue', async () => {
@@ -201,6 +226,27 @@ describe('config.yml — BungeeCord, whose path is indexed', () => {
 
     expect(report?.skipped).toMatch(/unreadable/);
     expect(await read('config.yml')).toBe('listeners:\n  - host: [unclosed\n');
+  });
+});
+
+describe('a structured file is never invented', () => {
+  it('skips a missing YAML rather than writing one', async () => {
+    // A YAML built from nothing is a structure the server never agreed to.
+    // The install script owns those.
+    const [report] = await applyConfigFiles(
+      jail,
+      [
+        {
+          file: 'config.yml',
+          parser: 'yaml' as const,
+          replacements: [{ match: 'listeners[0].host', replaceWith: '0.0.0.0:25570' }],
+        },
+      ],
+      substitute,
+    );
+
+    expect(report?.skipped).toBe('file not present');
+    await expect(read('config.yml')).rejects.toThrow();
   });
 });
 
