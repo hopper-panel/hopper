@@ -915,4 +915,9 @@ export const ru: Partial<Messages> = {
   'plugins.downloads': 'загрузок: {count}',
   'plugins.hideVersions': 'Скрыть версии',
   'plugins.viewOnModrinth': 'На Modrinth',
+
+  'pagination.label': 'Страницы',
+  'pagination.showing': 'Показано с {from} по {to} из {total}',
+  'pagination.previous': 'Предыдущая страница',
+  'pagination.next': 'Следующая страница',
 };

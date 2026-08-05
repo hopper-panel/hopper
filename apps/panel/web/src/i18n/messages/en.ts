@@ -979,6 +979,11 @@ export const en = {
   'plugins.downloads': '{count} downloads',
   'plugins.hideVersions': 'Hide versions',
   'plugins.viewOnModrinth': 'On Modrinth',
+
+  'pagination.label': 'Pages',
+  'pagination.showing': 'Showing {from} to {to} of {total} results',
+  'pagination.previous': 'Previous page',
+  'pagination.next': 'Next page',
 } as const;
 
 export type MessageKey = keyof typeof en;

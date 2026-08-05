@@ -121,6 +121,24 @@ export function LogoutIcon(props: IconProps) {
   );
 }
 
+/** Material Symbols `chevron_left`. */
+export function PreviousIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M561-240 320-481l241-241 43 43-198 198 198 198-43 43Z" />
+    </Icon>
+  );
+}
+
+/** Material Symbols `chevron_right`. */
+export function NextIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M530-481 332-679l43-43 241 241-241 241-43-43 198-198Z" />
+    </Icon>
+  );
+}
+
 /** Material Symbols `lan`. */
 export function AddressIcon(props: IconProps) {
   return (

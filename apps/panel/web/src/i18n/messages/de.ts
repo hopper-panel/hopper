@@ -934,4 +934,9 @@ export const de: Partial<Messages> = {
   'plugins.downloads': '{count} Downloads',
   'plugins.hideVersions': 'Versionen ausblenden',
   'plugins.viewOnModrinth': 'Auf Modrinth',
+
+  'pagination.label': 'Seiten',
+  'pagination.showing': '{from} bis {to} von {total} Ergebnissen',
+  'pagination.previous': 'Vorherige Seite',
+  'pagination.next': 'Nächste Seite',
 };

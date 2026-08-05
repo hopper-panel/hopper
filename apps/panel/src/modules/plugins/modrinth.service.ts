@@ -27,6 +27,21 @@ export interface PluginSearchHit {
   categories: string[];
 }
 
+/**
+ * A page of results, in the shape the rest of the panel already paginates in.
+ *
+ * The catalogue holds tens of thousands of projects. Returning the first
+ * twenty and nothing else said neither how many there were nor how to reach
+ * the twenty-first — the page looked like the whole catalogue.
+ */
+export interface PluginSearchPage {
+  data: PluginSearchHit[];
+  meta: { currentPage: number; perPage: number; lastPage: number; total: number };
+}
+
+/** Modrinth's own ceiling. Asking for more is refused, not truncated. */
+export const MAX_PER_PAGE = 100;
+
 export interface PluginVersion {
   versionId: string;
   name: string;
@@ -52,7 +67,13 @@ export interface PluginVersion {
 export class ModrinthService {
   private readonly logger = new Logger(ModrinthService.name);
 
-  async search(query: string, loader?: string, gameVersion?: string): Promise<PluginSearchHit[]> {
+  async search(
+    query: string,
+    loader?: string,
+    gameVersion?: string,
+    page = 1,
+    perPage = 30,
+  ): Promise<PluginSearchPage> {
     // `facets` is Modrinth's filter syntax: an array of OR-groups, ANDed
     // together. Passing the loader and the game version narrows the list to
     // what will actually run on this server, which is the difference between a
@@ -67,9 +88,13 @@ export class ModrinthService {
       facets.push([`versions:${gameVersion}`]);
     }
 
+    const limit = Math.min(Math.max(perPage, 1), MAX_PER_PAGE);
+    const current = Math.max(page, 1);
+
     const url = new URL(`${API}/search`);
     url.searchParams.set('query', query);
-    url.searchParams.set('limit', '20');
+    url.searchParams.set('limit', String(limit));
+    url.searchParams.set('offset', String((current - 1) * limit));
     url.searchParams.set('facets', JSON.stringify(facets));
 
     // Relevance is meaningless without a query: Modrinth would rank an empty
@@ -80,6 +105,7 @@ export class ModrinthService {
     url.searchParams.set('index', query.trim() === '' ? 'downloads' : 'relevance');
 
     const body = await this.get<{
+      total_hits: number;
       hits: {
         project_id: string;
         slug: string;
@@ -91,7 +117,7 @@ export class ModrinthService {
       }[];
     }>(url);
 
-    return body.hits.map((hit) => ({
+    const data = body.hits.map((hit) => ({
       projectId: hit.project_id,
       slug: hit.slug,
       title: hit.title,
@@ -100,6 +126,20 @@ export class ModrinthService {
       iconUrl: hit.icon_url,
       categories: hit.categories,
     }));
+
+    const total = body.total_hits;
+
+    return {
+      data,
+      meta: {
+        currentPage: current,
+        perPage: limit,
+        // A last page of zero would leave the bar with no page to point at,
+        // and "page 1 of 0" reads as a bug rather than as an empty search.
+        lastPage: Math.max(1, Math.ceil(total / limit)),
+        total,
+      },
+    };
   }
 
   async versions(
