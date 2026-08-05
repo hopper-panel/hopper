@@ -16,7 +16,10 @@ import { buildContainerOptions, containerNameFor } from '../docker/container-con
 import type { DiskQuota } from '../fs/jailed-filesystem.js';
 import type { Logger } from '../logger.js';
 import type { PanelClient } from '../panel/panel-client.js';
+import { JailedFilesystem } from '../fs/jailed-filesystem.js';
+import { applyConfigFiles } from './config-writer.js';
 import { ConsoleBuffer, LineAssembler } from './console-buffer.js';
+import { substitute } from './invocation.js';
 import { directorySize } from './disk-usage.js';
 import { runInstallation } from './installer.js';
 import { buildResourceUsage, emptyUsage, type DockerStats } from './stats.js';
@@ -331,6 +334,73 @@ export class ServerInstance extends EventEmitter {
       this.logger.warn(
         { server: this.uuid, err: error },
         'Could not recover the console history: the console will start empty',
+      );
+    }
+  }
+
+  /**
+   * Applies the template's `configFiles` to the volume.
+   *
+   * Never fatal. A server that starts with a stale port is a server someone can
+   * fix; a server that refuses to start because a comment in its YAML confused
+   * a rewriter is a server nobody can fix from the panel. Both outcomes are
+   * said on the console, because the operator is the one who has to notice.
+   */
+  private async writeConfigFiles(): Promise<void> {
+    const files = this.options.configuration.configFiles;
+
+    if (files.length === 0) {
+      return;
+    }
+
+    const jail = new JailedFilesystem({
+      root: this.volumePath,
+      denylist: this.options.configuration.fileDenylist,
+      quota: () => this.diskQuota,
+      // `chown` does not exist on Windows, where development happens — and
+      // where there is no container to own the files anyway.
+      ownership: process.platform === 'win32' ? undefined : this.options.ownership,
+    });
+
+    const context = {
+      environment: this.options.configuration.environment,
+      memoryMib: Math.floor(this.options.configuration.build.memoryBytes / (1024 * 1024)),
+      ip: this.options.configuration.allocations.default.ip,
+      port: this.options.configuration.allocations.default.port,
+    };
+
+    try {
+      const reports = await applyConfigFiles(
+        jail,
+        files,
+        (input) => substitute(input, context).value,
+      );
+
+      for (const report of reports) {
+        if (report.skipped) {
+          this.logger.debug(
+            { server: this.uuid, file: report.file, reason: report.skipped },
+            'Configuration file left alone',
+          );
+
+          // Silent for a file that simply is not there yet — that is the
+          // normal state before the first install — and loud for anything
+          // else, because the rest means the operator's file could not be read.
+          if (report.skipped !== 'file not present') {
+            this.emitDaemonLine(`Could not update ${report.file}: ${report.skipped}`);
+          }
+
+          continue;
+        }
+
+        if (report.changed > 0) {
+          this.emitDaemonLine(`Updated ${report.file}`);
+        }
+      }
+    } catch (error: unknown) {
+      this.logger.error({ server: this.uuid, err: error }, 'Configuration rewrite failed');
+      this.emitDaemonLine(
+        `Could not update the configuration files: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
   }
@@ -653,6 +723,12 @@ export class ServerInstance extends EventEmitter {
     this.setState('starting');
     this.console.clear();
     this.emitDaemonLine('Starting the server…');
+
+    // Before the container, because the container publishes the allocated port
+    // on both sides: a server whose own configuration still names another one
+    // is unreachable, and the panel would show it as running at an address
+    // nobody can connect to.
+    await this.writeConfigFiles();
 
     if (this.options.configuration.container.requiresRebuild || !(await this.containerExists())) {
       this.emitDaemonLine('Building the container…');

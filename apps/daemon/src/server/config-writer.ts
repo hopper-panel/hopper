@@ -1,0 +1,341 @@
+import { readFile } from 'node:fs/promises';
+import { parseDocument, type Document } from 'yaml';
+import type { ConfigFile, ConfigParser } from '@hopper/shared';
+import type { JailedFilesystem } from '../fs/jailed-filesystem.js';
+
+/**
+ * Writing the server's own configuration before it starts.
+ *
+ * A template declares which files hold settings the panel owns — the port,
+ * above all — and the daemon rewrites them just before every start. Without
+ * this the port is a fiction: Docker publishes the allocated port on both
+ * sides, `25570 -> 25570`, while the server inside keeps listening on whatever
+ * its own configuration says. A Minecraft server given anything other than
+ * 25565 was unreachable, and the panel showed its address as if it were not.
+ *
+ * Every read and every write goes through the jail, so a template naming
+ * `../../etc/cron.d/anything` is refused by the same code that refuses it to a
+ * user. A template is written by an administrator, but "written by someone
+ * trusted" is not a reason to hand it a path the rest of the daemon would not
+ * accept — and an imported Pterodactyl egg is written by a stranger.
+ *
+ * Rewriting is deliberate about what it does **not** do. A file that does not
+ * exist yet is skipped rather than created: the install script owns the first
+ * version of these files, and a half-file written before it would be worse
+ * than none. A file that cannot be parsed is left exactly as it is, and said
+ * so on the console — an operator who broke their own YAML gets an error, not
+ * a silently reformatted file with their comments gone.
+ */
+
+export interface ConfigWriteReport {
+  file: string;
+  /** How many replacements actually changed something. */
+  changed: number;
+  /** Why nothing was written, when nothing was. */
+  skipped?: string;
+}
+
+/** Substitutes `{{variables}}`; the daemon passes `invocation.ts`'s own. */
+export type Substitute = (input: string) => string;
+
+export async function applyConfigFiles(
+  jail: JailedFilesystem,
+  files: readonly ConfigFile[],
+  substitute: Substitute,
+): Promise<ConfigWriteReport[]> {
+  const reports: ConfigWriteReport[] = [];
+
+  for (const file of files) {
+    reports.push(await applyOne(jail, file, substitute));
+  }
+
+  return reports;
+}
+
+async function applyOne(
+  jail: JailedFilesystem,
+  config: ConfigFile,
+  substitute: Substitute,
+): Promise<ConfigWriteReport> {
+  // The jail resolves and validates; a path leading outside throws here,
+  // before a byte is read.
+  const absolute = await jail.absolutePathFor(config.file);
+
+  let original: string;
+
+  try {
+    original = await readFile(absolute, 'utf8');
+  } catch {
+    // Not an error. The install script has not run yet, or this template
+    // declares a file only some versions of the game write.
+    return { file: config.file, changed: 0, skipped: 'file not present' };
+  }
+
+  const replacements = config.replacements.map((replacement) => ({
+    match: replacement.match,
+    ifValue: replacement.ifValue,
+    replaceWith: substitute(replacement.replaceWith),
+  }));
+
+  let result: { text: string; changed: number };
+
+  try {
+    result = rewrite(config.parser, original, replacements);
+  } catch (error: unknown) {
+    return {
+      file: config.file,
+      changed: 0,
+      skipped: `unreadable (${error instanceof Error ? error.message : String(error)})`,
+    };
+  }
+
+  if (result.changed === 0 || result.text === original) {
+    return { file: config.file, changed: 0 };
+  }
+
+  await jail.writeFile(config.file, result.text);
+
+  return { file: config.file, changed: result.changed };
+}
+
+/**
+ * The current value as text, or null when it is not a scalar.
+ *
+ * A replacement writes a string, so a `match` that lands on a map or a list is
+ * a template pointing at the wrong node. Comparing it via `String()` would
+ * produce `[object Object]`, which equals nothing and silently overwrites the
+ * whole subtree with a port number.
+ */
+function asScalar(value: unknown): string | null {
+  if (value === null || value === undefined) {
+    return '';
+  }
+
+  // Enumerated rather than negated: a function or a symbol reaching here is
+  // also a template pointing somewhere it should not, and neither has a
+  // sensible text form.
+  if (typeof value === 'string') {
+    return value;
+  }
+
+  if (typeof value === 'number' || typeof value === 'boolean' || typeof value === 'bigint') {
+    return String(value);
+  }
+
+  return null;
+}
+
+interface Replacement {
+  match: string;
+  ifValue?: string;
+  replaceWith: string;
+}
+
+function rewrite(
+  parser: ConfigParser,
+  original: string,
+  replacements: readonly Replacement[],
+): { text: string; changed: number } {
+  switch (parser) {
+    case 'properties':
+    case 'ini':
+      return rewriteLines(original, replacements, ['=']);
+    case 'file':
+      // Not a whole-file overwrite, whatever the name suggests: the shipped
+      // Velocity template declares `parser: 'file'` with `match: 'bind'`, and
+      // overwriting velocity.toml with the word `0.0.0.0:25577` would delete
+      // everything else the operator configured. This is the same
+      // key-on-a-line rewrite an imported Pterodactyl egg expects from it.
+      return rewriteLines(original, replacements, ['=', ':']);
+    case 'json':
+      return rewriteJson(original, replacements);
+    case 'yaml':
+      return rewriteYaml(original, replacements);
+    case 'xml':
+      // Refused out loud rather than done badly. No shipped template uses it,
+      // and a regex over XML is how a configuration file gets corrupted.
+      throw new Error('the xml parser is not implemented');
+  }
+}
+
+/**
+ * Key-on-a-line formats: `server.properties`, INI, TOML.
+ *
+ * Only the value is touched. The key's own spacing, the delimiter, any
+ * surrounding quotes and every other line — comments included — survive
+ * untouched, because an operator who opens this file afterwards should not
+ * find it rearranged.
+ */
+function rewriteLines(
+  original: string,
+  replacements: readonly Replacement[],
+  delimiters: readonly string[],
+): { text: string; changed: number } {
+  const lines = original.split('\n');
+  let changed = 0;
+
+  for (const replacement of replacements) {
+    const escaped = replacement.match.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const pattern = new RegExp(
+      `^(\\s*${escaped}\\s*[${delimiters.map((d) => `\\${d}`).join('')}]\\s*)(.*)$`,
+    );
+
+    for (const [index, line] of lines.entries()) {
+      const found = pattern.exec(line);
+
+      if (!found) {
+        continue;
+      }
+
+      const prefix = found[1]!;
+      const current = found[2]!;
+
+      // A quoted value stays quoted. TOML and YAML both need it, and the
+      // replacement carries an address, not a quoting convention.
+      const quote = /^(["']).*\1\s*$/.exec(current.trim())?.[1] ?? '';
+      const bare = quote ? current.trim().slice(1, -1) : current.trim();
+
+      if (replacement.ifValue !== undefined && bare !== replacement.ifValue) {
+        continue;
+      }
+
+      if (bare === replacement.replaceWith) {
+        break;
+      }
+
+      lines[index] = `${prefix}${quote}${replacement.replaceWith}${quote}`;
+      changed += 1;
+      break;
+    }
+  }
+
+  return { text: lines.join('\n'), changed };
+}
+
+function rewriteJson(
+  original: string,
+  replacements: readonly Replacement[],
+): { text: string; changed: number } {
+  const document = JSON.parse(original) as unknown;
+  let changed = 0;
+
+  for (const replacement of replacements) {
+    if (setAtPath(document, parsePath(replacement.match), replacement)) {
+      changed += 1;
+    }
+  }
+
+  return { text: `${JSON.stringify(document, null, 2)}\n`, changed };
+}
+
+/**
+ * YAML through its own document model, so comments and formatting survive.
+ *
+ * `parseDocument` keeps the original tokens; re-serialising a plain object
+ * would hand the operator back a file with every comment and every deliberate
+ * blank line removed.
+ */
+function rewriteYaml(
+  original: string,
+  replacements: readonly Replacement[],
+): { text: string; changed: number } {
+  const document: Document = parseDocument(original);
+
+  if (document.errors.length > 0) {
+    throw new Error(document.errors[0]!.message);
+  }
+
+  let changed = 0;
+
+  for (const replacement of replacements) {
+    const path = parsePath(replacement.match);
+    const current = asScalar(document.getIn(path));
+
+    // A path that lands on a map or a list is a template naming the wrong
+    // node; overwriting it would delete everything under it.
+    if (current === null) {
+      continue;
+    }
+
+    if (replacement.ifValue !== undefined && current !== replacement.ifValue) {
+      continue;
+    }
+
+    if (current === replacement.replaceWith) {
+      continue;
+    }
+
+    document.setIn(path, replacement.replaceWith);
+    changed += 1;
+  }
+
+  return { text: document.toString(), changed };
+}
+
+/**
+ * `listeners[0].host` and `settings.bungeecord` both reach their value.
+ *
+ * BungeeCord's shipped template needs the indexed form; without it the proxy
+ * would be rewritten at a key called literally `listeners[0]`.
+ */
+export function parsePath(match: string): (string | number)[] {
+  const path: (string | number)[] = [];
+
+  for (const segment of match.split('.')) {
+    const bracket = /^([^[\]]*)((?:\[\d+\])+)$/.exec(segment);
+
+    if (!bracket) {
+      path.push(segment);
+      continue;
+    }
+
+    const key = bracket[1] ?? '';
+
+    if (key !== '') {
+      path.push(key);
+    }
+
+    for (const index of (bracket[2] ?? '').matchAll(/\[(\d+)\]/g)) {
+      path.push(Number(index[1]));
+    }
+  }
+
+  return path;
+}
+
+function setAtPath(root: unknown, path: (string | number)[], replacement: Replacement): boolean {
+  let node = root;
+
+  for (const segment of path.slice(0, -1)) {
+    if (node === null || typeof node !== 'object') {
+      return false;
+    }
+
+    node = (node as Record<string | number, unknown>)[segment];
+  }
+
+  const last = path.at(-1);
+
+  if (last === undefined || node === null || typeof node !== 'object') {
+    return false;
+  }
+
+  const container = node as Record<string | number, unknown>;
+  const current = asScalar(container[last]);
+
+  if (current === null) {
+    return false;
+  }
+
+  if (replacement.ifValue !== undefined && current !== replacement.ifValue) {
+    return false;
+  }
+
+  if (current === replacement.replaceWith) {
+    return false;
+  }
+
+  container[last] = replacement.replaceWith;
+
+  return true;
+}
