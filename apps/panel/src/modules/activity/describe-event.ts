@@ -160,6 +160,10 @@ export function describeEvent(event: string, metadata: Metadata): string {
     case AUDIT_EVENTS.SUBUSER_DELETED:
       return "Removed a user's access.";
 
+    // -- Panel -----------------------------------------------------------------
+    case AUDIT_EVENTS.PANEL_UPDATE_REQUESTED:
+      return 'Asked the panel to update itself.';
+
     default:
       return event;
   }

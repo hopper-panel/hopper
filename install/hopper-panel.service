@@ -36,9 +36,11 @@ RestrictNamespaces=true
 LockPersonality=true
 MemoryDenyWriteExecute=false
 
-# No writable path: the panel produces neither files nor logs on disk,
-# everything goes through the database and journald.
-ReadWritePaths=
+# One writable path, and only one: where the panel drops its request for an
+# update. It holds an empty trigger file and a status the root-side updater
+# writes back — no code, no configuration, nothing the panel could execute.
+# Everything else still goes through the database and journald.
+ReadWritePaths=/var/lib/hopper/updates
 
 LimitNOFILE=16384
 

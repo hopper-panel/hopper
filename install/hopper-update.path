@@ -1,0 +1,13 @@
+[Unit]
+Description=Watch for a panel update request
+Documentation=https://github.com/hopper-panel/hopper
+
+[Path]
+# The panel's entire power over the update: creating this file. Everything the
+# update then does is decided by hopper-update.service, which the panel cannot
+# read or alter — it has no write access to /etc/systemd and passes no argument.
+PathExists=/var/lib/hopper/updates/requested
+Unit=hopper-update.service
+
+[Install]
+WantedBy=multi-user.target

@@ -708,6 +708,21 @@ export const en = {
   'adminOverview.unreachable': 'unreachable',
   'adminOverview.containersRunning': '{count} container(s) running',
   'adminOverview.serverCount': '{count} server(s)',
+  'adminUpdates.title': 'Panel version',
+  'adminUpdates.subtitle': 'Checked against the public repository. Nothing is sent.',
+  'adminUpdates.installed': 'Installed',
+  'adminUpdates.latest': 'Latest',
+  'adminUpdates.available': 'Update available',
+  'adminUpdates.upToDate': 'Up to date',
+  'adminUpdates.apply': 'Update now',
+  'adminUpdates.applying': 'Updating…',
+  'adminUpdates.recheck': 'Check again',
+  'adminUpdates.restarting':
+    'The update is running. The panel restarts on its own — this page will come back.',
+  'adminUpdates.failed': 'The update failed. See journalctl -u hopper-update.',
+  'adminUpdates.unknown': 'Could not tell: {reason}',
+  'adminUpdates.manualOnly': 'This installation has no system updater. Rerun install.sh to add it.',
+
   'adminTemplates.title': 'Templates',
   'adminTemplates.subtitle':
     'What a server installs and runs: Docker image, install script, variables.',

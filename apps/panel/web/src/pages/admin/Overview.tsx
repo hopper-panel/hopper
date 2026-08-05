@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { PageHeader } from '../../components/PageHeader';
+import { UpdateCard } from '../../components/UpdateCard';
 import { Badge, Card, Spinner } from '../../components/ui';
 import { useTranslation } from '../../i18n';
 import { api } from '../../lib/api';
@@ -68,6 +69,10 @@ export function AdminOverviewPage() {
           value={counts.databases}
           to="/admin/database-hosts"
         />
+      </div>
+
+      <div className="mt-8">
+        <UpdateCard />
       </div>
 
       <h2 className="mb-3 mt-8 text-lg font-semibold text-content">

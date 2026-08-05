@@ -65,6 +65,10 @@ export const AUDIT_EVENTS = {
   SUBUSER_CREATED: 'subuser.created',
   SUBUSER_UPDATED: 'subuser.updated',
   SUBUSER_DELETED: 'subuser.deleted',
+
+  // Recorded before the update starts, never after: the panel restarts in the
+  // middle of one, and an entry written on the far side would never be written.
+  PANEL_UPDATE_REQUESTED: 'panel.update.requested',
 } as const;
 
 export type AuditEvent = (typeof AUDIT_EVENTS)[keyof typeof AUDIT_EVENTS];
