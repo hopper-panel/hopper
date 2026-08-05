@@ -15,8 +15,16 @@ updates:
       day: monday
     open-pull-requests-limit: 5
     groups:
-      minor-and-patch:
-        update-types: [minor, patch]
+      # Patches and minors are grouped **separately**, and the reason is worth
+      # keeping. Under semver a 0.x minor is the breaking channel: 0.4 → 0.5 of
+      # eslint-plugin-react-refresh moved the plugin behind a named export and
+      # ESLint stopped running altogether. Dependabot still labels that "minor",
+      # so grouping it with patches took three harmless updates down with it and
+      # the whole pull request had to be untangled by hand.
+      patch:
+        update-types: [patch]
+      minor:
+        update-types: [minor]
     ignore:
       # Major bumps of these land through a deliberate migration, never through
       # an automated pull request: each one changes behaviour the panel relies
