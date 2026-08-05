@@ -26,6 +26,15 @@ interface RequestOptions {
 interface ErrorBody {
   message?: string | string[];
   issues?: { path: string; message: string }[];
+  /**
+   * Shape used by the daemon, relayed verbatim by the panel.
+   *
+   * The panel's own errors are Nest's `{ message }`; the daemon nests them
+   * under `error`. Reading only the flat one turned every refusal coming from
+   * a node — forbidden path, invalid archive, disk limit — into a bare
+   * "Error 403", which tells the user nothing they can act on.
+   */
+  error?: { code?: string; message?: string };
 }
 
 /** In-flight refresh, shared: avoids N concurrent rotations on a page firing
@@ -61,7 +70,7 @@ async function parseError(response: Response): Promise<ApiError> {
 
   const message = Array.isArray(body.message)
     ? body.message.join(', ')
-    : (body.message ?? `Error ${response.status}`);
+    : (body.message ?? body.error?.message ?? `Error ${response.status}`);
 
   return new ApiError(response.status, message, body.issues);
 }

@@ -120,7 +120,6 @@ export const fr: Partial<Messages> = {
   'account.languageTitle': 'Langue',
   'account.languageHint':
     'Ne s’applique qu’à ce navigateur. Les autres utilisateurs du panel gardent leur propre choix.',
-  'account.languageAuto': 'Langue de l’instance ({name})',
 
   'apiKeys.title': 'Clés d’API',
   'apiKeys.create': 'Créer une clé',

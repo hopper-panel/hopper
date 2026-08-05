@@ -120,6 +120,11 @@ export async function extractArchive(
           );
         }
 
+        // Checked per entry rather than once up front: a tar announces nothing
+        // about its total, and the ceiling above is a bomb guard shared by
+        // every server, not this one's allowance.
+        jail.assertRoomFor(bytes);
+
         // Neither symlink, nor hard link, nor device: only files and folders
         // are extracted.
         if (header.type !== 'file' && header.type !== 'directory') {

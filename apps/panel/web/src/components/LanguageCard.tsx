@@ -10,7 +10,7 @@ import { Card } from './ui';
  * before anyone is signed in — the sign-in page is translated too.
  */
 export function LanguageCard() {
-  const { locale, chosen, instanceLocale, setLocale, t } = useTranslation();
+  const { locale, setLocale, t } = useTranslation();
 
   return (
     <Card>
@@ -19,29 +19,22 @@ export function LanguageCard() {
       </h2>
       <p className="mb-4 text-sm text-content-muted">{t('account.languageHint')}</p>
 
+      {/* Highlighting the *effective* language, not the stored choice: someone
+          who has never picked one would otherwise see nothing selected while
+          reading the panel in a perfectly definite language. There is no
+          "instance default" button — it named the same language a second time
+          and said nothing the highlight does not already say. */}
       <div className="flex flex-wrap gap-2">
-        <button
-          type="button"
-          onClick={() => setLocale(null)}
-          className={cx(
-            'rounded-lg border px-3 py-2 text-sm transition-colors',
-            chosen === null
-              ? 'border-accent bg-accent/10 text-content'
-              : 'border-border-subtle text-content-muted hover:text-content',
-          )}
-        >
-          {t('account.languageAuto', { name: LOCALE_NAMES[instanceLocale] })}
-        </button>
-
         {LOCALES.map((entry) => (
           <button
             key={entry}
             type="button"
             onClick={() => setLocale(entry)}
             lang={entry}
+            aria-current={locale === entry ? 'true' : undefined}
             className={cx(
               'rounded-lg border px-3 py-2 text-sm transition-colors',
-              chosen === entry
+              locale === entry
                 ? 'border-accent bg-accent/10 text-content'
                 : 'border-border-subtle text-content-muted hover:text-content',
             )}
@@ -50,10 +43,6 @@ export function LanguageCard() {
           </button>
         ))}
       </div>
-
-      <p className="mt-3 text-xs text-content-subtle" lang={locale}>
-        {LOCALE_NAMES[locale]}
-      </p>
     </Card>
   );
 }

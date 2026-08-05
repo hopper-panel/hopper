@@ -132,7 +132,6 @@ export const en = {
   'account.languageTitle': 'Language',
   'account.languageHint':
     'Applies to this browser only. Other people using this panel keep their own choice.',
-  'account.languageAuto': 'Instance default ({name})',
 
   // API keys
   'apiKeys.title': 'API keys',
