@@ -1,0 +1,42 @@
+# ┌──────────────────────────────────────────────────────────────────────────┐
+# │  DEVELOPMENT CONFIGURATION                                               │
+# │                                                                          │
+# │  The secrets below are public: they are in the Git repository so that    │
+# │  `pnpm dev` works with no prior step. NEVER deploy this file. The        │
+# │  production template is install/daemon.example.yml, where the installer  │
+# │  generates random secrets.                                               │
+# └──────────────────────────────────────────────────────────────────────────┘
+
+debug: true
+
+uuid: 11111111-1111-4111-8111-111111111111
+tokenId: devdevdevdevdev0
+tokenSecret: devsecretdevsecretdevsecretdevsecretdevsecretdevsecretdevsecret0
+
+api:
+  host: 127.0.0.1
+  port: 8443
+  ssl:
+    enabled: false
+  allowedOrigins:
+    - http://localhost:5173
+    - http://localhost:8080
+
+panel:
+  url: http://localhost:8080
+  jwtSecret: dev-jwt-secret-not-for-production-0000000
+
+system:
+  # Server volumes, relative to the repository in development.
+  rootDirectory: ./.hopper-dev
+  sftp:
+    enabled: true
+    bindAddress: 127.0.0.1
+    bindPort: 2022
+
+docker:
+  # Under Linux: /var/run/docker.sock
+  # Under Windows with Docker Desktop: //./pipe/docker_engine
+  socket: //./pipe/docker_engine
+  network:
+    autoCreate: true

@@ -1,0 +1,50 @@
+[Unit]
+Description=Hopper Panel
+Documentation=https://github.com/hopper-panel/hopper
+After=network-online.target postgresql.service redis-server.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+
+# The panel, for its part, has no reason to be privileged: it touches neither
+# Docker nor the server volumes. It only talks to its database and to the
+# daemons, over the network.
+User=hopper
+Group=hopper
+
+WorkingDirectory=/opt/hopper/apps/panel
+ExecStart=/usr/bin/node dist/main.js
+EnvironmentFile=/opt/hopper/apps/panel/.env
+
+Restart=on-failure
+RestartSec=5
+StartLimitBurst=5
+StartLimitIntervalSec=120
+
+# Hardening: the panel must not write anywhere on the filesystem.
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictNamespaces=true
+LockPersonality=true
+MemoryDenyWriteExecute=false
+
+# No writable path: the panel produces neither files nor logs on disk,
+# everything goes through the database and journald.
+ReadWritePaths=
+
+LimitNOFILE=16384
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=hopper-panel
+
+[Install]
+WantedBy=multi-user.target

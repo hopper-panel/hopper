@@ -1,0 +1,147 @@
+import { useQuery } from '@tanstack/react-query';
+import { Link } from 'react-router-dom';
+import { PageHeader } from '../../components/PageHeader';
+import { Badge, Card, Spinner } from '../../components/ui';
+import { useTranslation } from '../../i18n';
+import { api } from '../../lib/api';
+import { formatBytes } from '../../lib/format';
+
+interface NodeHealth {
+  uuid: string;
+  name: string;
+  fqdn: string;
+  servers: number;
+  reachable: boolean;
+  reason?: string;
+  version?: string;
+  cpuCount?: number;
+  memoryTotalBytes?: number;
+  runningContainers?: number;
+  latencyMs?: number;
+}
+
+interface Overview {
+  version: string;
+  counts: {
+    servers: number;
+    nodes: number;
+    users: number;
+    templates: number;
+    backups: number;
+    databases: number;
+  };
+  nodes: NodeHealth[];
+}
+
+export function AdminOverviewPage() {
+  const { t } = useTranslation();
+  const overview = useQuery({
+    queryKey: ['admin', 'overview'],
+    queryFn: () => api.get<Overview>('/api/admin/overview'),
+    // Nodes are probed live: refreshing regularly makes this page a usable
+    // dashboard rather than a snapshot.
+    refetchInterval: 15_000,
+  });
+
+  if (overview.isLoading || !overview.data) {
+    return <Spinner label={t('common.loading')} />;
+  }
+
+  const { counts, nodes, version } = overview.data;
+
+  return (
+    <>
+      <PageHeader title={t('adminOverview.title')} description={`Hopper Panel ${version}`} />
+
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
+        <Count label={t('adminOverview.servers')} value={counts.servers} to="/admin/servers" />
+        <Count label={t('adminOverview.nodes')} value={counts.nodes} to="/admin/nodes" />
+        <Count label={t('adminOverview.users')} value={counts.users} to="/admin/users" />
+        <Count
+          label={t('adminOverview.templates')}
+          value={counts.templates}
+          to="/admin/templates"
+        />
+        <Count label={t('adminOverview.backups')} value={counts.backups} />
+        <Count
+          label={t('adminOverview.databases')}
+          value={counts.databases}
+          to="/admin/database-hosts"
+        />
+      </div>
+
+      <h2 className="mb-3 mt-8 text-lg font-semibold text-content">
+        {t('adminOverview.nodeHealth')}
+      </h2>
+
+      {nodes.length === 0 ? (
+        <Card>
+          <p className="text-sm text-content-muted">
+            {t('adminOverview.noNodes')}{' '}
+            <Link to="/admin/nodes" className="text-accent hover:underline">
+              En ajouter un
+            </Link>{' '}
+            {t('adminOverview.noNodesHint')}
+          </p>
+        </Card>
+      ) : (
+        <div className="flex flex-col gap-2">
+          {nodes.map((node) => (
+            <Card key={node.uuid}>
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Link
+                      to={`/admin/nodes/${node.uuid}`}
+                      className="font-medium text-content hover:underline"
+                    >
+                      {node.name}
+                    </Link>
+                    {/* A declared node is not a reachable node: that is
+                        exactly what one comes here to check. */}
+                    {node.reachable ? (
+                      <Badge tone="online">{t('adminOverview.reachable')}</Badge>
+                    ) : (
+                      <Badge tone="danger">{t('adminOverview.unreachable')}</Badge>
+                    )}
+                    <span className="font-mono text-xs text-content-subtle">{node.fqdn}</span>
+                  </div>
+
+                  <p className="mt-1 text-xs text-content-muted">
+                    {node.reachable
+                      ? `hopperd ${node.version} · ${node.cpuCount} cores · ` +
+                        `${formatBytes(node.memoryTotalBytes ?? 0)} · ` +
+                        `${t('adminOverview.containersRunning', { count: node.runningContainers ?? 0 })} · ` +
+                        `${node.latencyMs} ms`
+                      : node.reason}
+                  </p>
+                </div>
+
+                <span className="shrink-0 text-sm text-content-muted">
+                  {t('adminOverview.serverCount', { count: node.servers })}
+                </span>
+              </div>
+            </Card>
+          ))}
+        </div>
+      )}
+    </>
+  );
+}
+
+function Count({ label, value, to }: { label: string; value: number; to?: string }) {
+  const content = (
+    <Card className="h-full">
+      <p className="text-xs uppercase tracking-wide text-content-muted">{label}</p>
+      <p className="mt-1 text-2xl font-semibold text-content">{value}</p>
+    </Card>
+  );
+
+  return to ? (
+    <Link to={to} className="transition-opacity hover:opacity-80">
+      {content}
+    </Link>
+  ) : (
+    content
+  );
+}

@@ -1,0 +1,56 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Builds
+dist/
+build/
+out/
+*.tsbuildinfo
+
+# Turborepo
+.turbo/
+
+# Environment — NEVER commit secrets
+.env
+.env.*
+!.env.example
+
+# Local dev data
+#
+# `.hopper-dev` is the daemon root in development: it holds the server volumes,
+# that is Minecraft worlds and .jar files weighing tens of megabytes. Without an
+# unanchored pattern, a `git add -A` run after a test stages a hundred and fifty
+# of them at once.
+.hopper-dev/
+data/
+volumes/
+*.sqlite
+*.sqlite-journal
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+logs/
+
+# Tests
+coverage/
+.nyc_output/
+playwright-report/
+test-results/
+
+# Editors / OS
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.recommended.json
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Certificates and keys generated locally
+*.pem
+*.key
+!**/fixtures/**/*.pem
+!**/fixtures/**/*.key
