@@ -711,6 +711,7 @@ export const ru: Partial<Messages> = {
   'adminOverview.serverCount': 'серверов: {count}',
   'adminUpdates.title': 'Версия панели',
   'adminUpdates.subtitle': 'Сверяется с публичным репозиторием. Ничего не отправляется.',
+  'adminUpdates.checkedAt': 'проверено в {time}',
   'adminUpdates.installed': 'Установлена',
   'adminUpdates.latest': 'Доступна',
   'adminUpdates.available': 'Доступно обновление',

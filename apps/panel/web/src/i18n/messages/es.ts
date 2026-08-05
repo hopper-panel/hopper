@@ -722,6 +722,7 @@ export const es: Partial<Messages> = {
   'adminOverview.serverCount': '{count} servidor(es)',
   'adminUpdates.title': 'Versión del panel',
   'adminUpdates.subtitle': 'Comparada con el repositorio público. No se envía nada.',
+  'adminUpdates.checkedAt': 'comprobado a las {time}',
   'adminUpdates.installed': 'Instalada',
   'adminUpdates.latest': 'Disponible',
   'adminUpdates.available': 'Actualización disponible',

@@ -725,6 +725,7 @@ export const en = {
   'adminOverview.serverCount': '{count} server(s)',
   'adminUpdates.title': 'Panel version',
   'adminUpdates.subtitle': 'Checked against the public repository. Nothing is sent.',
+  'adminUpdates.checkedAt': 'checked at {time}',
   'adminUpdates.installed': 'Installed',
   'adminUpdates.latest': 'Latest',
   'adminUpdates.available': 'Update available',

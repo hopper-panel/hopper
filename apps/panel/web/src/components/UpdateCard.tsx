@@ -96,6 +96,17 @@ export function UpdateCard() {
           <div>
             <dt className="text-content-subtle">{t('adminUpdates.latest')}</dt>
             <dd className="font-mono text-content">{data?.latest ?? '—'}</dd>
+            {/* When the answer was obtained, not just what it was. "Up to date"
+                with no time on it is a claim about now, and the check is
+                cached: an operator who has just released something reads it as
+                current and concludes their release never landed. */}
+            {data?.checkedAt ? (
+              <dd className="mt-0.5 text-xs text-content-subtle">
+                {t('adminUpdates.checkedAt', {
+                  time: new Date(data.checkedAt).toLocaleTimeString(),
+                })}
+              </dd>
+            ) : null}
           </div>
         </dl>
       )}
