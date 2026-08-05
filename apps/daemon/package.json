@@ -1,9 +1,9 @@
 {
   "name": "@hopper/daemon",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "license": "AGPL-3.0-or-later",
-  "description": "hopperd \u2014 the Hopper agent installed on each host machine",
+  "description": "hopperd — the Hopper agent installed on each host machine",
   "bin": {
     "hopperd": "./dist/index.js"
   },
