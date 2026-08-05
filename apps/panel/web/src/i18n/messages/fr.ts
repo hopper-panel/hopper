@@ -715,6 +715,22 @@ export const fr: Partial<Messages> = {
   'adminOverview.unreachable': 'injoignable',
   'adminOverview.containersRunning': '{count} conteneur(s) en marche',
   'adminOverview.serverCount': '{count} serveur(s)',
+  'adminUpdates.title': 'Version du panel',
+  'adminUpdates.subtitle': 'Comparée au dépôt public. Rien n’est envoyé.',
+  'adminUpdates.installed': 'Installée',
+  'adminUpdates.latest': 'Disponible',
+  'adminUpdates.available': 'Mise à jour disponible',
+  'adminUpdates.upToDate': 'À jour',
+  'adminUpdates.apply': 'Mettre à jour',
+  'adminUpdates.applying': 'Mise à jour…',
+  'adminUpdates.recheck': 'Revérifier',
+  'adminUpdates.restarting':
+    'La mise à jour est en cours. Le panel redémarre seul — cette page reviendra.',
+  'adminUpdates.failed': 'La mise à jour a échoué. Voir journalctl -u hopper-update.',
+  'adminUpdates.unknown': 'Impossible de savoir : {reason}',
+  'adminUpdates.manualOnly':
+    'Cette installation n’a pas de mécanisme de mise à jour. Relancez install.sh pour l’ajouter.',
+
   'adminTemplates.title': 'Templates',
   'adminTemplates.subtitle':
     'Ce qu’un serveur installe et exécute : image Docker, script d’installation, variables.',

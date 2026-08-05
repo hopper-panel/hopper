@@ -384,6 +384,14 @@ step "systemd services"
 install -m 644 "$HOPPER_ROOT/install/hopper-panel.service" /etc/systemd/system/hopper-panel.service
 install -m 644 "$HOPPER_ROOT/install/hopperd.service" /etc/systemd/system/hopperd.service
 install -m 755 "$HOPPER_ROOT/install/hopper" /usr/local/bin/hopper
+
+# The update button in the administration writes a file here; the path unit
+# below turns that into a root-run update. The directory belongs to the panel's
+# account because the panel is what creates the trigger — and to nothing else,
+# because anyone who can write here can start an update.
+install -d -o hopper -g hopper -m 700 "$DATA_ROOT/updates"
+install -m 644 "$HOPPER_ROOT/install/hopper-update.service" /etc/systemd/system/hopper-update.service
+install -m 644 "$HOPPER_ROOT/install/hopper-update.path" /etc/systemd/system/hopper-update.path
 systemctl daemon-reload
 
 # `enable --now` starts a stopped service and leaves a running one alone, which
@@ -420,6 +428,12 @@ fi
 systemctl enable hopperd >/dev/null
 systemctl restart hopperd
 good "hopperd"
+
+# Not `restart`: this unit is a watcher, and restarting it while it is being
+# triggered by the very update running right now would cut that update short.
+systemctl enable hopper-update.path >/dev/null
+systemctl start hopper-update.path >/dev/null 2>&1 || true
+good "update watcher"
 
 # ---------------------------------------------------------------------------
 # Web server

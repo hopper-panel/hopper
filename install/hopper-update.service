@@ -1,0 +1,43 @@
+[Unit]
+Description=Hopper Panel update
+Documentation=https://github.com/hopper-panel/hopper
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+
+# Root, because updating means writing into /opt/hopper and restarting units.
+#
+# The panel never runs this. It creates an empty file in a directory it is
+# allowed to write, and `hopper-update.path` reacts to it. The panel therefore
+# cannot say *what* to run — no command, no argument, no shell reaches this
+# unit. A compromised panel gains "trigger the updater", not "run anything as
+# root", which is what a sudoers rule would have given it.
+User=root
+Group=root
+
+# The trigger is removed first. Left in place it would refire the path unit the
+# moment this service exits, and the machine would update in a loop.
+ExecStartPre=/bin/rm -f /var/lib/hopper/updates/requested
+ExecStartPre=/bin/sh -c 'printf "{\\"state\\":\\"running\\",\\"startedAt\\":\\"%%s\\"}" "$(date -Is)" > /var/lib/hopper/updates/status.json'
+
+# `git pull` before the installer: the checkout is what install.sh copies from,
+# so without it the script would faithfully reinstall the version already there.
+ExecStart=/usr/bin/git -C /opt/hopper pull --ff-only
+ExecStart=/bin/bash /opt/hopper/install/install.sh
+
+ExecStopPost=/bin/sh -c 'if [ "$EXIT_STATUS" = "0" ]; then S=succeeded; else S=failed; fi; \
+  printf "{\\"state\\":\\"%%s\\",\\"finishedAt\\":\\"%%s\\",\\"log\\":\\"%%s\\"}" \
+  "$S" "$(date -Is)" "$(journalctl -u hopper-update -n 30 --no-pager -o cat | tail -c 3000 | sed "s/[\\\\\\"]/ /g" | tr "\n" " ")" \
+  > /var/lib/hopper/updates/status.json'
+
+# The installer is not interactive here: every answer is already in .env, the
+# vhost and daemon.yml, all of which a rerun keeps.
+Environment=HOPPER_NONINTERACTIVE=1
+Environment=NO_COLOR=1
+
+TimeoutStartSec=1800
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=hopper-update
