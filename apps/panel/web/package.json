@@ -11,7 +11,9 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint src",
     "clean": "rimraf dist .turbo",
-    "icons": "node scripts/generate-icons.mjs"
+    "icons": "node scripts/generate-icons.mjs",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@hopper/shared": "workspace:*",
@@ -33,6 +35,7 @@
     "rimraf": "^6.0.1",
     "tailwindcss": "^4.1.13",
     "typescript": "^5.9.2",
-    "vite": "^8.2.0"
+    "vite": "^8.2.0",
+    "vitest": "^4.1.10"
   }
 }

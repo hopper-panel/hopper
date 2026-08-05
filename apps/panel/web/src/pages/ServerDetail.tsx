@@ -38,7 +38,17 @@ const POWER_PERMISSIONS: Record<PowerAction, Permission> = {
  * through the WebSocket. The front does not receive the configured value; if
  * that default moves, this moves with it.
  */
-const KILL_OFFERED_AFTER_MS = 45_000;
+export const KILL_OFFERED_AFTER_MS = 45_000;
+
+/**
+ * Whether Kill should stand in for Stop.
+ *
+ * Pulled out of the component so it can be checked without a DOM: the rule is
+ * the whole feature, and the rest of the card is scaffolding around it.
+ */
+export function shouldOfferKill(state: string, stoppingForMs: number | null): boolean {
+  return state === 'stopping' && stoppingForMs !== null && stoppingForMs > KILL_OFFERED_AFTER_MS;
+}
 
 /**
  * Milliseconds spent in `stopping`, or null outside that state.
@@ -97,7 +107,7 @@ export function ServerDetailPage() {
   // such click is a world saved to disk in whatever state it was in. It now
   // replaces Stop, and only once Stop has visibly failed.
   const stoppingFor = useStoppingFor(controller.state);
-  const stopIsStuck = stoppingFor !== null && stoppingFor > KILL_OFFERED_AFTER_MS;
+  const stopIsStuck = shouldOfferKill(controller.state, stoppingFor);
 
   return (
     <>
