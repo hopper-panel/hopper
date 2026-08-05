@@ -17,6 +17,13 @@ WorkingDirectory=/opt/hopper/apps/panel
 ExecStart=/usr/bin/node dist/main.js
 EnvironmentFile=/opt/hopper/apps/panel/.env
 
+# The working directory is the panel package, not the installation root, so
+# nothing in the process can derive where Hopper was installed. The update check
+# reads `.hopper-commit` from here, and the administration shows the path of
+# install.sh from it; without this both looked two levels too deep and the
+# panel reported no known version at all.
+Environment=HOPPER_ROOT=/opt/hopper
+
 Restart=on-failure
 RestartSec=5
 StartLimitBurst=5
