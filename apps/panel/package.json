@@ -1,9 +1,9 @@
 {
   "name": "@hopper/panel",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "license": "AGPL-3.0-or-later",
-  "description": "Hopper panel \u2014 NestJS API and web interface",
+  "description": "Hopper panel — NestJS API and web interface",
   "main": "./dist/main.js",
   "scripts": {
     "postinstall": "prisma generate",
