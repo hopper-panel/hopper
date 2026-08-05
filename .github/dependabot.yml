@@ -42,6 +42,15 @@ updates:
       # a crash that typechecks cleanly. It moves when the runtime moves.
       - dependency-name: '@types/node'
         update-types: [version-update:semver-major]
+      # TypeScript 7 is the compiler rewritten in Go, not a version of the one
+      # the toolchain is built against. typescript-eslint and the vitest
+      # transform both reach into the old compiler's internals and both die on
+      # it the same way — `Cannot read properties of undefined (reading
+      # 'useCaseSensitiveFileNames')` — so lint, typecheck and the tests all
+      # stop at once. Nothing in this repository can fix that; it moves when
+      # those tools support it, as a migration somebody drives.
+      - dependency-name: typescript
+        update-types: [version-update:semver-major]
 
   - package-ecosystem: github-actions
     directory: /
