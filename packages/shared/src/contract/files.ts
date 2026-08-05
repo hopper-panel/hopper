@@ -160,6 +160,7 @@ export const DAEMON_FILE_ROUTES = {
   download: (uuid: string) => `/api/servers/${uuid}/files/download`,
   upload: (uuid: string) => `/api/servers/${uuid}/files/upload`,
   chmod: (uuid: string) => `/api/servers/${uuid}/files/chmod`,
+  fetch: (uuid: string) => `/api/servers/${uuid}/files/fetch`,
 } as const;
 
 /**
