@@ -718,7 +718,6 @@ export const ru: Partial<Messages> = {
   'adminUpdates.upToDate': 'Актуальна',
   'adminUpdates.apply': 'Обновить',
   'adminUpdates.applying': 'Обновление…',
-  'adminUpdates.recheck': 'Проверить снова',
   'adminUpdates.restarting':
     'Обновление выполняется. Панель перезапустится сама — страница вернётся.',
   'adminUpdates.failed': 'Обновление не удалось. Смотрите journalctl -u hopper-update.',

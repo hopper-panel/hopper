@@ -732,7 +732,6 @@ export const en = {
   'adminUpdates.upToDate': 'Up to date',
   'adminUpdates.apply': 'Update now',
   'adminUpdates.applying': 'Updating…',
-  'adminUpdates.recheck': 'Check again',
   'adminUpdates.restarting':
     'The update is running. The panel restarts on its own — this page will come back.',
   'adminUpdates.failed': 'The update failed. See journalctl -u hopper-update.',

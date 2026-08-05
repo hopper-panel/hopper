@@ -734,7 +734,6 @@ export const de: Partial<Messages> = {
   'adminUpdates.upToDate': 'Aktuell',
   'adminUpdates.apply': 'Jetzt aktualisieren',
   'adminUpdates.applying': 'Wird aktualisiert…',
-  'adminUpdates.recheck': 'Erneut prüfen',
   'adminUpdates.restarting':
     'Das Update läuft. Das Panel startet von selbst neu — diese Seite kommt zurück.',
   'adminUpdates.failed': 'Das Update ist fehlgeschlagen. Siehe journalctl -u hopper-update.',

@@ -739,7 +739,6 @@ export const fr: Partial<Messages> = {
   'adminUpdates.upToDate': 'À jour',
   'adminUpdates.apply': 'Mettre à jour',
   'adminUpdates.applying': 'Mise à jour…',
-  'adminUpdates.recheck': 'Revérifier',
   'adminUpdates.restarting':
     'La mise à jour est en cours. Le panel redémarre seul — cette page reviendra.',
   'adminUpdates.failed': 'La mise à jour a échoué. Voir journalctl -u hopper-update.',

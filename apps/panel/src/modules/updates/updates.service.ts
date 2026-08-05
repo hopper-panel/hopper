@@ -19,17 +19,17 @@ const REPOSITORY = 'hopper-panel/hopper';
 const GITHUB_API = 'https://api.github.com';
 
 /**
- * How long a check is reused.
+ * A floor between calls, not a cache anyone waits behind.
  *
- * Thirty minutes at first, reasoned from GitHub's sixty unauthenticated calls
- * an hour. That was the wrong unit: the limit is per panel, not per person, so
- * one panel checking every five minutes spends twelve of those sixty.
+ * The overview asks on every load, which is the only behaviour that cannot
+ * mislead: it was cached for thirty minutes before, and an operator opening the
+ * page right after a release read "Up to date" and believed it.
  *
- * And the cost of being wrong is asymmetric. An operator opening the overview
- * right after a release saw "Up to date" and believed it — the page answers a
- * question about now with an answer from half an hour ago.
+ * A minute remains, and only to stop a held-down reload from spending GitHub's
+ * sixty unauthenticated calls an hour — a limit that belongs to the panel, so
+ * one person refreshing takes it from everyone using that panel.
  */
-const CACHE_MS = 5 * 60 * 1000;
+const CACHE_MS = 60 * 1000;
 
 /** The panel writes here; a root unit watches the directory. See `requestUpdate`. */
 const TRIGGER_NAME = 'requested';
