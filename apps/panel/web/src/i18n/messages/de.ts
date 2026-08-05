@@ -119,7 +119,6 @@ export const de: Partial<Messages> = {
     'Notiere diese Wiederherstellungscodes: sie werden nie wieder angezeigt. Jeder gilt einmal, falls du dein Telefon verlierst.',
   'account.languageTitle': 'Sprache',
   'account.languageHint': 'Gilt nur für diesen Browser. Andere Nutzer behalten ihre eigene Wahl.',
-  'account.languageAuto': 'Sprache der Instanz ({name})',
 
   'apiKeys.title': 'API-Schlüssel',
   'apiKeys.create': 'Schlüssel erstellen',

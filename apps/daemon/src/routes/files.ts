@@ -28,6 +28,7 @@ import {
   JailedFilesystem,
   NotFoundError,
   PathEscapeError,
+  QuotaExceededError,
 } from '../fs/jailed-filesystem.js';
 import type { ServerInstance } from '../server/server-instance.js';
 import type { ServerManager } from '../server/server-manager.js';
@@ -57,6 +58,7 @@ export function registerFileRoutes(
     return new JailedFilesystem({
       root: server.volumePath,
       denylist: server.configuration.fileDenylist,
+      quota: () => server.diskQuota,
       // `chown` does not exist on Windows, where the development machine runs
       // — and where there is no container anyway.
       ownership: process.platform === 'win32' ? undefined : ownership,
@@ -74,6 +76,21 @@ export function registerFileRoutes(
     if (error instanceof TooLargeError) {
       return reply.code(413).send({
         error: { code: 'file_too_large', message: error.message, requestId: request.id },
+      });
+    }
+
+    // 507 rather than 413: the payload is not too large in itself, the server
+    // has no room left for it. The distinction matters to a client deciding
+    // whether to retry with a smaller file or to free space first.
+    if (error instanceof QuotaExceededError) {
+      return reply.code(507).send({
+        error: {
+          code: 'disk_quota_exceeded',
+          message: error.message,
+          usedBytes: error.usedBytes,
+          limitBytes: error.limitBytes,
+          requestId: request.id,
+        },
       });
     }
 
@@ -142,7 +159,7 @@ export function registerFileRoutes(
   }
 
   // -------------------------------------------------------------------------
-  // Lecture
+  // Reading
   // -------------------------------------------------------------------------
 
   app.get(
@@ -309,7 +326,7 @@ export function registerFileRoutes(
   app.post(
     '/api/servers/:uuid/files/upload',
     { bodyLimit: MAX_UPLOAD_BYTES },
-    handler(uploadFileQuerySchema, 'query', async ({ jail }, query, reply, request) => {
+    handler(uploadFileQuerySchema, 'query', async ({ jail, server }, query, reply, request) => {
       const target = `${query.directory.replace(/\/+$/, '')}/${query.name}`;
       // The jail is what judges the path: a name containing `../` is rejected
       // here, before a single byte is written.
@@ -319,7 +336,11 @@ export function registerFileRoutes(
 
       // The counter doubles up Fastify's `bodyLimit` rather than trust it:
       // `Content-Length` is declared by the client and can lie, whereas the
-      // bytes actually received cannot.
+      // bytes actually received cannot. The same pass enforces the disk quota,
+      // for the same reason: an upload that announces one megabyte and sends a
+      // hundred has to be cut off as it arrives, not diagnosed afterwards.
+      const quota = server.diskQuota;
+      const room = jail.remainingBytes();
       let written = 0;
       const counter = new Transform({
         transform(chunk: Buffer, _encoding, done) {
@@ -327,6 +348,11 @@ export function registerFileRoutes(
 
           if (written > MAX_UPLOAD_BYTES) {
             done(new TooLargeError('File too large.'));
+            return;
+          }
+
+          if (written > room) {
+            done(new QuotaExceededError(quota.usedBytes, quota.limitBytes));
             return;
           }
 
@@ -350,7 +376,7 @@ export function registerFileRoutes(
   );
 
   // -------------------------------------------------------------------------
-  // Droits
+  // Permissions
   // -------------------------------------------------------------------------
 
   app.post(

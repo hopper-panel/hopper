@@ -119,7 +119,6 @@ export const es: Partial<Messages> = {
   'account.languageTitle': 'Idioma',
   'account.languageHint':
     'Solo se aplica a este navegador. Las demás personas conservan su propia elección.',
-  'account.languageAuto': 'Idioma de la instancia ({name})',
 
   'apiKeys.title': 'Claves de API',
   'apiKeys.create': 'Crear una clave',
