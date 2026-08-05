@@ -60,9 +60,11 @@ model User {
 
   sessions     Session[]
   apiKeys      ApiKey[]
-  ownedServers Server[]   @relation("ServerOwner")
+  passkeys     Passkey[]
+  challenges   WebauthnChallenge[]
+  ownedServers Server[]            @relation("ServerOwner")
   subuserOf    Subuser[]
-  auditEntries AuditLog[] @relation("AuditActor")
+  auditEntries AuditLog[]          @relation("AuditActor")
 
   @@index([suspended])
   @@map("users")
@@ -108,6 +110,77 @@ model Session {
   @@index([family])
   @@index([expiresAt])
   @@map("sessions")
+}
+
+/// A WebAuthn credential — a passkey.
+///
+/// Nothing here is a secret. The private key never leaves the authenticator,
+/// so a dump of this table lets nobody sign in: it holds only public keys and
+/// the identifiers needed to recognise them.
+model Passkey {
+  id     Int  @id @default(autoincrement())
+  userId Int
+  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// Credential ID, base64url. Unique across the instance and not only per
+  /// user: the same authenticator must not be registrable twice, and a login
+  /// with a discoverable credential arrives with no username to scope the
+  /// lookup by.
+  credentialId String @unique
+  /// COSE public key, base64. Verifies the signatures; reveals nothing.
+  publicKey    String
+
+  /// Signature counter. An authenticator that goes backwards has been cloned —
+  /// some never count at all and stay at zero, which is not the same thing.
+  counter BigInt @default(0)
+
+  /// How the browser reached it: usb, nfc, ble, internal, hybrid. Passed back
+  /// at login so the browser can suggest the right one instead of asking.
+  transports String[]
+
+  /// A credential synchronised across a vendor's devices survives losing the
+  /// phone; one bound to a single device does not. Worth showing, because it
+  /// decides whether a second passkey is a nice idea or the only way back in.
+  backedUp Boolean @default(false)
+
+  /// What the user called it. They own several and have to tell them apart.
+  name String
+
+  lastUsedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([userId])
+  @@map("passkeys")
+}
+
+/// One in-flight WebAuthn ceremony.
+///
+/// The challenge has to be remembered between the two round trips, and it
+/// cannot live in the client's hands: whoever chooses the challenge chooses
+/// what the signature covers. In the database rather than in Redis because
+/// Redis is optional here, and an optional dependency must not decide whether
+/// signing in works.
+model WebauthnChallenge {
+  id Int @id @default(autoincrement())
+
+  /// Random, base64url. Looked up by value, so it is the key.
+  challenge String @unique
+
+  /// Null for a login: a discoverable credential says who it is afterwards.
+  /// Set for a registration, which always happens inside a session.
+  userId Int?
+  user   User? @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// Registration or authentication. A challenge minted for one must not be
+  /// spent on the other.
+  purpose String
+
+  /// Short. A ceremony is a user tapping a key, not a session.
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([expiresAt])
+  @@map("webauthn_challenges")
 }
 
 model ApiKey {

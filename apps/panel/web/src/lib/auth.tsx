@@ -15,6 +15,15 @@ interface AuthContextValue {
   user: CurrentUser | null;
   isLoading: boolean;
   login: (input: LoginInput) => Promise<LoginResponse>;
+  /**
+   * A passkey login lands here already signed in.
+   *
+   * The ceremony happens in the page — it needs the browser API and a user
+   * gesture — and hands back the user the server recognised. This exists so
+   * the session cache is filled in the one place that owns it, rather than
+   * every caller remembering to.
+   */
+  adopt: (user: CurrentUser) => void;
   logout: () => Promise<void>;
 }
 
@@ -64,11 +73,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       user: data ?? null,
       isLoading,
       login: (input) => loginMutation.mutateAsync(input),
+      adopt: (authenticated) => queryClient.setQueryData(['auth', 'me'], authenticated),
       logout: async () => {
         await logoutMutation.mutateAsync();
       },
     }),
-    [data, isLoading, loginMutation, logoutMutation],
+    [data, isLoading, loginMutation, logoutMutation, queryClient],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

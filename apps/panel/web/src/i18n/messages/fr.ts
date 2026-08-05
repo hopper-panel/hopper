@@ -943,4 +943,27 @@ export const fr: Partial<Messages> = {
   'fileEdit.loading': 'Chargement du fichier…',
 
   'fileEdit.backToFiles': 'Revenir aux fichiers',
+
+  // Clés d'accès
+  'login.or': 'ou',
+  'login.passkey': 'Se connecter avec une clé d’accès',
+  'login.passkeyWaiting': 'En attente de votre appareil…',
+  'login.passkeyFailed': 'Cette clé d’accès a été refusée.',
+  'passkeys.title': 'Clés d’accès',
+  'passkeys.intro':
+    'Connectez-vous avec votre appareil plutôt qu’avec un mot de passe — empreinte, visage ou code. La clé ne quitte jamais votre appareil et ne fonctionne que sur ce site : une fausse page de connexion n’en tire rien.',
+  'passkeys.add': 'Ajouter une clé d’accès',
+  'passkeys.continue': 'Continuer',
+  'passkeys.waiting': 'En attente de votre appareil…',
+  'passkeys.name': 'Nom',
+  'passkeys.nameHint': 'Pour la distinguer des autres — portable du travail, téléphone.',
+  'passkeys.defaultName': 'Ma clé d’accès',
+  'passkeys.empty': 'Aucune clé d’accès. Votre mot de passe fonctionne toujours.',
+  'passkeys.remove': 'Supprimer',
+  'passkeys.synced': 'synchronisée',
+  'passkeys.deviceBound': 'cet appareil uniquement',
+  'passkeys.lastUsed': 'Dernière utilisation le {date}',
+  'passkeys.neverUsed': 'Jamais utilisée',
+  'passkeys.registerFailed': 'Cette clé d’accès n’a pas pu être enregistrée.',
+  'passkeys.unsupported': 'Ce navigateur ne gère pas les clés d’accès.',
 };

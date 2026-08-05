@@ -933,6 +933,29 @@ export const en = {
   'fileEdit.loading': 'Loading the file…',
 
   'fileEdit.backToFiles': 'Back to the files',
+
+  // Passkeys
+  'login.or': 'or',
+  'login.passkey': 'Sign in with a passkey',
+  'login.passkeyWaiting': 'Waiting for your device…',
+  'login.passkeyFailed': 'That passkey was not accepted.',
+  'passkeys.title': 'Passkeys',
+  'passkeys.intro':
+    'Sign in with your device instead of a password — fingerprint, face or PIN. The key never leaves your device, and it only works on this site, so a fake sign-in page gets nothing.',
+  'passkeys.add': 'Add a passkey',
+  'passkeys.continue': 'Continue',
+  'passkeys.waiting': 'Waiting for your device…',
+  'passkeys.name': 'Name',
+  'passkeys.nameHint': 'To tell it apart from your others — work laptop, phone.',
+  'passkeys.defaultName': 'My passkey',
+  'passkeys.empty': 'No passkey yet. Your password still works.',
+  'passkeys.remove': 'Remove',
+  'passkeys.synced': 'synchronised',
+  'passkeys.deviceBound': 'this device only',
+  'passkeys.lastUsed': 'Last used on {date}',
+  'passkeys.neverUsed': 'Never used',
+  'passkeys.registerFailed': 'This passkey could not be registered.',
+  'passkeys.unsupported': 'This browser does not support passkeys.',
 } as const;
 
 export type MessageKey = keyof typeof en;

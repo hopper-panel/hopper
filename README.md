@@ -156,7 +156,8 @@ process.
 - [x] **Phase 5** — Backups, scheduler, subusers
 - [x] **Phase 6** — System installer (nginx/apache), `hopper` CLI, documentation
 - [ ] **Phase 7** — Per-server MySQL databases _(done)_, interface in five languages _(done)_,
-      server transfer between nodes, disk quotas, passkeys, plugin installer
+      disk quotas _(done)_, plugin and mod installer _(done)_, passkeys _(done)_,
+      server transfer between nodes
 
 ## Security
 

@@ -10,7 +10,7 @@ import type { User } from '@prisma/client';
 import { CryptoService } from '../../common/crypto/crypto.service.js';
 import { RateLimiterService } from '../../common/rate-limit/rate-limiter.service.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
-import { AUDIT_EVENTS, AuditService } from '../audit/audit.service.js';
+import { AUDIT_EVENTS, AuditService, type AuditEvent } from '../audit/audit.service.js';
 import { PasswordService } from './password.service.js';
 import { REFRESH_TOKEN_TTL_SECONDS, TokenService, fingerprintOf } from './token.service.js';
 import { TotpService } from './totp.service.js';
@@ -562,6 +562,58 @@ export class AuthService {
       where: { id: user.id },
       data: { passwordHash: await this.passwords.hash(password) },
     });
+  }
+
+  /**
+   * Turns an already-proven identity into a session.
+   *
+   * The passkey ceremony proves who someone is by a signature rather than by a
+   * password, but everything after that point has to be identical: the same
+   * suspension check, the same session row, the same audit trail. A second
+   * place minting sessions is a second place to forget one of them.
+   *
+   * No two-factor step. A passkey is registered and used with user
+   * verification required, so the authenticator has already asked for a PIN or
+   * a biometric — possession and knowledge, both, before the browser ever
+   * spoke to us. Asking for a TOTP code on top would be a third factor, not a
+   * second one.
+   */
+  async completeVerifiedLogin(
+    user: User,
+    context: RequestContext,
+    event: AuditEvent,
+  ): Promise<LoginResult> {
+    if (user.suspended) {
+      await this.audit.record({
+        event: AUDIT_EVENTS.LOGIN_BLOCKED,
+        actorId: user.id,
+        ip: context.ip,
+        userAgent: context.userAgent,
+        metadata: { reason: 'suspended' },
+      });
+      throw new ForbiddenException('This account is suspended.');
+    }
+
+    const session = await this.createSession(user, context);
+
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: { lastLoginAt: new Date(), lastLoginIp: context.ip },
+    });
+
+    await this.audit.record({
+      event,
+      actorId: user.id,
+      ip: context.ip,
+      userAgent: context.userAgent,
+    });
+
+    return {
+      status: 'authenticated',
+      accessToken: session.accessToken,
+      refreshToken: session.refreshToken,
+      user: this.toAuthenticatedUser(user),
+    };
   }
 
   private async createSession(

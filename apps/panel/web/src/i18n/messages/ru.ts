@@ -869,4 +869,27 @@ export const ru: Partial<Messages> = {
   'fileEdit.loading': 'Загрузка файла…',
 
   'fileEdit.backToFiles': 'Вернуться к файлам',
+
+  // Ключи доступа
+  'login.or': 'или',
+  'login.passkey': 'Войти с ключом доступа',
+  'login.passkeyWaiting': 'Ожидание вашего устройства…',
+  'login.passkeyFailed': 'Этот ключ доступа отклонён.',
+  'passkeys.title': 'Ключи доступа',
+  'passkeys.intro':
+    'Входите с помощью устройства вместо пароля — отпечаток, лицо или PIN. Ключ никогда не покидает устройство и работает только на этом сайте, поэтому поддельная страница входа ничего не получит.',
+  'passkeys.add': 'Добавить ключ доступа',
+  'passkeys.continue': 'Продолжить',
+  'passkeys.waiting': 'Ожидание вашего устройства…',
+  'passkeys.name': 'Название',
+  'passkeys.nameHint': 'Чтобы отличать от остальных — рабочий ноутбук, телефон.',
+  'passkeys.defaultName': 'Мой ключ доступа',
+  'passkeys.empty': 'Ключей пока нет. Пароль по-прежнему работает.',
+  'passkeys.remove': 'Удалить',
+  'passkeys.synced': 'синхронизирован',
+  'passkeys.deviceBound': 'только это устройство',
+  'passkeys.lastUsed': 'Последнее использование: {date}',
+  'passkeys.neverUsed': 'Не использовался',
+  'passkeys.registerFailed': 'Не удалось зарегистрировать этот ключ доступа.',
+  'passkeys.unsupported': 'Этот браузер не поддерживает ключи доступа.',
 };
