@@ -8,6 +8,7 @@ import {
   JailedFilesystem,
   NotFoundError,
   PathEscapeError,
+  QuotaExceededError,
   formatMode,
   globToRegExp,
   isInside,
@@ -459,5 +460,101 @@ describe('formatMode', () => {
     [0o000, '---------'],
   ])('formats %s as %s', (mode, expected) => {
     expect(formatMode(mode)).toBe(expected);
+  });
+});
+
+/**
+ * A server that can fill the host disk takes down every other server on the
+ * machine, not just its own. The limit exists in the database and the daemon
+ * measures usage; these tests cover the part that was missing — refusing the
+ * write.
+ */
+describe('disk quota', () => {
+  let sandbox: string;
+  let volume: string;
+  let usedBytes: number;
+  let limitBytes: number;
+
+  function makeJail(): JailedFilesystem {
+    return new JailedFilesystem({
+      root: volume,
+      quota: () => ({ usedBytes, limitBytes }),
+    });
+  }
+
+  beforeEach(async () => {
+    sandbox = await mkdtemp(join(tmpdir(), 'hopper-quota-'));
+    volume = join(sandbox, 'volume');
+    await mkdir(volume, { recursive: true });
+    usedBytes = 0;
+    limitBytes = 1000;
+  });
+
+  afterEach(async () => {
+    await rm(sandbox, { recursive: true, force: true });
+  });
+
+  it('accepts a write that fits', async () => {
+    usedBytes = 900;
+    await expect(makeJail().writeFile('a.txt', 'x'.repeat(50))).resolves.toBeUndefined();
+  });
+
+  it('refuses a write that would cross the limit', async () => {
+    usedBytes = 900;
+    await expect(makeJail().writeFile('a.txt', 'x'.repeat(200))).rejects.toThrow(
+      QuotaExceededError,
+    );
+  });
+
+  // A server sitting at its limit still has to be configurable: refusing an
+  // edit that replaces a file with one the same size would leave the operator
+  // unable to fix the very setting filling the disk.
+  it('charges only the growth when replacing a file', async () => {
+    const jail = makeJail();
+    await jail.writeFile('config.yml', 'x'.repeat(400));
+
+    usedBytes = 1000;
+
+    await expect(jail.writeFile('config.yml', 'y'.repeat(400))).resolves.toBeUndefined();
+    await expect(jail.writeFile('config.yml', 'y'.repeat(401))).rejects.toThrow(QuotaExceededError);
+  });
+
+  it('reports the room left', () => {
+    usedBytes = 400;
+    expect(makeJail().remainingBytes()).toBe(600);
+  });
+
+  it('reports no room once over the limit', () => {
+    usedBytes = 1500;
+    expect(makeJail().remainingBytes()).toBe(0);
+  });
+
+  // 0 is the convention the other build limits use for "unlimited"; reading it
+  // as a zero-byte allowance would make every write fail on a server nobody
+  // meant to restrict.
+  it('treats a limit of 0 as unlimited', async () => {
+    limitBytes = 0;
+    usedBytes = 10 ** 9;
+
+    expect(makeJail().remainingBytes()).toBe(Number.POSITIVE_INFINITY);
+    await expect(makeJail().writeFile('a.txt', 'x'.repeat(500))).resolves.toBeUndefined();
+  });
+
+  // Restoring a backup writes on behalf of the system: enforcing a quota there
+  // would leave a half-restored volume, which is worse than an oversized one.
+  it('enforces nothing without a quota', async () => {
+    const jail = new JailedFilesystem({ root: volume });
+
+    expect(jail.remainingBytes()).toBe(Number.POSITIVE_INFINITY);
+    await expect(jail.writeFile('a.txt', 'x'.repeat(10_000))).resolves.toBeUndefined();
+  });
+
+  it('refuses a copy that would cross the limit', async () => {
+    const jail = makeJail();
+    await jail.writeFile('source.jar', 'x'.repeat(400));
+
+    usedBytes = 700;
+
+    await expect(jail.copy('source.jar', 'copy.jar')).rejects.toThrow(QuotaExceededError);
   });
 });

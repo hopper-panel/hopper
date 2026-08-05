@@ -61,6 +61,35 @@ export class NotFoundError extends Error {
   }
 }
 
+export class QuotaExceededError extends Error {
+  constructor(
+    readonly usedBytes: number,
+    readonly limitBytes: number,
+  ) {
+    super('The server has reached its disk limit.');
+    this.name = 'QuotaExceededError';
+  }
+}
+
+/**
+ * Disk allowance of a server, as the jail sees it.
+ *
+ * `usedBytes` is a **snapshot**, not a live figure: measuring a volume means
+ * walking it, which costs seconds on a large world, so the daemon samples it
+ * periodically. A server can therefore overshoot its limit by whatever it
+ * writes between two measurements.
+ *
+ * That slack is deliberate. The alternative — walking the volume before every
+ * write — would make the file manager unusable on the servers that need the
+ * limit most. What matters is that a server cannot grow indefinitely, not that
+ * the ceiling is exact to the byte.
+ */
+export interface DiskQuota {
+  usedBytes: number;
+  /** 0 means no limit, matching the convention of the other build limits. */
+  limitBytes: number;
+}
+
 export interface FileEntry {
   name: string;
   /** Path relative to the volume, POSIX separators. */
@@ -90,6 +119,17 @@ export interface JailOptions {
    * Absent on Windows, where `chown` makes no sense.
    */
   ownership?: { uid: number; gid: number };
+  /**
+   * Current disk allowance, read at each write.
+   *
+   * A function rather than a value: a jail is built per request, but the usage
+   * it has to compare against keeps moving underneath. Capturing the figure at
+   * construction would enforce a quota that was true when the request started.
+   *
+   * Absent means no enforcement — a backup restore writes on behalf of the
+   * system, not of a user, and refusing it would leave a half-restored volume.
+   */
+  quota?: () => DiskQuota;
 }
 
 export class JailedFilesystem {
@@ -305,8 +345,50 @@ export class JailedFilesystem {
   // Writing
   // -------------------------------------------------------------------------
 
+  /**
+   * Room left before the disk limit, in bytes.
+   *
+   * `Infinity` when no quota applies, so callers can compare against it without
+   * special-casing the unlimited server.
+   */
+  remainingBytes(): number {
+    const quota = this.options.quota?.();
+
+    if (!quota || quota.limitBytes <= 0) {
+      return Number.POSITIVE_INFINITY;
+    }
+
+    return Math.max(0, quota.limitBytes - quota.usedBytes);
+  }
+
+  /**
+   * Refuses a write that would take the server past its limit.
+   *
+   * Streaming callers — an upload, an archive extraction — check as they go
+   * rather than up front: a client's declared `Content-Length` can lie, and an
+   * archive announces nothing at all until it is read.
+   */
+  assertRoomFor(bytes: number): void {
+    const quota = this.options.quota?.();
+
+    if (!quota || quota.limitBytes <= 0) {
+      return;
+    }
+
+    if (quota.usedBytes + bytes > quota.limitBytes) {
+      throw new QuotaExceededError(quota.usedBytes, quota.limitBytes);
+    }
+  }
+
   async writeFile(userPath: string, content: string | Buffer): Promise<void> {
     const absolute = await this.resolvePath(userPath);
+    // The file being replaced already counts towards the usage, so only the
+    // growth is charged. Editing one line of a configuration file on a server
+    // sitting at its limit has to keep working.
+    const existing = await stat(absolute).catch(() => null);
+    const size = typeof content === 'string' ? Buffer.byteLength(content) : content.length;
+
+    this.assertRoomFor(size - (existing?.size ?? 0));
 
     await mkdir(dirname(absolute), { recursive: true });
     await writeFile(absolute, content);
@@ -400,6 +482,11 @@ export class JailedFilesystem {
     if (!stats) {
       throw new NotFoundError(fromPath);
     }
+
+    // A copy is pure growth: the source stays. For a directory the size of the
+    // entry itself understates the tree, so the check is a floor, not a
+    // guarantee — the periodic measurement catches the rest.
+    this.assertRoomFor(stats.size);
 
     await mkdir(dirname(to), { recursive: true });
 

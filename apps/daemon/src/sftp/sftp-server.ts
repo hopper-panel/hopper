@@ -52,6 +52,10 @@ interface OpenHandle {
   pending?: SshFileEntry[];
   /** For a file being written. */
   writeStream?: ReturnType<typeof createWriteStream>;
+  /** Bytes accepted so far, charged against the server's disk allowance. */
+  written?: number;
+  /** Room left when the handle was opened; `Infinity` without a quota. */
+  room?: number;
   /** For a file being read. */
   readPath?: string;
 }
@@ -192,6 +196,7 @@ export class SftpServer {
           jail = new JailedFilesystem({
             root: instance.volumePath,
             denylist: instance.configuration.fileDenylist,
+            quota: () => instance.diskQuota,
           });
 
           context.accept();
@@ -388,7 +393,19 @@ export class SftpServer {
             stream.destroy();
           });
 
-          sftp.handle(reqId, allocate({ type: 'file', path, writeStream: stream }));
+          // The allowance is captured at open time and counted down as the
+          // client writes. SFTP never announces a size, so there is nothing to
+          // check up front — only as it arrives.
+          sftp.handle(
+            reqId,
+            allocate({
+              type: 'file',
+              path,
+              writeStream: stream,
+              written: 0,
+              room: jail.remainingBytes(),
+            }),
+          );
           return;
         }
 
@@ -409,6 +426,17 @@ export class SftpServer {
       if (entry.writeStream.destroyed) {
         // The stream already failed: answer FAILURE rather than write into the
         // void, otherwise the client would believe its upload succeeded.
+        sftp.status(reqId, STATUS.FAILURE);
+        return;
+      }
+
+      entry.written = (entry.written ?? 0) + data.length;
+
+      if (entry.written > (entry.room ?? Number.POSITIVE_INFINITY)) {
+        // The partial file is left for the jail to clean up on CLOSE: writing
+        // more would take the volume further past a limit already reached.
+        logger.warn({ server: serverUuid, path: entry.path }, 'SFTP write refused: disk limit');
+        entry.writeStream.destroy();
         sftp.status(reqId, STATUS.FAILURE);
         return;
       }

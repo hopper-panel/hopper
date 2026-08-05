@@ -12,6 +12,7 @@ import type Dockerode from 'dockerode';
 import type { Duplex } from 'node:stream';
 import type { DockerClient } from '../docker/client.js';
 import { buildContainerOptions, containerNameFor } from '../docker/container-config.js';
+import type { DiskQuota } from '../fs/jailed-filesystem.js';
 import type { Logger } from '../logger.js';
 import type { PanelClient } from '../panel/panel-client.js';
 import { ConsoleBuffer, LineAssembler } from './console-buffer.js';
@@ -110,6 +111,17 @@ export class ServerInstance extends EventEmitter {
 
   get configuration(): ServerConfiguration {
     return this.options.configuration;
+  }
+
+  /**
+   * Disk allowance, as the file manager and SFTP enforce it.
+   *
+   * `usedBytes` is the last periodic measurement, not a live walk — see
+   * `DiskQuota`. Read through a function so a jail built for one request keeps
+   * seeing the figure move.
+   */
+  get diskQuota(): DiskQuota {
+    return { usedBytes: this.diskBytes, limitBytes: this.options.configuration.build.diskBytes };
   }
 
   get currentState(): ServerState {

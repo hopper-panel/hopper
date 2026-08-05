@@ -120,7 +120,6 @@ export const ru: Partial<Messages> = {
   'account.languageTitle': 'Язык',
   'account.languageHint':
     'Применяется только к этому браузеру. У других пользователей остаётся их выбор.',
-  'account.languageAuto': 'Язык панели ({name})',
 
   'apiKeys.title': 'Ключи API',
   'apiKeys.create': 'Создать ключ',
