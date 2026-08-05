@@ -112,11 +112,18 @@ export function AdminServerDetailPage() {
       {tab === 'build' ? (
         <Build
           server={data}
-          onSaved={() => queryClient.invalidateQueries({ queryKey: ['admin', 'server', uuid] })}
+          onSaved={() => {
+            void queryClient.invalidateQueries({ queryKey: ['admin', 'server', uuid] });
+          }}
         />
       ) : null}
       {tab === 'manage' ? (
-        <Manage server={data} onDeleted={() => navigate('/admin/servers')} />
+        <Manage
+          server={data}
+          onDeleted={() => {
+            void navigate('/admin/servers');
+          }}
+        />
       ) : null}
     </>
   );
