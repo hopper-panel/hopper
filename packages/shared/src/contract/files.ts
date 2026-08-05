@@ -98,7 +98,9 @@ export const MAX_EDITABLE_FILE_BYTES = 4 * 1024 * 1024;
  *
  * This is **not** a disk quota: nothing stops anyone uploading a thousand
  * one-gigabyte files. It is a bound against the accident — the 60 GiB modpack
- * dropped in by mistake — until per-server quotas exist.
+ * dropped in by mistake. The per-server disk limit applies on top and is the
+ * one that says how much a server may hold; this only says how much may arrive
+ * in a single request.
  */
 export const MAX_UPLOAD_BYTES = 4 * 1024 * 1024 * 1024;
 
@@ -159,3 +161,46 @@ export const DAEMON_FILE_ROUTES = {
   upload: (uuid: string) => `/api/servers/${uuid}/files/upload`,
   chmod: (uuid: string) => `/api/servers/${uuid}/files/chmod`,
 } as const;
+
+/**
+ * Hosts the daemon will fetch a file from.
+ *
+ * An allowlist, not a validation. The panel hands the daemon a URL, so without
+ * one this endpoint would be an open proxy running inside the operator's
+ * network: point it at `http://169.254.169.254/` and a cloud instance hands
+ * back its credentials, at `http://127.0.0.1:5432` and it probes the database.
+ *
+ * Frozen in the contract rather than made a setting, for the same reason the
+ * update check's repository is: an administrator who could add a host would be
+ * turning a catalogue into a request the daemon makes on their behalf, from
+ * inside.
+ */
+export const ALLOWED_FETCH_HOSTS = ['cdn.modrinth.com'] as const;
+
+export const fetchRemoteFileRequestSchema = z.object({
+  url: z.string().url(),
+  /** Destination folder, relative to the volume root. */
+  directory: z.string().min(1).default('/'),
+  /** A name, not a path — validated exactly as an upload's is. */
+  name: z
+    .string()
+    .min(1)
+    .max(255)
+    .refine(
+      (value) => !/[/\\]/.test(value) && value !== '.' && value !== '..',
+      'A file name may contain neither a path separator nor "..".',
+    ),
+  /**
+   * SHA-512 the catalogue published for this file.
+   *
+   * Checked after the download, and the file removed when it does not match.
+   * The point is not the network — that is TLS's job — but the catalogue: a
+   * project whose files were replaced upstream should not install silently.
+   */
+  sha512: z
+    .string()
+    .regex(/^[0-9a-f]{128}$/, 'A SHA-512 is 128 hexadecimal characters.')
+    .optional(),
+});
+
+export type FetchRemoteFileRequest = z.infer<typeof fetchRemoteFileRequestSchema>;

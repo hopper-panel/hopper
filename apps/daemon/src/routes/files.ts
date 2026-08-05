@@ -1,9 +1,11 @@
+import { createHash } from 'node:crypto';
 import { createReadStream, createWriteStream } from 'node:fs';
 import { mkdir } from 'node:fs/promises';
 import { dirname } from 'node:path';
-import { Transform } from 'node:stream';
+import { Readable, Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import {
+  ALLOWED_FETCH_HOSTS,
   MAX_EDITABLE_FILE_BYTES,
   MAX_UPLOAD_BYTES,
   chmodFilesRequestSchema,
@@ -13,6 +15,7 @@ import {
   decompressFileRequestSchema,
   deleteFilesRequestSchema,
   downloadFileQuerySchema,
+  fetchRemoteFileRequestSchema,
   listFilesQuerySchema,
   readFileQuerySchema,
   renameFileRequestSchema,
@@ -38,6 +41,14 @@ class TooLargeError extends Error {
   constructor(message: string) {
     super(message);
     this.name = 'TooLargeError';
+  }
+}
+
+/** A fetch aimed somewhere the daemon will not go. */
+class ForbiddenHostError extends Error {
+  constructor(readonly host: string) {
+    super('This host is not in the list the daemon may download from.');
+    this.name = 'ForbiddenHostError';
   }
 }
 
@@ -91,6 +102,17 @@ export function registerFileRoutes(
           limitBytes: error.limitBytes,
           requestId: request.id,
         },
+      });
+    }
+
+    if (error instanceof ForbiddenHostError) {
+      // Logged with the host: a panel asking the daemon to fetch from somewhere
+      // unexpected is either a bug or someone probing, and both are worth a
+      // line in the journal.
+      request.log.warn({ host: error.host }, 'Remote fetch refused: host not allowed');
+
+      return reply.code(403).send({
+        error: { code: 'forbidden_host', message: error.message, requestId: request.id },
       });
     }
 
@@ -365,6 +387,105 @@ export function registerFileRoutes(
       } catch (error) {
         // A truncated file is worse than none: it would show in the listing
         // with a plausible size and break on the first load.
+        await jail.delete([target]).catch(() => undefined);
+        throw error;
+      }
+
+      await jail.applyOwnership(absolute);
+
+      return reply.code(201).send(await jail.stat(target));
+    }),
+  );
+
+  // -------------------------------------------------------------------------
+  // Fetching from a catalogue
+  // -------------------------------------------------------------------------
+
+  /**
+   * Downloads a file from an allowed host into the volume.
+   *
+   * The panel picks the URL, which is what makes the allowlist the whole point
+   * rather than a formality: without it this route is an open proxy running
+   * inside the operator's network. `http://169.254.169.254/` and a cloud
+   * instance hands back its credentials; `http://127.0.0.1:5432` and it probes
+   * the database. The daemon checks the host itself instead of trusting the
+   * panel to have checked — the panel is the thing an attacker reaches first.
+   */
+  app.post(
+    '/api/servers/:uuid/files/fetch',
+    handler(fetchRemoteFileRequestSchema, 'body', async ({ jail, server }, body, reply) => {
+      let url: URL;
+
+      try {
+        url = new URL(body.url);
+      } catch {
+        throw new ArchiveError('The address is not a valid URL.');
+      }
+
+      // https only: a plaintext download is one an operator's own network can
+      // rewrite, and the hash below would then be checked against whatever was
+      // substituted.
+      if (url.protocol !== 'https:' || !ALLOWED_FETCH_HOSTS.includes(url.hostname as never)) {
+        throw new ForbiddenHostError(url.hostname);
+      }
+
+      const target = `${body.directory.replace(/\/+$/, '')}/${body.name}`;
+      const absolute = await jail.absolutePathFor(target);
+      await mkdir(dirname(absolute), { recursive: true });
+
+      const response = await fetch(url, {
+        redirect: 'error',
+        signal: AbortSignal.timeout(300_000),
+      }).catch((error: unknown) => {
+        throw new ArchiveError(`Could not reach ${url.hostname}: ${String(error)}`);
+      });
+
+      if (!response.ok || !response.body) {
+        throw new ArchiveError(`${url.hostname} answered ${response.status}.`);
+      }
+
+      const quota = server.diskQuota;
+      const room = jail.remainingBytes();
+      const digest = createHash('sha512');
+      let written = 0;
+
+      // Counted as it arrives rather than from `content-length`: the header is
+      // the server's claim, and the quota has to hold against a body that does
+      // not match it.
+      const counter = new Transform({
+        transform(chunk: Buffer, _encoding, done) {
+          written += chunk.length;
+          digest.update(chunk);
+
+          if (written > MAX_UPLOAD_BYTES) {
+            done(new TooLargeError('File too large.'));
+            return;
+          }
+
+          if (written > room) {
+            done(new QuotaExceededError(quota.usedBytes, quota.limitBytes));
+            return;
+          }
+
+          done(null, chunk);
+        },
+      });
+
+      try {
+        await pipeline(
+          Readable.fromWeb(response.body as never),
+          counter,
+          createWriteStream(absolute),
+        );
+
+        if (body.sha512 && digest.digest('hex') !== body.sha512) {
+          throw new ArchiveError(
+            'The downloaded file does not match the checksum the catalogue published.',
+          );
+        }
+      } catch (error) {
+        // A partial or unverified file is worse than none: it would show in the
+        // listing with a plausible size and fail on the first load.
         await jail.delete([target]).catch(() => undefined);
         throw error;
       }
