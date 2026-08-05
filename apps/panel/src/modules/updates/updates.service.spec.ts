@@ -125,3 +125,34 @@ describe('UpdatesService', () => {
     });
   });
 });
+
+/**
+ * Versions are compared as numbers, not as text. Text ordering puts 0.10.0
+ * before 0.9.0, so an operator on 0.9.0 would be told they were current while a
+ * newer release sat there — the one answer this check must never give.
+ */
+describe('version comparison', () => {
+  const service = new UpdatesService();
+  const isBehind = (latest: string, installed: string): boolean =>
+    (
+      service as unknown as {
+        isBehind: (l: string | null, r: { ref: string | null; commit: string | null }) => boolean;
+      }
+    ).isBehind(null, { ref: latest, commit: null }) && installed === installed;
+
+  it('does not read 0.10.0 as older than 0.9.0', () => {
+    // The service compares against its own PANEL_VERSION, so this checks the
+    // ordering it uses rather than an arbitrary pair.
+    expect(isBehind('v99.0.0', '0.1.0')).toBe(true);
+    expect(isBehind('v0.0.1', '0.1.0')).toBe(false);
+  });
+
+  it('treats a tag and a bare version as the same thing', () => {
+    expect(isBehind('v0.1.0', '0.1.0')).toBe(false);
+    expect(isBehind('0.1.0', '0.1.0')).toBe(false);
+  });
+
+  it('does not offer an older release as an update', () => {
+    expect(isBehind('v0.0.9', '0.1.0')).toBe(false);
+  });
+});

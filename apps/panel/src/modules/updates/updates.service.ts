@@ -32,6 +32,45 @@ const GITHUB_API = 'https://api.github.com';
 const CACHE_MS = 60 * 1000;
 
 /** The panel writes here; a root unit watches the directory. See `requestUpdate`. */
+/** `v0.1.0` and `0.1.0` are the same version; only one of them is a tag. */
+function stripV(ref: string): string {
+  return ref.startsWith('v') ? ref.slice(1) : ref;
+}
+
+/**
+ * Orders two semver strings: positive when `a` is newer.
+ *
+ * Written out rather than compared as text, because text ordering puts 0.10.0
+ * before 0.9.0 — and an operator on 0.9.0 would be told they are current while
+ * a newer release sits there.
+ *
+ * A pre-release suffix loses to the release of the same numbers, which is what
+ * semver says and what stops `1.0.0-rc.1` from looking newer than `1.0.0`.
+ */
+function compareVersions(a: string, b: string): number {
+  const parse = (value: string): { parts: number[]; pre: string | null } => {
+    const [core = '', pre = null] = value.split('-', 2);
+    return { parts: core.split('.').map((part) => Number.parseInt(part, 10) || 0), pre };
+  };
+
+  const left = parse(a);
+  const right = parse(b);
+
+  for (let index = 0; index < 3; index += 1) {
+    const difference = (left.parts[index] ?? 0) - (right.parts[index] ?? 0);
+
+    if (difference !== 0) {
+      return difference;
+    }
+  }
+
+  if (left.pre === right.pre) return 0;
+  if (left.pre === null) return 1;
+  if (right.pre === null) return -1;
+
+  return left.pre > right.pre ? 1 : -1;
+}
+
 const TRIGGER_NAME = 'requested';
 const STATUS_NAME = 'status.json';
 
@@ -118,14 +157,22 @@ export class UpdatesService {
   }
 
   private isBehind(local: string | null, remote: { ref: string | null; commit: string | null }) {
-    // A released build compares tags; a checkout compares commits. Without a
-    // release to compare against, an installation that tracks main is behind
-    // as soon as its commit differs from the branch head.
+    // A published release is compared by version, and only by version. The
+    // commit is what the fallback below uses, and mixing the two would have a
+    // tagged build call itself behind because its commit is not the branch
+    // head — which it never is, since the tag is cut before anything else
+    // lands.
+    if (remote.ref !== null && remote.commit === null) {
+      return compareVersions(stripV(remote.ref), PANEL_VERSION) > 0;
+    }
+
+    // No release yet: an installation tracking main is behind as soon as its
+    // commit differs from the branch head.
     if (remote.commit && local) {
       return remote.commit !== local;
     }
 
-    return remote.ref !== null && remote.ref !== PANEL_VERSION;
+    return remote.ref !== null && stripV(remote.ref) !== PANEL_VERSION;
   }
 
   /**
