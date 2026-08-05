@@ -1,4 +1,4 @@
-import { pino, type Logger } from 'pino';
+import { pino, type DestinationStream, type Logger } from 'pino';
 
 /**
  * Paths redacted from the logs.
@@ -19,10 +19,25 @@ const REDACTED_PATHS = [
   '*.password',
 ];
 
-export function createLogger(debug: boolean): Logger {
-  return pino({
+/**
+ * @param destination Where the lines go. Only tests pass one — they have to
+ *   read what was written to prove the redaction actually happened, and a
+ *   logger whose output nobody can see is a logger whose redaction nobody can
+ *   check. A destination and a transport are mutually exclusive in pino, which
+ *   is why supplying one turns the pretty-printer off.
+ */
+export function createLogger(debug: boolean, destination?: DestinationStream): Logger {
+  const options = {
     level: debug ? 'debug' : 'info',
     redact: { paths: REDACTED_PATHS, censor: '[redacted]' },
+  };
+
+  if (destination) {
+    return pino(options, destination);
+  }
+
+  return pino({
+    ...options,
     // pino-pretty is a development dependency only: in production the logs come
     // out as JSON, read by journald.
     transport:
