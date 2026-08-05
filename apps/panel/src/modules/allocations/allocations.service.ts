@@ -99,7 +99,7 @@ export class AllocationsService {
 
     await this.prisma.server.update({
       where: { id: server.id },
-      data: { primaryAllocationId: allocationId },
+      data: { primaryAllocationId: allocationId, requiresRebuild: true },
     });
 
     await this.pushConfiguration(serverUuid, server.nodeId);
@@ -151,6 +151,12 @@ export class AllocationsService {
       throw new ConflictException('This port has just been assigned elsewhere, try again.');
     }
 
+    // A container's published ports are fixed when it is created, so a new
+    // address only becomes real once the container is rebuilt. Without this
+    // flag the interface's "takes effect on the next start" was a promise
+    // nothing kept: the server restarted on the old port and the panel
+    // displayed the new one.
+    await this.markForRebuild(server.id);
     await this.pushConfiguration(serverUuid, server.nodeId);
 
     return { id: free.id, ip: free.ip, port: free.port, alias: free.alias, primary: false };
@@ -172,7 +178,24 @@ export class AllocationsService {
       data: { serverId: null, alias: null },
     });
 
+    await this.markForRebuild(server.id);
     await this.pushConfiguration(serverUuid, server.nodeId);
+  }
+
+  /**
+   * Marks the container as needing to be rebuilt on the next start.
+   *
+   * Docker fixes a container's published ports when it is created. Changing a
+   * server's addresses without this changed the row, the interface and the
+   * configuration the node holds — and nothing else: the server came back up
+   * on exactly the ports it had before, at an address the panel no longer
+   * showed.
+   */
+  private async markForRebuild(serverId: number): Promise<void> {
+    await this.prisma.server.update({
+      where: { id: serverId },
+      data: { requiresRebuild: true },
+    });
   }
 
   /**
