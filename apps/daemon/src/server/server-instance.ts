@@ -1,6 +1,7 @@
 import { EventEmitter } from 'node:events';
 import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
+import { CONSOLE_BUFFER_LINES } from '@hopper/shared';
 import type {
   PowerAction,
   ResourceUsage,
@@ -278,6 +279,62 @@ export class ServerInstance extends EventEmitter {
    * Done before `start()`: attaching afterwards would lose the first lines,
    * startup errors among them — precisely the ones worth seeing.
    */
+  /**
+   * Fills the console buffer from what the container has already printed.
+   *
+   * Attaching streams what a container says next, never what it has said. So
+   * after hopperd restarts — an update, a crash, a reboot — the buffer starts
+   * empty, and an operator opening the console of a server that has been up for
+   * an hour sees a blank rectangle. A quiet Minecraft server can stay blank for
+   * hours, which reads as a broken console rather than a silent one.
+   *
+   * Docker still has the output; it is only this process that forgot. Bounded
+   * to the buffer's own size, because a server running for weeks has a log
+   * measured in hundreds of megabytes and none of it belongs in memory.
+   *
+   * Best effort throughout. A console missing its history is a nuisance; a
+   * daemon that refuses to adopt a running server because it could not read a
+   * log file is an outage.
+   */
+  private async primeConsoleFromLogs(): Promise<void> {
+    try {
+      const logs = await this.container().logs({
+        stdout: true,
+        stderr: true,
+        follow: false,
+        tail: CONSOLE_BUFFER_LINES,
+      });
+
+      // `follow: false` resolves with the whole body. The containers run with a
+      // TTY, so the bytes are the terminal's own output — no stream
+      // multiplexing to unpick.
+      const text = Buffer.isBuffer(logs) ? logs.toString('utf8') : String(logs);
+
+      // Its own assembler: this text ends mid-line as often as not, and the
+      // live one is about to receive the container's next byte. Sharing it
+      // would glue the tail of the history onto the head of the new output.
+      const assembler = new LineAssembler();
+      const lines = [...assembler.push(text), ...assembler.flush()];
+
+      for (const line of lines) {
+        this.console.push(line);
+      }
+
+      // Nothing is emitted to connected clients: there are none yet. A client
+      // that connects afterwards receives this buffer as its snapshot, which is
+      // the path that was always meant to carry the history.
+      this.logger.debug(
+        { server: this.uuid, lines: lines.length },
+        'Console history recovered from the container',
+      );
+    } catch (error: unknown) {
+      this.logger.warn(
+        { server: this.uuid, err: error },
+        'Could not recover the console history: the console will start empty',
+      );
+    }
+  }
+
   private async attach(): Promise<void> {
     if (this.stream) {
       return;
@@ -738,6 +795,7 @@ export class ServerInstance extends EventEmitter {
 
       if (info.State.Running) {
         this.logger.info({ server: this.uuid }, 'Server already running: reattaching');
+        await this.primeConsoleFromLogs();
         await this.attach();
         await this.startStatsStream();
         this.startedAt = new Date(info.State.StartedAt).getTime();
