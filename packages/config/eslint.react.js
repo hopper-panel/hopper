@@ -1,6 +1,10 @@
 const globals = require('globals');
 const reactHooks = require('eslint-plugin-react-hooks');
-const reactRefresh = require('eslint-plugin-react-refresh');
+// 0.5 ships as ESM and moved the plugin behind a named export: the default
+// export is no longer the plugin object, so registering it left ESLint unable
+// to find `only-export-components` and refusing to run at all. The rule itself
+// did not change.
+const { reactRefresh } = require('eslint-plugin-react-refresh');
 const base = require('./eslint.base.js');
 
 /** ESLint configuration for the React front (apps/panel/web). */
@@ -13,7 +17,7 @@ module.exports = [
     },
     plugins: {
       'react-hooks': reactHooks,
-      'react-refresh': reactRefresh,
+      'react-refresh': reactRefresh.plugin,
     },
     rules: {
       ...reactHooks.configs.recommended.rules,
