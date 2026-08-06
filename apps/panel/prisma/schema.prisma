@@ -556,8 +556,17 @@ model Subuser {
 // Backups and scheduling
 // ---------------------------------------------------------------------------
 
+/// Where a backup's archive lives.
+///
+/// Only LOCAL exists. S3 is declared and nothing implements it — not the
+/// daemon, not the panel — and it is not selectable anywhere, so no row has
+/// ever carried it. It stays in the enum rather than being dropped because
+/// removing a value is a migration that would fail on any instance that did
+/// somehow hold one, and it buys nothing: what made this a problem was
+/// `docs/security.md` recommending it as a feature, which it no longer does.
 enum BackupDriver {
   LOCAL
+  /// Not implemented. Reserved.
   S3
 }
 
