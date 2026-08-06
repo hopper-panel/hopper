@@ -63,9 +63,13 @@ Two things to know before relying on one:
 
 ### 6. Backups, off the machine
 
-A backup on the same disk as the data protects only against human error. Point the daemon's
-`system.backupDirectory` at another disk, or use the S3 driver (MinIO, Backblaze, Wasabi) which
-sends them elsewhere.
+A backup on the same disk as the data protects only against human error: it survives a deleted
+world, not a dead disk. Point the daemon's `system.backupDirectory` at another disk, and copy the
+archives off the machine yourself — `rsync`, `restic`, whatever you already run.
+
+There is no object-storage driver yet. An earlier version of this page said there was one, which
+was worse than saying nothing: an operator who believed it would have found out when they needed
+the backups.
 
 ## What Hopper already protects
 

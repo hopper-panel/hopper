@@ -4,8 +4,9 @@ A template describes **what a server installs and runs**: its Docker image, its 
 startup command and the variables the user can set. It is the equivalent of Pterodactyl's "eggs",
 and the importer accepts those as they are.
 
-The shipped catalogue covers Vanilla, Paper, Purpur, Folia, Fabric, Forge, NeoForge, Velocity,
-BungeeCord and Bedrock. **Administration → Templates → Resynchronise** reinstalls it after a Hopper
+The shipped catalogue covers Vanilla, Paper, Purpur, Fabric, NeoForge, Velocity and BungeeCord —
+seven. Folia, Forge and Bedrock were listed here before they existed; they do not, yet. Anything
+else runs through an imported egg. **Administration → Templates → Resynchronise** reinstalls it after a Hopper
 update; a template edited by hand is flagged "edited" and is not overwritten.
 
 ## Importing a Pterodactyl egg
