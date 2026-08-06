@@ -35,6 +35,7 @@ const logger = {
 interface Fake {
   instance: ServerInstance;
   logs: ReturnType<typeof vi.fn>;
+  removed: ReturnType<typeof vi.fn>;
   tail: () => unknown;
 }
 
@@ -42,6 +43,9 @@ function instanceWith(options: {
   running: boolean;
   logs: string | Buffer;
   logsFails?: boolean;
+  /** A leftover install container, i.e. an installation nobody finished. */
+  orphanedInstall?: { exitCode: number };
+  panel?: { reportInstall: ReturnType<typeof vi.fn> };
 }): Fake {
   const logs = vi.fn((_options: { tail?: number }) =>
     options.logsFails
@@ -58,8 +62,21 @@ function instanceWith(options: {
     stats: () => Promise.resolve({ on: () => undefined, destroy: () => undefined }),
   };
 
+  const removed = vi.fn(() => Promise.resolve());
+
+  const installContainer = {
+    inspect: () =>
+      options.orphanedInstall
+        ? Promise.resolve({ State: { Running: false, ExitCode: options.orphanedInstall.exitCode } })
+        : Promise.reject(new Error('no such container')),
+    remove: removed,
+  };
+
   const docker = {
-    api: { getContainer: () => container },
+    api: {
+      getContainer: (name: string) =>
+        name.startsWith('hopper-install-') ? installContainer : container,
+    },
     // Resolves to something stream-shaped that never emits: the point here is
     // the buffer's contents before a single new byte arrives.
     attachToContainer: () => Promise.resolve({ on: () => undefined }),
@@ -73,14 +90,61 @@ function instanceWith(options: {
     tmpPath: '/tmp',
     ownership: { uid: 988, gid: 988 },
     networkName: 'hopper0',
+    panel: options.panel ?? { reportInstall: vi.fn(() => Promise.resolve()) },
   } as never);
 
   return {
     instance,
     logs,
+    removed,
     tail: () => logs.mock.calls[0]?.[0]?.tail,
   };
 }
+
+describe('an installation the daemon was restarted out of', () => {
+  // An install lives in a promise chain held by the process. Restart the
+  // daemon halfway — an update does exactly that — and nobody reports success,
+  // nobody reports failure, and the panel keeps the row at INSTALLING for
+  // ever. Seen twice on real hardware in one evening, both times during a
+  // panel update.
+  it('reports the failure the dead daemon never sent', async () => {
+    const panel = { reportInstall: vi.fn(() => Promise.resolve()) };
+    const fake = instanceWith({
+      running: false,
+      logs: '',
+      orphanedInstall: { exitCode: 0 },
+      panel,
+    });
+
+    await fake.instance.reconcile();
+
+    // Failed, even on exit code 0. The script ran; the container that had to
+    // be built afterwards was not. Calling that a success hands the operator a
+    // READY server with nothing behind it.
+    expect(panel.reportInstall).toHaveBeenCalledWith('11111111-1111-4111-8111-111111111111', false);
+    expect(fake.instance.currentState).toBe('install_failed');
+  });
+
+  it('clears the leftover container', async () => {
+    const fake = instanceWith({ running: false, logs: '', orphanedInstall: { exitCode: 1 } });
+
+    await fake.instance.reconcile();
+
+    expect(fake.removed).toHaveBeenCalled();
+  });
+
+  it('says nothing when there is no leftover', async () => {
+    // The normal case by far, and it must stay silent: reporting a failure for
+    // every healthy server on every daemon start would be its own outage.
+    const panel = { reportInstall: vi.fn(() => Promise.resolve()) };
+    const fake = instanceWith({ running: true, logs: 'x\n', panel });
+
+    await fake.instance.reconcile();
+
+    expect(panel.reportInstall).not.toHaveBeenCalled();
+    expect(fake.instance.currentState).toBe('running');
+  });
+});
 
 describe('ServerInstance.reconcile', () => {
   it('recovers the console of a container that is already running', async () => {

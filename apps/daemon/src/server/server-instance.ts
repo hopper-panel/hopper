@@ -18,6 +18,7 @@ import type { Logger } from '../logger.js';
 import type { PanelClient } from '../panel/panel-client.js';
 import { JailedFilesystem } from '../fs/jailed-filesystem.js';
 import { applyConfigFiles } from './config-writer.js';
+import { installContainerName } from './installer.js';
 import { ConsoleBuffer, LineAssembler } from './console-buffer.js';
 import { substitute } from './invocation.js';
 import { directorySize } from './disk-usage.js';
@@ -282,6 +283,62 @@ export class ServerInstance extends EventEmitter {
    * Done before `start()`: attaching afterwards would lose the first lines,
    * startup errors among them — precisely the ones worth seeing.
    */
+  /**
+   * Settles an installation whose daemon died underneath it.
+   *
+   * An install runs inside a promise chain held by this process. Restart the
+   * daemon halfway — an update does exactly that — and the chain dies with it:
+   * nobody reports success, nobody reports failure, and the panel keeps the
+   * row at INSTALLING for ever. Seen twice on real hardware in one evening,
+   * both times during a panel update.
+   *
+   * The evidence outlives the process. A finished installation removes its
+   * container, so one still lying around is an installation that never got to
+   * finish, and its exit code is the verdict nobody delivered.
+   *
+   * Reported as a failure whatever the code says. A zero here means the script
+   * ran, not that the daemon finished the work that follows it — the container
+   * still had to be built and the ownership reclaimed, and neither happened.
+   * Calling that a success would hand the operator a READY server with no
+   * container behind it, which is worse than asking them to press Reinstall.
+   */
+  private async resolveOrphanedInstall(): Promise<boolean> {
+    const name = installContainerName(this.uuid);
+
+    let exitCode: number;
+
+    try {
+      const info = await this.options.docker.api.getContainer(name).inspect();
+
+      if (info.State.Running) {
+        // Still going, started by a daemon that is gone. Nothing here can
+        // adopt its output, so it is stopped rather than left to finish into a
+        // volume nobody is watching.
+        this.logger.warn({ server: this.uuid }, 'Installation still running from a dead daemon');
+      }
+
+      exitCode = info.State.ExitCode;
+    } catch {
+      // No leftover container: the normal case by far.
+      return false;
+    }
+
+    this.logger.warn(
+      { server: this.uuid, exitCode },
+      'Installation interrupted by a daemon restart: reporting it as failed',
+    );
+
+    await this.options.docker.api
+      .getContainer(name)
+      .remove({ force: true })
+      .catch(() => undefined);
+
+    this.setState('install_failed');
+    await this.reportInstall(false);
+
+    return true;
+  }
+
   /**
    * Fills the console buffer from what the container has already printed.
    *
@@ -890,6 +947,12 @@ export class ServerInstance extends EventEmitter {
    * restart, and they have to be found again.
    */
   async reconcile(): Promise<void> {
+    // Settled here and nowhere else: what follows would find no container and
+    // call the server offline, quietly overwriting the verdict.
+    if (await this.resolveOrphanedInstall()) {
+      return;
+    }
+
     try {
       const info = await this.container().inspect();
 
