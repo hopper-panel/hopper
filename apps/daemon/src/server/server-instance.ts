@@ -1,4 +1,5 @@
 import { EventEmitter } from 'node:events';
+import { connect } from 'node:net';
 import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { CONSOLE_BUFFER_LINES } from '@hopper/shared';
@@ -18,6 +19,7 @@ import type { Logger } from '../logger.js';
 import type { PanelClient } from '../panel/panel-client.js';
 import { JailedFilesystem } from '../fs/jailed-filesystem.js';
 import { applyConfigFiles } from './config-writer.js';
+import { announcesReady, resolveReadiness, type ResolvedReadiness } from './readiness.js';
 import { installContainerName } from './installer.js';
 import { ConsoleBuffer, LineAssembler } from './console-buffer.js';
 import { substitute } from './invocation.js';
@@ -103,11 +105,16 @@ export class ServerInstance extends EventEmitter {
    */
   private operation: Promise<unknown> = Promise.resolve();
 
-  private readonly startupPattern: RegExp | null;
+  private readonly readiness: ResolvedReadiness;
 
   constructor(private options: ServerInstanceOptions) {
     super();
-    this.startupPattern = this.compileStartupPattern();
+    this.readiness = resolveReadiness(this.options.configuration, (pattern, error) =>
+      this.logger.warn(
+        { server: this.uuid, pattern, err: error },
+        'Invalid readiness pattern: it is ignored, the others still apply',
+      ),
+    );
   }
 
   get uuid(): string {
@@ -150,29 +157,6 @@ export class ServerInstance extends EventEmitter {
 
   private get logger(): Logger {
     return this.options.logger;
-  }
-
-  /**
-   * A template regex is data, not code: it can be invalid. The server has to
-   * stay usable in that case, even if it means going `running` as soon as the
-   * container runs.
-   */
-  private compileStartupPattern(): RegExp | null {
-    const source = this.options.configuration.startupDetection;
-
-    if (!source) {
-      return null;
-    }
-
-    try {
-      return new RegExp(source);
-    } catch (error: unknown) {
-      this.logger.warn(
-        { server: this.uuid, pattern: source, err: error },
-        'Invalid startup detection expression: the server will go online as soon as the container starts',
-      );
-      return null;
-    }
   }
 
   updateConfiguration(configuration: ServerConfiguration): void {
@@ -221,7 +205,7 @@ export class ServerInstance extends EventEmitter {
 
       // The `starting` → `running` switch happens here: it is the server itself
       // that announces it accepts connections.
-      if (this.state === 'starting' && this.startupPattern?.test(line)) {
+      if (this.state === 'starting' && announcesReady(this.readiness, line)) {
         this.setState('running');
       }
     }
@@ -478,6 +462,67 @@ export class ServerInstance extends EventEmitter {
         'Install report failed: the panel still believes this server is installing',
       );
     }
+  }
+
+  /**
+   * Knocks on the server's port until something answers.
+   *
+   * For workloads that announce nothing on their console. Deliberately a plain
+   * connect and close: what is being asked is whether anything is listening,
+   * and a daemon that spoke each game's query protocol to find out would be a
+   * daemon that has to know what game it runs.
+   *
+   * Only ever promotes `starting`. A server that stopped, crashed or was
+   * restarted while this was waiting must not be dragged back to `running` by
+   * a check nobody cancelled.
+   */
+  private async waitForPort(): Promise<void> {
+    const readiness = this.readiness;
+
+    if (readiness.type !== 'port') {
+      return;
+    }
+
+    const { port, ip } = this.options.configuration.allocations.default;
+    const deadline = Date.now() + this.startupTimeoutMs();
+
+    if (readiness.delayMs > 0) {
+      await new Promise((resolve) => setTimeout(resolve, readiness.delayMs));
+    }
+
+    while (Date.now() < deadline && this.state === 'starting') {
+      if (await this.portAccepts(ip === '0.0.0.0' ? '127.0.0.1' : ip, port)) {
+        if (this.state === 'starting') {
+          this.setState('running');
+        }
+        return;
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+    }
+
+    if (this.state === 'starting') {
+      this.emitDaemonLine('The server never accepted a connection on its port.');
+    }
+  }
+
+  private portAccepts(host: string, port: number): Promise<boolean> {
+    return new Promise((resolve) => {
+      const socket = connect({ host, port, timeout: 2000 });
+      const settle = (accepted: boolean) => {
+        socket.destroy();
+        resolve(accepted);
+      };
+
+      socket.once('connect', () => settle(true));
+      socket.once('error', () => settle(false));
+      socket.once('timeout', () => settle(false));
+    });
+  }
+
+  /** Bounded so a server that never becomes ready does not wait for ever. */
+  private startupTimeoutMs(): number {
+    return 10 * 60 * 1000;
   }
 
   private async attach(): Promise<void> {
@@ -820,10 +865,20 @@ export class ServerInstance extends EventEmitter {
     await this.container().start();
     await this.startStatsStream();
 
-    if (!this.startupPattern) {
-      // With no startup marker, the running container is the only signal
-      // available.
+    if (this.readiness.type === 'unsupported') {
+      // Refused rather than downgraded. Calling it running now would be the
+      // wrong answer for exactly the workloads that asked for this strategy.
+      this.emitDaemonLine(
+        `This server's readiness check is not supported by this node (${this.readiness.reason}). It will stay "starting" until it stops.`,
+      );
+    } else if (this.readiness.type === 'immediate') {
+      // Nothing announces itself here, so the container running is the only
+      // signal there is — and now it is a choice somebody made rather than a
+      // silent default.
       this.setState('running');
+    } else if (this.readiness.type === 'port') {
+      this.emitDaemonLine('Waiting for the server to accept connections…');
+      void this.waitForPort();
     }
   }
 
