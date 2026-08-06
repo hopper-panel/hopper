@@ -1,5 +1,5 @@
-import { createReadStream, createWriteStream } from 'node:fs';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import type { WriteStream } from 'node:fs';
+import { mkdir, readFile, writeFile, type FileHandle } from 'node:fs/promises';
 import { join } from 'node:path';
 import { PERMISSIONS, type Permission } from '@hopper/shared';
 import {
@@ -44,20 +44,73 @@ import { parseSftpUsername } from './sftp-username.js';
  */
 const { OPEN_MODE, STATUS_CODE: STATUS } = utils.sftp;
 
+/**
+ * Largest amount of data served for a single READ.
+ *
+ * The length comes from the client as a 32-bit integer and the buffer is
+ * allocated before anything is read, so an unbounded one lets a client ask for
+ * four gigabytes of a one-byte file and take the daemon down with it. Reading
+ * through a stream used to bound this implicitly — it never produced more than
+ * the file held.
+ *
+ * A short read is legal in SFTP and every client loops until it has what it
+ * asked for; the ceiling sits far above the 32 KiB real clients request, so in
+ * practice none of them ever sees one.
+ */
+const MAX_SFTP_READ_BYTES = 512 * 1024;
+
+/**
+ * Handles one session may hold open at a time.
+ *
+ * A read handle now owns a file descriptor for as long as it lives, where it
+ * used to hold only a path string. That is the point — reopening the name on
+ * every chunk was the hole — but it turns OPEN from a free operation into one
+ * that spends a process-wide resource, and the map it goes into is per session
+ * and unbounded. A client that sends OPEN in a loop and never sends CLOSE walks
+ * the daemon into `EMFILE`, at which point it can no longer reach Docker or
+ * write a log line: every server on the node loses its console, not just the
+ * one whose owner did it.
+ *
+ * Real clients hold a handful. FileZilla opens ten transfers at its most
+ * parallel, and `sftp` itself one.
+ */
+const MAX_SFTP_HANDLES = 64;
+
+/**
+ * Refusal to open more handles in one session.
+ *
+ * Distinct from a jail refusal so the log says which ceiling was reached, and
+ * so an operator seeing it knows to look at a client that is not closing what
+ * it opens rather than at a path.
+ */
+class TooManyHandlesError extends Error {
+  constructor() {
+    super('Too many open handles for this session.');
+    this.name = 'TooManyHandlesError';
+  }
+}
+
 /** Handles opened by a session, keyed by binary identifier. */
 interface OpenHandle {
   type: 'file' | 'directory';
   path: string;
   /** For a directory: entries left to send. */
   pending?: SshFileEntry[];
-  /** For a file being written. */
-  writeStream?: ReturnType<typeof createWriteStream>;
+  /** For a file being written, over a descriptor the jail has vetted. */
+  writeStream?: WriteStream;
   /** Bytes accepted so far, charged against the server's disk allowance. */
   written?: number;
   /** Room left when the handle was opened; `Infinity` without a quota. */
   room?: number;
-  /** For a file being read. */
-  readPath?: string;
+  /**
+   * For a file being read, over a descriptor the jail has vetted.
+   *
+   * The descriptor is kept for the life of the SFTP handle rather than reopened
+   * per READ: a client downloads in 32 KiB chunks, and one `open(2)` per chunk
+   * would be both wasteful and a fresh chance for the name to be swapped
+   * underneath — the very thing the jail opens once to prevent.
+   */
+  readHandle?: FileHandle;
 }
 
 export interface SftpServerOptions {
@@ -256,6 +309,20 @@ export class SftpServer {
       return id;
     };
 
+    /**
+     * Refuses a new handle before anything is opened for it.
+     *
+     * Checked up front rather than inside `allocate`, because by the time
+     * `allocate` runs the descriptor or the write stream already exists —
+     * refusing there would mean unwinding a resource that should never have
+     * been acquired.
+     */
+    const assertHandleRoom = (): void => {
+      if (handles.size >= MAX_SFTP_HANDLES) {
+        throw new TooManyHandlesError();
+      }
+    };
+
     const has = (permission: Permission): boolean => getPermissions().includes(permission);
 
     /** Translates an error into an SFTP code. */
@@ -268,6 +335,12 @@ export class SftpServer {
 
       if (error instanceof NotFoundError) {
         sftp.status(reqId, STATUS.NO_SUCH_FILE);
+        return;
+      }
+
+      if (error instanceof TooManyHandlesError) {
+        logger.warn({ server: serverUuid }, 'SFTP: session handle ceiling reached');
+        sftp.status(reqId, STATUS.FAILURE);
         return;
       }
 
@@ -332,6 +405,8 @@ export class SftpServer {
 
     sftp.on('OPENDIR', ((reqId: number, path: string) => {
       run(reqId, PERMISSIONS.FILE_READ, async () => {
+        assertHandleRoom();
+
         const entries = await getJail()!.list(path);
 
         const names: SshFileEntry[] = entries.map((entry) => ({
@@ -375,13 +450,23 @@ export class SftpServer {
       const permission = write ? PERMISSIONS.FILE_UPDATE : PERMISSIONS.FILE_READ_CONTENT;
 
       run(reqId, permission, async () => {
+        assertHandleRoom();
+
         const jail = getJail()!;
         const absolute = await jail.absolutePathFor(path);
 
         if (write) {
           await mkdir(join(absolute, '..'), { recursive: true });
 
-          const stream = createWriteStream(absolute);
+          // The jail opens the file; this only writes into it. Reopening
+          // `absolute` by name would hand the kernel a name the SFTP session
+          // itself can rewrite: a client is free to `rm` a file and the server's
+          // own process to put a symlink in its place, between the resolution
+          // above and this line. The refusal comes back as a `PathEscapeError`
+          // thrown inside `run`, so it reaches `fail` and becomes
+          // `PERMISSION_DENIED` like any other escape — the `error` listener
+          // below only ever covers failures that happen once bytes are flowing.
+          const stream = await jail.createWriteStream(absolute);
 
           // Without this handler, a write error — disk full, permission
           // denied — becomes an uncaught `error` event, and Node ends the
@@ -409,9 +494,20 @@ export class SftpServer {
           return;
         }
 
-        // Check existence before announcing a valid handle.
+        // Check existence before announcing a valid handle: `stat` is what
+        // turns a missing file into NO_SUCH_FILE, where the open below would
+        // only report an opaque failure.
         await jail.stat(path);
-        sftp.handle(reqId, allocate({ type: 'file', path, readPath: absolute }));
+
+        // The jail opens the file, once, and READ works on that descriptor
+        // afterwards. Keeping the *name* and reopening it per read would hand
+        // the kernel a name the server's own process can rewrite between two
+        // chunks: leave a genuine file there long enough for the checks above to
+        // pass, then `ln -sfn /etc/shadow` on it, and the rest of the download
+        // comes from the link's target, read as root.
+        const file = await jail.openForRead(absolute);
+
+        sftp.handle(reqId, allocate({ type: 'file', path, readHandle: file }));
       });
     }) as never);
 
@@ -449,26 +545,46 @@ export class SftpServer {
     sftp.on('READ', ((reqId: number, handle: Buffer, offset: number, length: number) => {
       const entry = handles.get(handle.toString());
 
-      if (!entry?.readPath) {
+      if (!entry?.readHandle) {
         sftp.status(reqId, STATUS.FAILURE);
         return;
       }
 
-      const chunks: Buffer[] = [];
-      const stream = createReadStream(entry.readPath, { start: offset, end: offset + length - 1 });
+      const file = entry.readHandle;
 
-      stream.on('data', (chunk: string | Buffer) => {
-        chunks.push(typeof chunk === 'string' ? Buffer.from(chunk) : chunk);
-      });
-      stream.on('error', () => sftp.status(reqId, STATUS.FAILURE));
-      stream.on('end', () => {
-        const buffer = Buffer.concat(chunks);
-        if (buffer.length === 0) {
+      void (async () => {
+        // Read at an explicit position rather than sequentially: SFTP names the
+        // offset in every request and clients issue several at once, out of
+        // order, to fill the pipe. A positional read leaves the descriptor's own
+        // cursor alone, so those requests cannot tread on each other.
+        //
+        // The buffer is sized against what the file actually holds past the
+        // offset, not against `length` alone. `length` is a client-supplied
+        // 32-bit integer and the allocation happens before a byte is read, so
+        // capping it at 512 KiB still leaves a request costing thirty thousand
+        // times what it asks for: pipeline a megabyte of READs for 4 GiB each
+        // against a one-byte file and the daemon allocates its way out of
+        // memory, taking every console on the node with it. `fstat` on the
+        // descriptor is free and removes the amplification entirely.
+        const { size } = await file.stat();
+        const remaining = Math.max(0, size - offset);
+        const wanted = Math.min(length, MAX_SFTP_READ_BYTES, remaining);
+
+        if (wanted === 0) {
           sftp.status(reqId, STATUS.EOF);
-        } else {
-          sftp.data(reqId, buffer);
+          return;
         }
-      });
+
+        const buffer = Buffer.allocUnsafe(wanted);
+        const { bytesRead } = await file.read(buffer, 0, buffer.length, offset);
+
+        if (bytesRead === 0) {
+          sftp.status(reqId, STATUS.EOF);
+          return;
+        }
+
+        sftp.data(reqId, buffer.subarray(0, bytesRead));
+      })().catch(() => sftp.status(reqId, STATUS.FAILURE));
     }) as never);
 
     sftp.on('CLOSE', ((reqId: number, handle: Buffer) => {
@@ -480,6 +596,14 @@ export class SftpServer {
       if (entry?.writeStream) {
         entry.writeStream.end(() => sftp.status(reqId, STATUS.OK));
         return;
+      }
+
+      if (entry?.readHandle) {
+        // The descriptor lives as long as the SFTP handle now, so CLOSE is what
+        // releases it. A failure to close is not worth an error to the client —
+        // it has its bytes — but leaving it unhandled would reject a promise
+        // nobody awaits, which Node turns into a process exit.
+        void entry.readHandle.close().catch(() => undefined);
       }
 
       sftp.status(reqId, STATUS.OK);
@@ -530,6 +654,19 @@ export class SftpServer {
         sftp.status(reqId, STATUS.OK);
       }) as never);
     }
+
+    // A client that vanishes mid-transfer never sends CLOSE, and once the
+    // channel is gone nothing will ever mention these handles again. The
+    // descriptor a read holds would then stay open for as long as the daemon
+    // runs — one per abandoned download, and abandoning one costs a `Ctrl-C`.
+    sftp.on('close', () => {
+      for (const entry of handles.values()) {
+        entry.writeStream?.destroy();
+        void entry.readHandle?.close().catch(() => undefined);
+      }
+
+      handles.clear();
+    });
   }
 
   /** Translates a jail entry into SFTP attributes. */

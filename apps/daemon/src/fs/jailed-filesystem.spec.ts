@@ -1,5 +1,5 @@
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync } from 'node:fs';
-import { mkdtemp, mkdir, rm, stat, symlink, writeFile } from 'node:fs/promises';
+import { chmod, mkdtemp, mkdir, readFile, rm, stat, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve, sep } from 'node:path';
 import { afterAll, afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -207,6 +207,202 @@ describe('JailedFilesystem', () => {
       await symlink(join(sandbox, 'hop1'), join(volume, 'hop2'), 'dir');
 
       await expect(jail.resolvePath('hop2/passwd')).rejects.toThrow(PathEscapeError);
+    });
+  });
+
+  /**
+   * The cases above all plant the link *before* asking the jail anything, which
+   * only ever exercises resolution of a path that already exists. Neither of
+   * the two ways a link actually gets used against this daemon looks like that.
+   *
+   * The daemon writes as root. The attacker is the owner of a server, who has
+   * code execution inside their own container and write access to the volume —
+   * a plugin jar is enough. What they can do is plant a name.
+   */
+  describe.runIf(symlinkSupported)('symlink escape at the moment of writing', () => {
+    /**
+     * The deterministic one, and the reason this block exists.
+     *
+     * `access(2)` follows links, so it answers ENOENT for a link whose target
+     * does not exist. The jail used to probe with it, concluded the name was
+     * free, and returned the path unresolved — with the link still on it. The
+     * write then created the target, outside the volume, as root. Nothing had
+     * to be timed.
+     */
+    it('rejects a dangling link that points outside the volume', async () => {
+      await symlink(join(outside, 'cron.d-backdoor'), join(volume, 'notes.txt'));
+
+      await expect(jail.resolvePath('notes.txt')).rejects.toThrow(PathEscapeError);
+    });
+
+    it('creates nothing outside the volume when writing onto a dangling link', async () => {
+      const planted = join(outside, 'cron.d-backdoor');
+      await symlink(planted, join(volume, 'notes.txt'));
+
+      await expect(jail.writeFile('notes.txt', 'pwned')).rejects.toThrow(PathEscapeError);
+      await expect(stat(planted)).rejects.toThrow();
+    });
+
+    it('rejects a dangling link standing in for a parent folder', async () => {
+      await symlink(join(outside, 'not-created-yet'), join(volume, 'plugins-alias'), 'dir');
+
+      await expect(jail.resolvePath('plugins-alias/config.yml')).rejects.toThrow(PathEscapeError);
+    });
+
+    /**
+     * The raced one. Resolution happens while the name is genuinely free, which
+     * is the answer the jail is entitled to give; the link appears in the
+     * window before the open. A server process can hold that window open
+     * indefinitely with `while :; do ln -sf … ; done`.
+     *
+     * This is the only test in the file that interleaves, and it is the one
+     * that fails without `O_NOFOLLOW`: no amount of checking beforehand can
+     * describe a filesystem that changes afterwards.
+     */
+    it('refuses a link planted between the resolution and the open', async () => {
+      const resolved = await jail.resolvePath('free.txt');
+      const planted = join(outside, 'planted');
+
+      await symlink(planted, resolved);
+
+      await expect(jail.openForWrite(resolved)).rejects.toThrow(PathEscapeError);
+      await expect(stat(planted)).rejects.toThrow();
+    });
+
+    it('leaves an existing outside file untouched when a link is planted on it', async () => {
+      const target = join(outside, 'passwd');
+      const resolved = await jail.resolvePath('later.sh');
+
+      await symlink(target, resolved);
+
+      await expect(jail.openForWrite(resolved)).rejects.toThrow(PathEscapeError);
+      expect(await readFile(target, 'utf8')).toBe('root:x:0:0:');
+    });
+
+    /**
+     * `chmod(2)` follows links and `lchmod(2)` does not exist on Linux, so the
+     * only safe way to set a mode is through a descriptor that was opened with
+     * the link refusal in force.
+     */
+    it('never changes the mode of a file outside the volume', async () => {
+      const target = join(outside, 'passwd');
+      await chmod(target, 0o600);
+
+      await symlink(target, join(volume, 'shadow-alias'));
+
+      await expect(jail.chmod('shadow-alias', 0o777)).rejects.toThrow(PathEscapeError);
+      expect((await stat(target)).mode & 0o777).toBe(0o600);
+    });
+
+    /**
+     * The guard has to be narrow enough to leave ordinary use alone. A link
+     * inside the volume is a legitimate thing for a server owner to make — a
+     * shortcut to a world folder, a plugin pointing its data directory
+     * elsewhere — and `resolvePath` resolves it, so what reaches the open is a
+     * real file with no link on its last component.
+     */
+    it('still writes through a link that stays inside the volume', async () => {
+      await symlink(join(volume, 'plugins'), join(volume, 'shortcut'), 'dir');
+
+      await jail.writeFile('shortcut/config.yml', 'debug: true');
+
+      expect(await readFile(join(volume, 'plugins', 'config.yml'), 'utf8')).toBe('debug: true');
+    });
+
+    it('still writes a file that does not exist yet', async () => {
+      await jail.writeFile('new/nested/file.txt', 'hello');
+
+      expect(await readFile(join(volume, 'new', 'nested', 'file.txt'), 'utf8')).toBe('hello');
+    });
+
+    it('still replaces the contents of an existing file rather than appending', async () => {
+      await jail.writeFile('server.properties', 'server-port=25566');
+
+      expect(await readFile(join(volume, 'server.properties'), 'utf8')).toBe('server-port=25566');
+    });
+
+    /**
+     * The case `O_NOFOLLOW` is blind to: the last component is an ordinary name
+     * throughout, and it is a *parent* that turns into a link. Only the
+     * after-the-fact `/proc/self/fd` reading catches it.
+     *
+     * What makes it worth a test of its own is the cleanup. `O_CREAT` brings
+     * the file into being before anything has had a chance to reject it, so a
+     * refusal that only closes the descriptor still leaves an empty root-owned
+     * file at a path the attacker chose — and an empty `/etc/nologin` denies
+     * every non-root login on the host.
+     */
+    it('leaves nothing behind when a swapped parent takes the write outside', async () => {
+      await mkdir(join(volume, 'stage'));
+
+      const resolved = await jail.resolvePath('stage/nologin');
+
+      await rm(join(volume, 'stage'), { recursive: true });
+      await symlink(outside, join(volume, 'stage'), 'dir');
+
+      await expect(jail.openForWrite(resolved)).rejects.toThrow(PathEscapeError);
+      await expect(stat(join(outside, 'nologin'))).rejects.toThrow();
+    });
+
+    it('does not delete a file that was already there when it refuses', async () => {
+      await mkdir(join(volume, 'stage'));
+      await writeFile(join(outside, 'nologin'), 'pre-existing');
+
+      const resolved = await jail.resolvePath('stage/nologin');
+
+      await rm(join(volume, 'stage'), { recursive: true });
+      await symlink(outside, join(volume, 'stage'), 'dir');
+
+      await expect(jail.openForWrite(resolved)).rejects.toThrow(PathEscapeError);
+      expect(await readFile(join(outside, 'nologin'), 'utf8')).toBe('pre-existing');
+    });
+
+    /**
+     * Reading has no dangling variant — there is nothing behind a link whose
+     * target does not exist — but the raced one is the more useful of the two
+     * to an attacker, because it hands back file *contents* rather than the
+     * ability to write them.
+     */
+    it('refuses to read through a link planted after the resolution', async () => {
+      await writeFile(join(volume, 'notes.txt'), 'harmless');
+
+      const resolved = await jail.resolvePath('notes.txt');
+
+      await rm(resolved);
+      await symlink(join(outside, 'passwd'), resolved);
+
+      await expect(jail.openForRead(resolved)).rejects.toThrow(PathEscapeError);
+    });
+
+    it('still reads an ordinary file', async () => {
+      const handle = await jail.openForRead(await jail.resolvePath('server.properties'));
+
+      try {
+        expect(await handle.readFile('utf8')).toBe('server-port=25565');
+      } finally {
+        await handle.close();
+      }
+    });
+
+    /**
+     * An archive entry is resolved lexically for the zip-slip check, then
+     * dereferenced — the same two steps as any user path. Without the second,
+     * an entry landing on a legitimate in-volume link reaches an open that
+     * refuses links and tears down the whole extraction, leaving a half-written
+     * tree behind.
+     */
+    it('resolves an archive entry through a link that stays inside the volume', async () => {
+      await symlink(join(volume, 'plugins'), join(volume, 'shortcut'), 'dir');
+
+      expect(await jail.resolveArchiveEntry('/', 'shortcut/config.yml')).toBe(
+        join(volume, 'plugins', 'config.yml'),
+      );
+    });
+
+    it('still refuses an archive entry that leaves the volume through a link', async () => {
+      await symlink(outside, join(volume, 'escape'), 'dir');
+
+      await expect(jail.resolveArchiveEntry('/', 'escape/passwd')).rejects.toThrow(PathEscapeError);
     });
   });
 

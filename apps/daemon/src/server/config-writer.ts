@@ -1,7 +1,10 @@
-import { readFile } from 'node:fs/promises';
 import { parseDocument, type Document } from 'yaml';
 import type { ConfigFile, ConfigParser } from '@hopper/shared';
-import type { JailedFilesystem } from '../fs/jailed-filesystem.js';
+import {
+  DeniedFileError,
+  PathEscapeError,
+  type JailedFilesystem,
+} from '../fs/jailed-filesystem.js';
 
 /**
  * Writing the server's own configuration before it starts.
@@ -79,8 +82,18 @@ async function applyOne(
   let original: string;
 
   try {
-    original = await readFile(absolute, 'utf8');
-  } catch {
+    original = await readThroughJail(jail, absolute);
+  } catch (error: unknown) {
+    // A refusal is not an absence. The jail throws here when the name has grown
+    // a symlink — which the server, whose volume this is, can arrange at any
+    // moment — and treating that as "no file yet" would send the flow into
+    // `createMissing`, writing the template's keys over whatever the link
+    // points at. Everything else keeps meaning what it meant: a start on a
+    // brand-new server finds no `server.properties` and has to carry on.
+    if (error instanceof PathEscapeError || error instanceof DeniedFileError) {
+      throw error;
+    }
+
     return createMissing(jail, config, replacements);
   }
 
@@ -103,6 +116,27 @@ async function applyOne(
   await jail.writeFile(config.file, result.text);
 
   return { file: config.file, changed: result.changed };
+}
+
+/**
+ * The file's text, read through a descriptor the jail has vetted.
+ *
+ * `readFile(absolute)` looks the name up a second time, after the jail has
+ * finished saying what it means, and the daemon does this as root at every
+ * start — a moment the server's owner knows in advance. They leave a genuine
+ * `server.properties` for the resolution to approve, put a link to a host file
+ * in its place for the read, then restore the real file before the write lands:
+ * the daemon then copies the host file, patched, into a volume they can browse.
+ * Reading from the descriptor the jail opened leaves no name to swap.
+ */
+async function readThroughJail(jail: JailedFilesystem, absolutePath: string): Promise<string> {
+  const handle = await jail.openForRead(absolutePath);
+
+  try {
+    return await handle.readFile('utf8');
+  } finally {
+    await handle.close().catch(() => undefined);
+  }
 }
 
 /**

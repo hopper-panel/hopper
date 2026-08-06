@@ -1,4 +1,3 @@
-import { createReadStream, createWriteStream } from 'node:fs';
 import { mkdir } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { pipeline } from 'node:stream/promises';
@@ -42,16 +41,46 @@ export async function createArchive(
   archivePath: string,
 ): Promise<void> {
   const destination = await jail.absolutePathFor(archivePath);
+
+  // The jail opens the destination itself and hands back a stream over that
+  // descriptor. Building a `createWriteStream(destination)` here would look the
+  // name up a second time, and the server owner — who has a shell in their own
+  // container — only has to drop a symlink on that name in between for the
+  // archive to be written wherever the link points, by a daemon running as
+  // root.
+  const sink = await jail.createWriteStream(destination);
   const packer = pack();
 
-  const output = pipeline(packer, createGzip(), createWriteStream(destination));
+  // The rejection is attached in the same turn as the pipeline, before the
+  // first `await` that can fail. Destroying the packer below rejects this
+  // promise, and a rejection nobody is listening for yet is what Node turns
+  // into a process exit — the whole node would fall over for one refused
+  // source path.
+  let writeError: Error | undefined;
+  const written = pipeline(packer, createGzip(), sink).catch((error: unknown) => {
+    writeError = error instanceof Error ? error : new ArchiveError('Archive write interrupted.');
+  });
 
-  for (const file of files) {
-    await addToArchive(jail, packer, file);
+  try {
+    for (const file of files) {
+      await addToArchive(jail, packer, file);
+    }
+
+    packer.finalize();
+    await written;
+
+    if (writeError) {
+      throw writeError;
+    }
+  } catch (error) {
+    // Tearing the pipeline down is what closes the descriptor the jail opened:
+    // it belongs to no caller now, so nothing else would ever close it. A user
+    // asking to compress `../secret` is refused on the first entry, and without
+    // this the daemon would leak one descriptor per attempt.
+    packer.destroy();
+    await written;
+    throw error;
   }
-
-  packer.finalize();
-  await output;
 }
 
 async function addToArchive(
@@ -76,10 +105,14 @@ async function addToArchive(
 
   const absolute = await jail.absolutePathFor(userPath);
 
-  await pipeline(
-    createReadStream(absolute),
-    packer.entry({ name: entry.path, size: entry.sizeBytes }),
-  );
+  // The `stat` above says this was a regular file when it was looked at; the
+  // jail's open says it still is at the instant it is read. The gap between the
+  // two belongs to the server owner, who can drop a link on the name from their
+  // own console — and an archive is downloadable, so a link followed here
+  // carries `/etc/shadow` out of the volume in one step.
+  const source = await jail.createReadStream(absolute);
+
+  await pipeline(source, packer.entry({ name: entry.path, size: entry.sizeBytes }));
 }
 
 /**
@@ -143,7 +176,15 @@ export async function extractArchive(
         }
 
         await mkdir(dirname(target), { recursive: true });
-        await pipeline(stream, createWriteStream(target));
+
+        // `resolveArchiveEntry` reduces the entry name and checks where it
+        // lands, but it walks no links: a name that is already a symlink in the
+        // volume passes both containment checks, being exactly where it should
+        // be. Opening through the jail is what refuses it — the stream comes
+        // from a descriptor opened with `O_NOFOLLOW`, so an archive entry can
+        // never overwrite the target of a link the server planted beforehand.
+        const sink = await jail.createWriteStream(target);
+        await pipeline(stream, sink);
         next();
       } catch (error) {
         extractor.destroy(error instanceof Error ? error : new Error(String(error)));
@@ -151,7 +192,14 @@ export async function extractArchive(
     })();
   });
 
-  await pipeline(createReadStream(absolute), createGunzip(), extractor);
+  // Awaited before the pipeline rather than built inside it: the jail opens the
+  // archive itself, so the file the extraction reads is the one the path check
+  // approved, not whatever the name points at by the time the stream starts
+  // pulling. An extraction reading through a link would decompress a host file
+  // into the volume, where its owner can then read it at leisure.
+  const source = await jail.createReadStream(absolute);
+
+  await pipeline(source, createGunzip(), extractor);
 
   return { entries, bytes };
 }
