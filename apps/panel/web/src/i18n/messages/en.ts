@@ -375,6 +375,9 @@ export const en = {
   'network.add': 'Add a port',
   'network.adding': 'Assigning…',
   'network.notePlaceholder': 'Note — dynmap, voice, announced domain…',
+  'network.rolePlaceholder': 'Name — rcon, query…',
+  'network.roleHint':
+    'A name is how a template reaches a port that is not the primary one: a readiness check on “rcon” knocks on the port named rcon. Lowercase letters and digits, one name per server. The primary port needs none — it is already what everything means by “the port”.',
   'network.primary': 'primary',
   'network.makePrimary': 'Make primary',
   'network.remove': 'Remove',

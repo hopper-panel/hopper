@@ -367,6 +367,9 @@ export const fr: Partial<Messages> = {
   'network.add': 'Ajouter un port',
   'network.adding': 'Attribution…',
   'network.notePlaceholder': 'Note — dynmap, voice, domaine annoncé…',
+  'network.rolePlaceholder': 'Nom — rcon, query…',
+  'network.roleHint':
+    'Le nom permet à un modèle d’atteindre un port autre que le port principal : une vérification de démarrage sur « rcon » frappe au port nommé rcon. Minuscules et chiffres, un seul nom par serveur. Le port principal n’en a pas besoin : c’est déjà ce que tout le monde appelle « le port ».',
   'network.primary': 'principal',
   'network.makePrimary': 'Définir principal',
   'network.remove': 'Retirer',

@@ -360,6 +360,9 @@ export const es: Partial<Messages> = {
   'network.add': 'Añadir un puerto',
   'network.adding': 'Asignando…',
   'network.notePlaceholder': 'Nota — dynmap, voz, dominio anunciado…',
+  'network.rolePlaceholder': 'Nombre — rcon, query…',
+  'network.roleHint':
+    'El nombre es como una plantilla alcanza un puerto que no es el principal: una comprobación de arranque sobre «rcon» llama al puerto llamado rcon. Minúsculas y dígitos, un solo nombre por servidor. El puerto principal no necesita ninguno: ya es lo que todos entienden por «el puerto».',
   'network.primary': 'principal',
   'network.makePrimary': 'Hacer principal',
   'network.remove': 'Quitar',

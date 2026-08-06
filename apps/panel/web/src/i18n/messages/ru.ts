@@ -359,6 +359,9 @@ export const ru: Partial<Messages> = {
   'network.add': 'Добавить порт',
   'network.adding': 'Назначение…',
   'network.notePlaceholder': 'Заметка — dynmap, голосовой чат, домен…',
+  'network.rolePlaceholder': 'Имя — rcon, query…',
+  'network.roleHint':
+    'Имя — это способ для шаблона обратиться к порту, отличному от основного: проверка готовности по «rcon» стучится в порт с именем rcon. Строчные латинские буквы и цифры, одно имя на сервер. Основному порту имя не нужно — он и так то, что все называют «портом».',
   'network.primary': 'основной',
   'network.makePrimary': 'Сделать основным',
   'network.remove': 'Убрать',

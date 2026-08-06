@@ -26,6 +26,35 @@ export const DAEMON_ROUTES = {
 // GET /api/system
 // ---------------------------------------------------------------------------
 
+/**
+ * Things a daemon can do that an older one silently could not.
+ *
+ * The alternative was bumping `CONTRACT_VERSION`, and that is not a version
+ * check, it is a quarantine: the panel marks any node announcing a different
+ * one unreachable outright, so a bump takes every node offline until the last
+ * one has been upgraded. A capability is the same information without the
+ * outage — the panel learns what this node honours and refuses only the
+ * operations that node cannot honour.
+ *
+ * The list is open on purpose: an unknown string here means a daemon newer
+ * than this panel, and reading it as "one more thing it can do that I have no
+ * use for" is the only reading that lets the two be upgraded in either order.
+ */
+export const NODE_CAPABILITIES = {
+  /**
+   * Understands `allocation.role`, and therefore resolves a readiness strategy
+   * naming a port against the server's allocations instead of assuming the
+   * primary one.
+   *
+   * An older daemon strips the field — Zod discards what it does not know — and
+   * knocks on the game port, which fails for the whole deadline while the
+   * server is up and then stops it as a start that never became ready. Nothing
+   * in the payload can warn it, so the panel refuses to name a port on a node
+   * that does not announce this.
+   */
+  allocationRoles: 'allocation-roles',
+} as const;
+
 export const systemInformationSchema = z.object({
   version: z.string(),
   kernelVersion: z.string(),
@@ -40,6 +69,16 @@ export const systemInformationSchema = z.object({
     /** Number of Hopper-managed containers currently running. */
     runningContainers: z.number().int().nonnegative(),
   }),
+  /**
+   * What this daemon honours beyond the contract every version 1 daemon
+   * honours. Defaulted to empty rather than required: a daemon predating the
+   * field sends nothing, and "announces no capability" is precisely the truth
+   * about it. Free-form strings, so a newer daemon announcing something this
+   * panel has never heard of parses rather than being declared unreadable —
+   * which `fetchSystemInformation` reports as "its version is probably too
+   * old", the exact opposite of what would have happened.
+   */
+  capabilities: z.array(z.string()).default([]),
 });
 
 export type SystemInformation = z.infer<typeof systemInformationSchema>;

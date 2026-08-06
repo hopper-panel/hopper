@@ -107,7 +107,7 @@ describe('parseReadiness', () => {
  * A server row complete enough to be translated. Only the fields the
  * translation reads are here; the rest would be noise.
  */
-function serverRow(template: Record<string, unknown>) {
+function serverRow(template: Record<string, unknown>, allocations?: Record<string, unknown>[]) {
   return {
     uuid: '1b32d12d-7b10-443e-a259-6a31d67e28e6',
     name: 'Test',
@@ -125,8 +125,8 @@ function serverRow(template: Record<string, unknown>) {
     dockerImage: 'eclipse-temurin:21-jre-noble',
     requiresRebuild: false,
     primaryAllocationId: 1,
-    primaryAllocation: { id: 1, ip: '0.0.0.0', port: 25565 },
-    allocations: [{ id: 1, ip: '0.0.0.0', port: 25565 }],
+    primaryAllocation: { id: 1, ip: '0.0.0.0', port: 25565, role: null },
+    allocations: allocations ?? [{ id: 1, ip: '0.0.0.0', port: 25565, role: null }],
     variables: [],
     template: {
       stopCommand: 'command:stop',
@@ -142,9 +142,9 @@ function serverRow(template: Record<string, unknown>) {
   };
 }
 
-const serviceFor = (template: Record<string, unknown>) =>
+const serviceFor = (template: Record<string, unknown>, allocations?: Record<string, unknown>[]) =>
   new ServerConfigurationService({
-    server: { findUniqueOrThrow: () => Promise.resolve(serverRow(template)) },
+    server: { findUniqueOrThrow: () => Promise.resolve(serverRow(template, allocations)) },
   } as unknown as PrismaService);
 
 describe('ServerConfigurationService.build', () => {
@@ -194,5 +194,68 @@ describe('ServerConfigurationService.build', () => {
 
     expect(configuration.readiness).toBeUndefined();
     expect(configuration.startupDetection).toBe('\\)! For help, type "help"');
+  });
+});
+
+/**
+ * The names the daemon matches a readiness `role` against.
+ *
+ * The rule that matters here is the one nobody sees when it holds: a server
+ * with no named port must produce the payload it has always produced. Every
+ * Minecraft server on every existing installation is that server.
+ */
+describe('ServerConfigurationService.build allocation names', () => {
+  const UUID = '1b32d12d-7b10-443e-a259-6a31d67e28e6';
+
+  it('sends nothing at all for a port with no name', async () => {
+    // The key must be **absent**, not present holding `undefined`, and neither
+    // `toEqual` nor `JSON.stringify` can tell those apart — `toEqual` treats an
+    // undefined-valued key as missing, and `JSON.stringify` drops it. An
+    // earlier version of this test compared JSON believing it caught the case;
+    // replacing the conditional spread with `role: allocation.role ?? undefined`
+    // left it green.
+    //
+    // So the presence of the key is asserted directly. It matters because
+    // anything comparing configurations to decide what to resync sees a
+    // different object, and because a server with no named port has to send the
+    // payload it has always sent.
+    const configuration = await serviceFor({}, [
+      { id: 1, ip: '0.0.0.0', port: 25565, role: null },
+      { id: 2, ip: '0.0.0.0', port: 8123, role: null },
+    ]).build(UUID);
+
+    const [additional] = configuration.allocations.additional;
+
+    expect(Object.hasOwn(additional!, 'role')).toBe(false);
+    expect(Object.keys(additional!)).toEqual(['ip', 'port']);
+    expect(Object.hasOwn(configuration.allocations.default, 'role')).toBe(false);
+    expect(configuration.allocations).toEqual({
+      default: { ip: '0.0.0.0', port: 25565 },
+      additional: [{ ip: '0.0.0.0', port: 8123 }],
+    });
+  });
+
+  it('carries the name of a port that has one', async () => {
+    const configuration = await serviceFor({}, [
+      { id: 1, ip: '0.0.0.0', port: 25565, role: null },
+      { id: 2, ip: '0.0.0.0', port: 25575, role: 'rcon' },
+    ]).build(UUID);
+
+    expect(configuration.allocations.additional).toEqual([
+      { ip: '0.0.0.0', port: 25575, role: 'rcon' },
+    ]);
+  });
+
+  it('gives the primary port no name even if the row carries one', async () => {
+    // The contract leaves `allocations.default` no field to hold one, so this
+    // is what the schema does rather than what the panel chooses — but a row
+    // in that state can only come from a hand-edited database, and it must
+    // produce a configuration the daemon accepts rather than one it rejects.
+    const configuration = await serviceFor({}, [
+      { id: 1, ip: '0.0.0.0', port: 25565, role: 'game' },
+    ]).build(UUID);
+
+    expect(configuration.allocations.default).toEqual({ ip: '0.0.0.0', port: 25565 });
+    expect(configuration.allocations.additional).toEqual([]);
   });
 });

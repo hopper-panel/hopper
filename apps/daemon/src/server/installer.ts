@@ -353,8 +353,7 @@ export async function runInstallation(
   const environment = buildEnvironment({
     environment: configuration.environment,
     memoryMib: Math.floor(configuration.build.memoryBytes / (1024 * 1024)),
-    ip: configuration.allocations.default.ip,
-    port: configuration.allocations.default.port,
+    allocations: configuration.allocations,
   });
 
   const container = await docker.api.createContainer(

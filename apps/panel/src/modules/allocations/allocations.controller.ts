@@ -14,7 +14,12 @@ import {
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe.js';
 import { RequireServerPermission } from '../auth/decorators.js';
 import { AllocationsService } from './allocations.service.js';
-import { updateAllocationSchema, type UpdateAllocationDto } from './allocations.dto.js';
+import {
+  setAllocationRoleSchema,
+  updateAllocationSchema,
+  type SetAllocationRoleDto,
+  type UpdateAllocationDto,
+} from './allocations.dto.js';
 
 /**
  * A server's ports.
@@ -47,6 +52,22 @@ export class AllocationsController {
     @Body(new ZodValidationPipe(updateAllocationSchema)) body: UpdateAllocationDto,
   ) {
     return this.allocations.setAlias(serverId, allocationId, body.alias);
+  }
+
+  /**
+   * Names a port, or clears its name.
+   *
+   * Under `allocation.update` like the alias: naming a port changes how the
+   * server reaches a port it already holds, it does not open one.
+   */
+  @Patch(':allocationId/role')
+  @RequireServerPermission(PERMISSIONS.ALLOCATION_UPDATE)
+  setRole(
+    @Param('serverId') serverId: string,
+    @Param('allocationId', ParseIntPipe) allocationId: number,
+    @Body(new ZodValidationPipe(setAllocationRoleSchema)) body: SetAllocationRoleDto,
+  ) {
+    return this.allocations.setRole(serverId, allocationId, body.role);
   }
 
   @Post(':allocationId/primary')

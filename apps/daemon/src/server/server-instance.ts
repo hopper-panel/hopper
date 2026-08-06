@@ -23,7 +23,7 @@ import { announcesReady, resolveReadiness, type ResolvedReadiness } from './read
 import { RconError, rconExecute } from './rcon.js';
 import { installContainerName } from './installer.js';
 import { ConsoleBuffer, LineAssembler } from './console-buffer.js';
-import { substitute } from './invocation.js';
+import { InvocationError, substitute } from './invocation.js';
 import { directorySize } from './disk-usage.js';
 import { runInstallation } from './installer.js';
 import { buildResourceUsage, emptyUsage, type DockerStats } from './stats.js';
@@ -319,6 +319,11 @@ export class ServerInstance extends EventEmitter {
       ownership: this.options.ownership,
       timezone: this.options.timezone,
       enableBlkioWeight: this.options.enableBlkioWeight,
+      // An argument the template wrote and the built command has not got. It
+      // goes where the operator is already looking when a server behaves oddly
+      // on a port or a flag they configured — the console — because nothing
+      // else would ever tell them the argv is not the one they are reading.
+      onWarning: (message) => this.emitDaemonLine(message),
     });
 
     await this.options.docker.pullImage(this.options.configuration.container.image, (line) =>
@@ -474,16 +479,34 @@ export class ServerInstance extends EventEmitter {
     const context = {
       environment: this.options.configuration.environment,
       memoryMib: Math.floor(this.options.configuration.build.memoryBytes / (1024 * 1024)),
-      ip: this.options.configuration.allocations.default.ip,
-      port: this.options.configuration.allocations.default.port,
+      // The named ports travel here too, so a `configFiles` replacement can
+      // write the port an operator named into the server's own configuration —
+      // the same variables the startup command reads, resolved the same way.
+      allocations: this.options.configuration.allocations,
     };
 
+    const unresolved = new Set<string>();
+
     try {
-      const reports = await applyConfigFiles(
-        jail,
-        files,
-        (input) => substitute(input, context).value,
-      );
+      const reports = await applyConfigFiles(jail, files, (input) => {
+        // Collected, never fatal. A value written here is a line in the
+        // server's own configuration, not an argument to its process: an empty
+        // one leaves a stale port in `server.properties`, which somebody can
+        // see and fix, whereas refusing the start over it would leave nobody
+        // able to fix anything. But it is not left silent either — an empty
+        // `{{server.allocations.rcon.port}}` writes `rcon.port=` and the server
+        // then listens somewhere nobody expects.
+        const { value, missing } = substitute(input, context);
+        missing.forEach((name) => unresolved.add(name));
+
+        return value;
+      });
+
+      if (unresolved.size > 0) {
+        this.emitDaemonLine(
+          `The configuration files name ${[...unresolved].map((name) => `{{${name}}}`).join(', ')}, which this server has not got: those values were written empty.`,
+        );
+      }
 
       for (const report of reports) {
         if (report.skipped) {
@@ -551,7 +574,11 @@ export class ServerInstance extends EventEmitter {
       return;
     }
 
-    const { port, ip } = this.options.configuration.allocations.default;
+    // Whichever port the strategy named, resolved when the strategy was — not
+    // the primary one, which is only what an unnamed strategy resolves to. A
+    // role that matched nothing never reaches here: it came back `unsupported`
+    // and the start took that branch instead.
+    const { ip, port } = readiness;
 
     // The grace period runs *before* the clock starts, not against it. The two
     // fields read as separate quantities — one is how long to leave the process
@@ -615,7 +642,11 @@ export class ServerInstance extends EventEmitter {
       return;
     }
 
-    const { port, ip } = this.options.configuration.allocations.default;
+    // The RCON port when the strategy named one, the primary port otherwise —
+    // and this is the case names were built for: RCON almost never listens on
+    // the game's own port, so before this the handshake went to the game and
+    // failed until the deadline stopped a healthy server.
+    const { ip, port } = readiness;
     const host = ip === '0.0.0.0' ? '127.0.0.1' : ip;
     // Open-ended when the template declared no deadline: see `waitForPort`.
     const deadline = readiness.timeoutMs === null ? Infinity : Date.now() + readiness.timeoutMs;
@@ -1057,6 +1088,20 @@ export class ServerInstance extends EventEmitter {
       // Anything that escaped the block above — the container could not be
       // built, the image could not be pulled. The panel still has to be told,
       // or the row stays INSTALLING.
+      //
+      // A startup command naming something that does not resolve is said out
+      // loud here as well as on the start path, and it is the install that
+      // needs it more: the script has just run to completion, every line of it
+      // scrolled past, and the failure arrives after the only output the
+      // operator was watching. Without this the install log ends on a success
+      // and the server lands in `install_failed` with nothing anywhere saying
+      // which variable was wrong — the message names the port to create or the
+      // variable to declare, and it would have gone only to hopperd's log.
+      if (error instanceof InvocationError) {
+        this.emitDaemonLine(error.message);
+        this.emit('install_output', error.message);
+      }
+
       this.setState('install_failed');
       await this.reportInstall(false);
       throw error;
@@ -1126,7 +1171,31 @@ export class ServerInstance extends EventEmitter {
 
     if (this.options.configuration.container.requiresRebuild || !(await this.containerExists())) {
       this.emitDaemonLine('Building the container…');
-      await this.createContainer();
+
+      try {
+        await this.createContainer();
+      } catch (error: unknown) {
+        // A command that cannot be built is a start that ends here: nothing was
+        // created, nothing will ever exit, and no wait has been armed. The
+        // state moved to `starting` a few lines ago, and leaving it there is
+        // the spinner-for-ever this daemon spent PR #59 getting rid of — a
+        // server the panel shows as starting, with the reason for the refusal
+        // only in hopperd's log, on the machine the operator has no shell on.
+        //
+        // Only this error, deliberately. Every other way `createContainer` can
+        // fail — an image that will not pull, a Docker that says no — leaves
+        // the same spinner and always has; that is a hole worth closing, but
+        // not by widening this catch until it swallows failures whose meaning
+        // nobody here has established.
+        if (error instanceof InvocationError) {
+          this.emitDaemonLine(error.message);
+          this.setState('offline');
+        }
+
+        // Rethrown either way: the caller asked for a start and did not get
+        // one, and a `power` call that waits has to hear about it.
+        throw error;
+      }
     }
 
     await this.attach();
