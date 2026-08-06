@@ -1,5 +1,5 @@
 import { arch, cpus, platform, release, totalmem } from 'node:os';
-import { CONTRACT_VERSION, type SystemInformation } from '@hopper/shared';
+import { CONTRACT_VERSION, NODE_CAPABILITIES, type SystemInformation } from '@hopper/shared';
 import type { FastifyInstance } from 'fastify';
 import type { DockerClient } from '../docker/client.js';
 import type { ServerManager } from '../server/server-manager.js';
@@ -30,6 +30,10 @@ export function registerSystemRoutes(
       cpuCount: cpus().length,
       memoryTotalBytes: totalmem(),
       docker: dockerInfo,
+      // What this build honours that an older one silently did not. The panel
+      // gates operations on it rather than on the daemon's version string,
+      // which says nothing about what was backported into it.
+      capabilities: [NODE_CAPABILITIES.allocationRoles],
     };
 
     return reply.header('x-hopper-contract', CONTRACT_VERSION).send(info);

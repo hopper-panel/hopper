@@ -279,6 +279,15 @@ model Allocation {
   /// Name shown to players in place of the IP, e.g. `mc.example.com`.
   alias String?
 
+  /// What this port is for, as the server's own configuration reaches it:
+  /// `rcon`, `query`, `voice`. Free text is `alias`; this is a lookup key, and
+  /// the shape is enforced by `allocationRoleSchema` on the way in.
+  ///
+  /// Nullable, and null on every port that existed before names did. Null is
+  /// also what an unnamed port keeps for ever: naming is opt-in, and a port
+  /// with no name is reached the way it always was.
+  role  String?
+
   serverId Int?
   server   Server? @relation("ServerAllocations", fields: [serverId], references: [id], onDelete: SetNull)
 
@@ -289,6 +298,21 @@ model Allocation {
 
   /// A port can only be allocated once per node.
   @@unique([nodeId, ip, port])
+  /// A name means one port **per server**, and the constraint says exactly
+  /// that without a partial index or a trigger — because PostgreSQL treats
+  /// NULLs in a unique index as distinct from each other. Two unnamed ports on
+  /// the same server are `(7, NULL)` twice and do not collide; two ports named
+  /// `rcon` on the same server are `(7, 'rcon')` twice and do. A named port
+  /// sitting in the node's free pool is `(NULL, 'rcon')` and collides with
+  /// nothing either, which is right: it belongs to no server, so it is nobody's
+  /// `rcon` — and the service clears the name when a port is handed back, so
+  /// the case should not arise in the first place.
+  ///
+  /// The service checks for a duplicate before writing all the same. Not
+  /// because the constraint is unreliable, but because what it produces is a
+  /// P2002 the operator reads as "Internal server error"; the check exists to
+  /// name the port already holding the name.
+  @@unique([serverId, role])
   @@index([serverId])
   @@map("allocations")
 }

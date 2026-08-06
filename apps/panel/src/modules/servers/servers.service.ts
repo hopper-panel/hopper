@@ -200,9 +200,15 @@ export class ServersService {
       // The port has to point at the server from both sides:
       // `primaryAllocationId` for the main port, `serverId` so it shows as
       // taken.
+      //
+      // `role: null` for the same reason it is cleared when a port is added to
+      // an existing server: a port released by a deleted server keeps whatever
+      // name it was given, because the foreign key only nulls `serverId`. A
+      // primary port carrying an inherited name would be one `setPrimary`
+      // refuses to create, reached without anyone naming anything.
       await tx.allocation.update({
         where: { id: allocation.id },
-        data: { serverId: created.id },
+        data: { serverId: created.id, role: null },
       });
 
       return created;

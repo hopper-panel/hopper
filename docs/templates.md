@@ -60,18 +60,51 @@ The shipped templates are TypeScript in `packages/templates/src/catalog/`. A min
 placeholders are replaced with validated values, then the command is split into arguments. A user
 typing `server.jar; rm -rf /` into a variable would get an unusable argument, not a second command.
 
-Three variables are supplied by Hopper:
+These variables are supplied by Hopper:
 
-| Variable            | Value                                                      |
-| ------------------- | ---------------------------------------------------------- |
-| `{{SERVER_MEMORY}}` | Heap budget, in MiB — **lower** than the container's limit |
-| `{{SERVER_IP}}`     | IP of the primary allocation                               |
-| `{{SERVER_PORT}}`   | Port of the primary allocation                             |
+| Variable                             | Value                                                      |
+| ------------------------------------ | ---------------------------------------------------------- |
+| `{{SERVER_MEMORY}}`                  | Heap budget, in MiB — **lower** than the container's limit |
+| `{{SERVER_IP}}`                      | IP of the primary allocation                               |
+| `{{SERVER_PORT}}`                    | Port of the primary allocation                             |
+| `{{server.allocations.<role>.port}}` | Port the operator named `<role>` — see below               |
+| `{{server.allocations.<role>.ip}}`   | Its address                                                |
 
 `SERVER_MEMORY` is not the container's limit: the JVM consumes beyond its heap — metaspace, thread
 stacks, direct buffers — and the kernel's page cache counts towards the cgroup limit. Hopper
 therefore reserves headroom, without which a 1 GiB server is killed by the kernel before it has
 finished starting.
+
+#### Naming a port in the command
+
+A server has one primary port and any number of extra ones, and `{{SERVER_PORT}}` is the primary.
+The others are reached by the name the operator gave them in the **Network** tab — the same names
+`readiness` matches on, resolved the same way, so a template can knock on and listen on one port:
+
+```ts
+startup: './bin/x64/factorio --port {{SERVER_PORT}} --rcon-port {{server.allocations.rcon.port}}',
+```
+
+There is no `{{server.allocations.default.port}}`: the primary port carries no name, and asking for
+one under a name a server has not got is refused rather than answered with the primary — see below.
+
+#### A variable that does not resolve
+
+Two things can go wrong with a variable, and they end very differently.
+
+**A name nothing defines** — a typo, or a port nobody has named — **refuses the start.** Nothing is
+created, and the console says which name went unmatched. This is not pedantry: the argument would
+otherwise vanish from the command, and on a flag/value pair
+(`--rcon-port {{server.allocations.rcon.port}}`) the flag left behind swallows the next argument, so
+`--port 34197` becomes the RCON port and the game is given no port at all. The only symptom of that
+is the game's own complaint, several lines into a console nobody has open.
+
+**A name that is defined and empty** — `{{JAVA_FLAGS}}` with nothing in it — has its argument
+dropped, as it always has: an empty argument fails a JVM, and half the imported eggs rely on the
+drop. It is now said on the console. The flag in front of such an argument is _not_ dropped with it,
+deliberately: nothing can tell `--rcon-port {{X}}`, where the flag is orphaned, from
+`-Xmx3276M {{JAVA_FLAGS}}`, where the argument in front is complete in itself, and guessing would
+delete the heap ceiling from every Minecraft server here.
 
 ### The validation rules
 
@@ -123,6 +156,46 @@ moment, and it beats a server parked in `starting` for ever while it quietly tak
 
 `rcon` names the **variable** holding the password (`secretVariable: 'RCON_PASSWORD'`), never the
 password. The daemon resolves it against the server's environment when it connects.
+
+#### Naming a port
+
+`port` and `rcon` knock on the server's primary port unless the strategy names another one:
+
+```ts
+readiness: {
+  type: 'rcon',
+  role: 'rcon',                    // the port the operator named `rcon`
+  secretVariable: 'RCON_PASSWORD',
+  timeoutMs: 120_000,
+},
+```
+
+A name is lowercase letters and digits, starting with a letter, no dots or dashes. It is a lookup
+key, not a label — matched exactly, typed once by whoever names the port and once by whoever writes
+the template — and it is destined to be part of a variable name too, which is what rules out the dot
+in particular. The operator gives it in the server's **Network** tab; the primary port carries none, because it is
+already what a strategy naming nothing resolves to and one port with two names follows the primary
+around the day somebody moves it.
+
+A role matching no port on the server is **refused**, not read as "the primary one then". Guessing
+there would have the daemon speak the RCON handshake at the game port, fail every two seconds, and
+at the deadline stop a server that was up and serving players — reported to its operator as a crash.
+The refusal names the role and points at the Network tab, and the strategy is re-resolved on every
+configuration sync, so creating the port fixes the next start with no daemon restart.
+
+**A node too old to understand names.** `role` travels inside the server configuration, and a daemon
+that predates it strips the field without a word and uses the primary port. Nothing in the payload
+can warn it, so the panel asks the node what it honours — `allocation-roles`, announced by the
+daemon on `/api/system` — and refuses to save a name on a node that does not. The gap left: a node
+downgraded _after_ a name was saved keeps the name in the database and ignores it on the wire.
+
+The same skew reaches the **startup command**, and there it is quieter still. A daemon that predates
+names has no `{{server.allocations.<role>.port}}` either, so it drops the argument and starts the
+server on a command one argument short — the very thing a current daemon refuses to do. The panel's
+gate keeps a port from being _named_ on such a node, so the variable can never resolve there; a
+template that references one is simply unusable on it. Until the whole fleet is upgraded, a template
+meant for every node should not name a port — which is why the bundled Factorio template ships
+without RCON.
 
 **Keep `startupDetection` filled in.** A node running a daemon older than `readiness` strips the
 field it does not know, without a word, and reads the deprecated one alone — so a template that drops

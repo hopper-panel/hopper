@@ -1,4 +1,8 @@
 import { EventEmitter } from 'node:events';
+import { createServer, type AddressInfo } from 'node:net';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import type { ServerConfiguration } from '@hopper/shared';
 import { describe, expect, it, vi } from 'vitest';
 import type { DockerClient } from '../docker/client.js';
@@ -34,14 +38,17 @@ const CONFIGURATION = {
  * ones that do not read stdin, and the fake stream below has no `write` for a
  * `stop` to go down.
  */
-function startable(readiness: unknown): ServerConfiguration {
+function startable(
+  readiness: unknown,
+  allocations: unknown = { default: { ip: '127.0.0.1', port: 27015 }, additional: [] },
+): ServerConfiguration {
   return {
     ...CONFIGURATION,
     environment: {},
     readiness,
     configFiles: [],
     fileDenylist: [],
-    allocations: { default: { ip: '127.0.0.1', port: 27015 }, additional: [] },
+    allocations,
     build: { memoryBytes: 0, diskBytes: 0 },
     stop: { type: 'signal', value: 'SIGTERM' },
     stopTimeoutSeconds: 30,
@@ -75,6 +82,13 @@ function instanceWith(options: {
   orphanedInstall?: { exitCode: number };
   panel?: { reportInstall: ReturnType<typeof vi.fn>; reportStatus?: ReturnType<typeof vi.fn> };
   configuration?: ServerConfiguration;
+  /**
+   * Where the volume would live. Only the tests that let a start reach
+   * `createContainer` care: that path is created on disk for real, so they hand
+   * over a temporary directory rather than have a test suite write to
+   * `/var/lib`.
+   */
+  volumesRoot?: string;
 }): Fake {
   const logs = vi.fn((_options: { tail?: number }) =>
     options.logsFails
@@ -92,6 +106,10 @@ function instanceWith(options: {
     logs,
     start: () => Promise.resolve(),
     kill: killed,
+    // The rebuild path removes the previous container before building the next
+    // one; without this, a start that rebuilds fails on the fake rather than on
+    // what it is meant to be failing on.
+    remove: vi.fn(() => Promise.resolve()),
     stats: () => Promise.resolve({ on: () => undefined, destroy: () => undefined }),
   };
 
@@ -131,6 +149,7 @@ function instanceWith(options: {
     docker,
     logger,
     dataPath: '/var/lib/hopper/volumes',
+    volumesRoot: options.volumesRoot ?? '/var/lib/hopper/volumes',
     tmpPath: '/tmp',
     ownership: { uid: 988, gid: 988 },
     networkName: 'hopper0',
@@ -194,6 +213,99 @@ describe('a start that never becomes ready', () => {
 
     expect(consoleText(fake.instance)).toContain('UDP');
     expect(consoleText(fake.instance)).toContain('called running');
+  });
+
+  it('calls the server running when the strategy names a port it has not got', async () => {
+    // A template naming a port the operator never created. The strategy cannot
+    // run, and it must not quietly become "the game port then": the daemon
+    // would fail the handshake every two seconds and stop a healthy server at
+    // the deadline. It says which name it could not find and gets out of the
+    // way, which is the same bargain the UDP refusal above strikes.
+    const fake = instanceWith({
+      running: false,
+      logs: '',
+      configuration: startable({
+        type: 'rcon',
+        role: 'rcon',
+        secretVariable: 'RCON_PASSWORD',
+        timeoutMs: 25,
+      }),
+    });
+
+    await fake.instance.power('start');
+
+    expect(fake.instance.currentState).toBe('running');
+    expect(consoleText(fake.instance)).toContain('rcon');
+    await sleep(60);
+    expect(fake.killed).not.toHaveBeenCalled();
+  });
+
+  it('knocks on the named port and not on the game one', async () => {
+    // The whole point of names, and the one assertion a real socket can make
+    // that no amount of inspecting the resolved strategy can: only the named
+    // port is listening here, and the primary is a port nothing on any machine
+    // answers on. The server reaching `running` means the probe went to the
+    // port the template named.
+    const listener = createServer();
+    await new Promise((resolve) => listener.listen(0, '127.0.0.1', () => resolve(undefined)));
+    const named = (listener.address() as AddressInfo).port;
+
+    try {
+      const fake = instanceWith({
+        running: false,
+        logs: '',
+        configuration: startable(
+          { type: 'port', role: 'query', protocol: 'tcp', delayMs: 0, timeoutMs: 30_000 },
+          {
+            // Port 1 is privileged and unbound: a connection to it is refused
+            // by the kernel at once, so a probe that went there would leave the
+            // server in `starting` and fail this test rather than pass it by
+            // accident.
+            default: { ip: '127.0.0.1', port: 1 },
+            additional: [{ ip: '127.0.0.1', port: named, role: 'query' }],
+          },
+        ),
+      });
+
+      await fake.instance.power('start');
+
+      await vi.waitFor(() => expect(fake.instance.currentState).toBe('running'));
+    } finally {
+      listener.close();
+    }
+  });
+
+  /**
+   * A start that ends before anything is created.
+   *
+   * A startup command naming a port this server has not got cannot be built,
+   * and refusing is the point — dropping the argument would leave `--rcon-port`
+   * holding `--port`, and the game would run with no port of its own. But the
+   * state had already moved to `starting`, and a refusal that leaves it there
+   * is the spinner-for-ever this whole block exists to prevent: nothing was
+   * created, so nothing will ever exit to move it on.
+   */
+  it('ends the start, loudly, when the command names a port it has not got', async () => {
+    const fake = instanceWith({
+      running: false,
+      logs: '',
+      volumesRoot: join(tmpdir(), 'hopper-server-instance-spec'),
+      configuration: {
+        ...startable({ type: 'immediate' }),
+        invocation: './factorio --rcon-port {{server.allocations.rcon.port}} --port 34197',
+        // A rebuild, so the start reaches the builder instead of reusing the
+        // container the fake already has.
+        container: { image: 'x', requiresRebuild: true },
+      },
+    });
+
+    await expect(fake.instance.power('start')).rejects.toThrow(/rcon/);
+
+    // Back where it started, with the reason where the operator looks — not
+    // only in hopperd's log, on a machine they have no shell on.
+    expect(fake.instance.currentState).toBe('offline');
+    expect(consoleText(fake.instance)).toContain('rcon');
+    expect(consoleText(fake.instance)).toContain('Network tab');
   });
 
   it('stops the server when the startup pattern never prints in time', async () => {
@@ -484,5 +596,56 @@ describe('ServerInstance.reconcile', () => {
 
     expect(fake.logs).not.toHaveBeenCalled();
     expect(fake.instance.consoleSnapshot()).toEqual([]);
+  });
+});
+
+/**
+ * What the server's own configuration files are told.
+ *
+ * The same variables the startup command reads, resolved the same way — a
+ * template can write the port an operator named into `server.properties`. The
+ * failure is not the same failure, though: a value here is a line in a file,
+ * not an argument to a process, so an unresolved one is written empty rather
+ * than refusing the start. That is survivable. Being survivable is not a reason
+ * for it to be silent.
+ */
+describe('the configuration files', () => {
+  it('says which values it wrote empty', async () => {
+    const volumesRoot = await mkdtemp(join(tmpdir(), 'hopper-config-files-'));
+
+    try {
+      const fake = instanceWith({
+        running: false,
+        logs: '',
+        volumesRoot,
+        configuration: {
+          ...startable({ type: 'immediate' }),
+          configFiles: [
+            {
+              file: 'server.properties',
+              parser: 'properties',
+              replacements: [
+                { match: 'server-port', replaceWith: '{{SERVER_PORT}}' },
+                // The port nobody named. Left as it was, the server would
+                // listen for RCON on whatever `rcon.port=` means when it is
+                // empty, and no line anywhere would connect that to a name the
+                // template asked for.
+                { match: 'rcon.port', replaceWith: '{{server.allocations.rcon.port}}' },
+              ],
+            },
+          ],
+        },
+      });
+
+      await fake.instance.power('start');
+
+      expect(consoleText(fake.instance)).toContain('{{server.allocations.rcon.port}}');
+      // The resolved one is not complained about, and the file is still
+      // written: an unresolved value costs its own line, never the start.
+      expect(consoleText(fake.instance)).not.toContain('{{SERVER_PORT}}');
+      expect(fake.instance.currentState).toBe('running');
+    } finally {
+      await rm(volumesRoot, { recursive: true, force: true });
+    }
   });
 });

@@ -1,11 +1,12 @@
-import type { ServerConfiguration } from '@hopper/shared';
+import { allocationForRole, type Allocation, type ServerConfiguration } from '@hopper/shared';
 
 /**
  * Deciding when a started server is a running one.
  *
  * Two things live here, and both are pure so they can be tested without a
- * container: which strategy a configuration asks for, and whether a console
- * line satisfies it.
+ * container: which strategy a configuration asks for — and, for the two that
+ * knock on something, at which address — and whether a console line satisfies
+ * it.
  *
  * The strategy is resolved when the configuration changes, not on every console
  * line — but more importantly it is resolved in *one* place. The old code
@@ -24,11 +25,21 @@ import type { ServerConfiguration } from '@hopper/shared';
 export type ResolvedReadiness =
   | { type: 'log'; patterns: RegExp[]; timeoutMs: number | null }
   /**
-   * Only ever `tcp`, and only ever the primary port: a UDP declaration and a
-   * named `role` both come back as `unsupported`, see below.
+   * Only ever `tcp`: a UDP declaration comes back as `unsupported`, see below.
+   *
+   * The address is resolved here rather than looked up at connection time, so
+   * that a role naming no port on this server is refused before the container
+   * is started rather than discovered by a wait that has nothing to knock on.
    */
-  | { type: 'port'; protocol: 'tcp'; delayMs: number; timeoutMs: number | null }
-  | { type: 'rcon'; secretVariable: string; timeoutMs: number | null }
+  | {
+      type: 'port';
+      protocol: 'tcp';
+      ip: string;
+      port: number;
+      delayMs: number;
+      timeoutMs: number | null;
+    }
+  | { type: 'rcon'; ip: string; port: number; secretVariable: string; timeoutMs: number | null }
   | { type: 'immediate' }
   /**
    * A strategy this node cannot run.
@@ -64,9 +75,15 @@ export type ResolvedReadiness =
  * arrived as a deprecated `startupDetection` or as a `readiness` with no
  * `timeoutMs`; everything downstream reads the field and does not care which
  * shape it came from.
+ *
+ * The allocations are read for the same reason: a `role` is resolved into an
+ * address here, so the two waits knock on what they are handed and no longer
+ * reach for the primary port behind the strategy's back. Naming nothing still
+ * means the primary port, which is what every configuration written before
+ * names existed asks for and has to go on meaning.
  */
 export function resolveReadiness(
-  configuration: Pick<ServerConfiguration, 'readiness' | 'startupDetection'>,
+  configuration: Pick<ServerConfiguration, 'readiness' | 'startupDetection' | 'allocations'>,
   onInvalidPattern?: (pattern: string, error: unknown) => void,
 ): ResolvedReadiness {
   const declared = configuration.readiness;
@@ -90,7 +107,7 @@ export function resolveReadiness(
     case 'immediate':
       return { type: 'immediate' };
 
-    case 'port':
+    case 'port': {
       // A TCP connect against a UDP game is not a weaker answer, it is a wrong
       // one: nothing is listening on the TCP port, so the probe fails for the
       // whole timeout while the server is up and taking players. So it is not
@@ -104,6 +121,9 @@ export function resolveReadiness(
       // `starting`. The alternatives named in the reason are the ones that do
       // work, because a refusal an operator cannot act on is just a hang with
       // an explanation.
+      //
+      // Checked before the role, because it is a property of the declaration
+      // and not of the server: a UDP probe is refused whichever port it names.
       if (declared.protocol === 'udp') {
         return {
           type: 'unsupported',
@@ -112,22 +132,29 @@ export function resolveReadiness(
         };
       }
 
-      if (declared.role !== undefined) {
-        return unnameablePort(declared.role);
+      const target = addressFor(configuration, declared.role);
+
+      if ('refusal' in target) {
+        return target.refusal;
       }
 
       return {
         type: 'port',
         protocol: 'tcp',
+        ip: target.address.ip,
+        port: target.address.port,
         delayMs: declared.delayMs,
         // Absent means open-ended, here as everywhere: the template declared
         // no deadline, so nothing may fail this start on time alone.
         timeoutMs: declared.timeoutMs ?? null,
       };
+    }
 
-    case 'rcon':
-      if (declared.role !== undefined) {
-        return unnameablePort(declared.role);
+    case 'rcon': {
+      const target = addressFor(configuration, declared.role);
+
+      if ('refusal' in target) {
+        return target.refusal;
       }
 
       // The password is named, never carried: it is a template variable, and
@@ -136,9 +163,12 @@ export function resolveReadiness(
       // in every configuration payload and every log line that printed one.
       return {
         type: 'rcon',
+        ip: target.address.ip,
+        port: target.address.port,
         secretVariable: declared.secretVariable,
         timeoutMs: declared.timeoutMs ?? null,
       };
+    }
 
     case 'log':
       return compileLogPatterns(declared.patterns, declared.timeoutMs ?? null, onInvalidPattern);
@@ -146,27 +176,41 @@ export function resolveReadiness(
 }
 
 /**
- * Refuses a strategy that names a port the daemon has no way to find.
+ * Which port a strategy knocks on — or a refusal, if it names one that is not
+ * there.
  *
- * `role` is in the contract and reads as though it works — "which of the
- * server's ports to knock on, the primary one by default" — but an allocation
- * is `{ip, port}` and carries no name, so there is nothing to match a role
- * against. Honouring it is a schema change to allocations, not a lookup.
+ * The refusal is the load-bearing half. Reading an unmatched role as "the
+ * primary port then" is the failure this whole path exists to prevent: a
+ * template declaring the one realistic use of the rcon strategy — RCON on its
+ * own port, the game on another — would have the daemon speak the handshake at
+ * the game port, get an error every two seconds, and at the deadline stop a
+ * server that was up and serving players, reporting it to the operator as a
+ * crash. Refusing costs that template its readiness check; guessing costs it
+ * the server.
  *
- * Until then the only two answers are to ignore the field or to say so, and
- * ignoring it is the worse one by some distance. A template declaring the one
- * realistic use of the rcon strategy — RCON on its own port, the game on
- * another — would have the daemon speak the handshake at the game port, get an
- * error every two seconds, and at the deadline stop a server that was up and
- * serving players, reporting it to the operator as a crash. Refusing costs
- * that template its readiness check; ignoring costs it the server.
+ * A role that matches nothing is not a bug in the template either — it is a
+ * template naming a port the operator never created — so the reason says which
+ * name went unmatched and where to create it. And because the strategy is
+ * re-resolved on every configuration sync, creating it in the panel fixes the
+ * next start without anybody restarting hopperd.
  */
-function unnameablePort(role: string): ResolvedReadiness {
+function addressFor(
+  configuration: Pick<ServerConfiguration, 'allocations'>,
+  role: string | undefined,
+): { address: Allocation } | { refusal: ResolvedReadiness } {
+  const address = allocationForRole(configuration.allocations, role);
+
+  if (address) {
+    return { address };
+  }
+
   return {
-    type: 'unsupported',
-    reason:
-      `this node cannot resolve the port named "${role}": allocations carry no names yet. ` +
-      'Leave the role out to use the primary port, or watch the console with the log strategy',
+    refusal: {
+      type: 'unsupported',
+      reason:
+        `no port on this server is named "${role}", so there is nothing to check. ` +
+        "Name one in the server's Network tab, or drop the name to use the primary port",
+    },
   };
 }
 

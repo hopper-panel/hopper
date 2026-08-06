@@ -38,6 +38,47 @@ export const stopConfigurationSchema = z.discriminatedUnion('type', [
 ]);
 
 /**
+ * The name a port answers to.
+ *
+ * Declared here, above the readiness strategies, because they are its first
+ * consumer: `role` is what a strategy knocks on something other than the game
+ * port by.
+ *
+ * A lookup key, not a label: a strategy matches against it exactly, and it is
+ * meant to become part of a variable name as well — the way a startup command
+ * will reach a port that is not the primary one. The shape is therefore
+ * constrained rather than free text, and each restriction pays for itself:
+ *
+ * - **Lowercase only**, because the match is exact. `RCON` and `rcon` naming
+ *   the same port would be two ports as far as any lookup is concerned, and
+ *   the operator who typed the second one would get a refusal about a port
+ *   they can see on the screen in front of them.
+ * - **No dot**, because the variable name it is bound for —
+ *   `{{server.allocations.<role>.port}}` — is a dotted path, and a role
+ *   carrying one would split it: `voice.udp` would be read as a `udp` field of
+ *   a `voice` allocation, and either resolve to nothing or, far worse, to
+ *   something else. Constraining the key now costs nothing; loosening it later,
+ *   once operators have named ports, is a migration.
+ * - **No brace, dash or underscore** either. None of them break a path today,
+ *   and every one of them invents a second spelling of the same intent —
+ *   `rcon-port`, `rcon_port`, `rconport` — in a field whose only job is to be
+ *   typed identically in two places, months apart, by two different people.
+ * - **Starts with a letter and stays short**, because it becomes part of a
+ *   variable name.
+ *
+ * `default` is not reserved: the primary allocation is given no `role` field
+ * at all to put it in — see `serverAllocationsSchema`.
+ */
+export const allocationRoleSchema = z
+  .string()
+  .min(1)
+  .max(24)
+  .regex(
+    /^[a-z][a-z0-9]*$/,
+    'A port name is lowercase letters and digits, starting with a letter — "rcon", "query", "voice2".',
+  );
+
+/**
  * How long the daemon waits for a strategy to answer before it gives up.
  *
  * Optional, and deliberately without a default: **declaring a deadline is how
@@ -77,8 +118,16 @@ export const readinessSchema = z.discriminatedUnion('type', [
   }),
   z.object({
     type: z.literal('port'),
-    /** Which of the server's ports to knock on. The primary one by default. */
-    role: z.string().min(1).optional(),
+    /**
+     * Which of the server's ports to knock on, by the name the operator gave
+     * it in the Network tab. The primary one when nothing is named.
+     *
+     * A role naming no port on the server is refused by the daemon rather than
+     * quietly read as "the primary one": knocking on the game port instead
+     * fails for the whole deadline while the server is up and taking players,
+     * and then stops it and reports the stop as a crash.
+     */
+    role: allocationRoleSchema.optional(),
     /**
      * `udp` is accepted here and not probed by the daemon, on purpose. The
      * field describes the server, not what this node can do about it, and a
@@ -96,7 +145,11 @@ export const readinessSchema = z.discriminatedUnion('type', [
   }),
   z.object({
     type: z.literal('rcon'),
-    role: z.string().min(1).optional(),
+    /**
+     * The RCON port, when it is not the game's own — which is the ordinary
+     * case, and the reason names exist at all. See `port` above.
+     */
+    role: allocationRoleSchema.optional(),
     /** Template variable holding the password. Never the password itself. */
     secretVariable: z.string().min(1),
     timeoutMs: readinessTimeoutSchema,
@@ -114,11 +167,30 @@ export const serverMetaSchema = z.object({
 export const allocationSchema = z.object({
   ip: z.string().min(1),
   port: z.number().int().min(1).max(65535),
+  /**
+   * What this port is for, when the operator has said. Absent on the vast
+   * majority of allocations, and absent is what every allocation that existed
+   * before names did carries.
+   */
+  role: allocationRoleSchema.optional(),
 });
 
 export const serverAllocationsSchema = z.object({
-  /** Injected into `server-port` and announced to players. */
-  default: allocationSchema,
+  /**
+   * Injected into `server-port` and announced to players.
+   *
+   * **Carries no role, deliberately.** The primary port is already reachable
+   * by name — it is what a `readiness` naming no role resolves to, and what
+   * every existing template and command means by "the port". Letting it hold
+   * one as well would give a single port two names, and there is no reading of
+   * that which stays true: a template resolving `game` would find the primary
+   * today and, the moment an operator moved the primary elsewhere, find a
+   * different port under the same name without anybody editing anything. It
+   * would also make the lookup itself ambiguous — the same role could sit on
+   * the primary and on an additional port at once, with no rule to break the
+   * tie. One port, one way to name it; the primary's way is to say nothing.
+   */
+  default: allocationSchema.omit({ role: true }),
   /** Extra exposed ports: dynmap, voice chat, query… */
   additional: z.array(allocationSchema).default([]),
 });
@@ -265,3 +337,33 @@ export type Allocation = z.infer<typeof allocationSchema>;
 export type ConfigFile = z.infer<typeof configFileSchema>;
 export type StopConfiguration = z.infer<typeof stopConfigurationSchema>;
 export type InstallConfiguration = z.infer<typeof installConfigurationSchema>;
+
+/**
+ * Which port a role means, for the one server these allocations belong to.
+ *
+ * The single definition of that question, so that everything asking it agrees:
+ * a readiness strategy deciding what to knock on, and — next — a startup
+ * command resolving `{{server.allocations.<role>.port}}`. Two lookups written
+ * separately would eventually disagree about the fallback, and the disagreement
+ * would show up as a daemon probing one port while the server was told to
+ * listen on another.
+ *
+ * Naming nothing means the primary port. That is what every configuration
+ * written before names existed asks for, and it has to keep meaning exactly
+ * what it always did.
+ *
+ * `undefined` is a real answer and not an oversight: it means the role names no
+ * port on this server. Callers have to say so rather than fall back to the
+ * primary, which is the whole reason this returns nothing instead of
+ * `allocations.default`.
+ */
+export function allocationForRole(
+  allocations: ServerAllocations,
+  role: string | undefined,
+): Allocation | undefined {
+  if (role === undefined) {
+    return allocations.default;
+  }
+
+  return allocations.additional.find((allocation) => allocation.role === role);
+}

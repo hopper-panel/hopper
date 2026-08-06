@@ -364,6 +364,9 @@ export const de: Partial<Messages> = {
   'network.add': 'Port hinzufügen',
   'network.adding': 'Wird zugewiesen…',
   'network.notePlaceholder': 'Notiz — dynmap, Voice, angekündigte Domain…',
+  'network.rolePlaceholder': 'Name — rcon, query…',
+  'network.roleHint':
+    'Über den Namen erreicht eine Vorlage einen Port, der nicht der Hauptport ist: eine Startprüfung auf „rcon“ klopft am Port namens rcon an. Kleinbuchstaben und Ziffern, ein Name pro Server. Der Hauptport braucht keinen — er ist bereits das, was alle mit „dem Port“ meinen.',
   'network.primary': 'Hauptport',
   'network.makePrimary': 'Als Hauptport setzen',
   'network.remove': 'Entfernen',

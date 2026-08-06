@@ -43,6 +43,16 @@ export interface ContainerBuildOptions {
    * refuses to start.
    */
   enableBlkioWeight?: boolean;
+  /**
+   * Where anything the operator has to know about the command that came out of
+   * the template goes — today, an argument that vanished because every variable
+   * in it was empty. The daemon points this at the server's console.
+   *
+   * Optional because there is not always somewhere to write: a caller that
+   * omits it loses a warning, never a refusal. What cannot be survived — an
+   * unknown variable, an unclosed quote — is thrown rather than reported here.
+   */
+  onWarning?: (message: string) => void;
 }
 
 export function containerNameFor(uuid: string): string {
@@ -114,15 +124,39 @@ export function portBindingsFor(configuration: ServerConfiguration): {
 export function buildContainerOptions(
   options: ContainerBuildOptions,
 ): Dockerode.ContainerCreateOptions {
-  const { configuration, volumePath, networkName, ownership, timezone, enableBlkioWeight } =
-    options;
+  const {
+    configuration,
+    volumePath,
+    networkName,
+    ownership,
+    timezone,
+    enableBlkioWeight,
+    onWarning,
+  } = options;
 
-  const invocation = buildInvocation(configuration.invocation, {
+  // One context for the command and the environment, where there used to be
+  // two identical literals. They describe the same server to the same
+  // substituter, and two copies are two chances for the container to be told
+  // one port and the command another.
+  const invocationContext = {
     environment: configuration.environment,
     memoryMib: Math.floor(configuration.build.memoryBytes / (1024 * 1024)),
-    ip: configuration.allocations.default.ip,
-    port: configuration.allocations.default.port,
-  });
+    allocations: configuration.allocations,
+  };
+
+  const invocation = buildInvocation(configuration.invocation, invocationContext);
+
+  for (const dropped of invocation.droppedArguments) {
+    // The argv that runs is one argument shorter than the template's, and only
+    // the operator can tell whether the empty variable was the intention. Said
+    // here rather than swallowed: an unresolved variable is never allowed to
+    // change the command in silence, and this is the one shape of it that must
+    // still be allowed to start (see the drop rule in `buildInvocation`).
+    onWarning?.(
+      `The startup argument ${dropped} was dropped: every variable in it is empty. ` +
+        'If the flag before it expected a value, it has not got one.',
+    );
+  }
 
   const { exposed, bindings } = portBindingsFor(configuration);
 
@@ -133,15 +167,7 @@ export function buildContainerOptions(
     // which would reintroduce exactly the shell interpretation
     // `buildInvocation` works to avoid.
     Cmd: invocation.argv,
-    Env: [
-      ...buildEnvironment({
-        environment: configuration.environment,
-        memoryMib: Math.floor(configuration.build.memoryBytes / (1024 * 1024)),
-        ip: configuration.allocations.default.ip,
-        port: configuration.allocations.default.port,
-      }),
-      `TZ=${timezone}`,
-    ],
+    Env: [...buildEnvironment(invocationContext), `TZ=${timezone}`],
     WorkingDir: CONTAINER_WORKING_DIR,
     User: `${ownership.uid}:${ownership.gid}`,
 
