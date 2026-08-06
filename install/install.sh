@@ -392,8 +392,16 @@ chown -R hopper:hopper "$HOPPER_ROOT"
 
 step "systemd services"
 
-install -m 644 "$HOPPER_ROOT/install/hopper-panel.service" /etc/systemd/system/hopper-panel.service
-install -m 644 "$HOPPER_ROOT/install/hopperd.service" /etc/systemd/system/hopperd.service
+# The units name the interpreter absolutely — systemd resolves no PATH — and
+# /usr/bin/node is where it happens to sit on the machines this was written on.
+# Elsewhere, including on a GitHub runner, the service dies with 203/EXEC and a
+# journal that says nothing about why.
+NODE_BIN="$(command -v node)"
+[ -x "$NODE_BIN" ] || die "node not found after installing it, which should not be possible."
+
+sed "s|{{NODE}}|$NODE_BIN|" "$HOPPER_ROOT/install/hopper-panel.service" > /etc/systemd/system/hopper-panel.service
+sed "s|{{NODE}}|$NODE_BIN|" "$HOPPER_ROOT/install/hopperd.service" > /etc/systemd/system/hopperd.service
+chmod 644 /etc/systemd/system/hopper-panel.service /etc/systemd/system/hopperd.service
 install -m 755 "$HOPPER_ROOT/install/hopper" /usr/local/bin/hopper
 
 # The update button in the administration writes a file here; the path unit
