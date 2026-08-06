@@ -46,7 +46,7 @@ export class InstallationError extends Error {
   }
 }
 
-function installContainerName(uuid: string): string {
+export function installContainerName(uuid: string): string {
   return `hopper-install-${uuid}`;
 }
 
