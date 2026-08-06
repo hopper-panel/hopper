@@ -392,8 +392,16 @@ chown -R hopper:hopper "$HOPPER_ROOT"
 
 step "systemd services"
 
-install -m 644 "$HOPPER_ROOT/install/hopper-panel.service" /etc/systemd/system/hopper-panel.service
-install -m 644 "$HOPPER_ROOT/install/hopperd.service" /etc/systemd/system/hopperd.service
+# The units name the interpreter absolutely — systemd resolves no PATH — and
+# /usr/bin/node is where it happens to sit on the machines this was written on.
+# Elsewhere, including on a GitHub runner, the service dies with 203/EXEC and a
+# journal that says nothing about why.
+NODE_BIN="$(command -v node)"
+[ -x "$NODE_BIN" ] || die "node not found after installing it, which should not be possible."
+
+sed "s|{{NODE}}|$NODE_BIN|" "$HOPPER_ROOT/install/hopper-panel.service" > /etc/systemd/system/hopper-panel.service
+sed "s|{{NODE}}|$NODE_BIN|" "$HOPPER_ROOT/install/hopperd.service" > /etc/systemd/system/hopperd.service
+chmod 644 /etc/systemd/system/hopper-panel.service /etc/systemd/system/hopperd.service
 install -m 755 "$HOPPER_ROOT/install/hopper" /usr/local/bin/hopper
 
 # The update button in the administration writes a file here; the path unit
@@ -419,32 +427,7 @@ systemctl enable hopper-panel >/dev/null
 systemctl restart hopper-panel
 good "hopper-panel"
 
-# The local node is declared from the command line: on a single machine,
-# demanding a trip through the interface before anything works at all would gain
-# nothing.
-if [ ! -f "$CONFIG_ROOT/daemon.yml" ]; then
-  MEMORY_BYTES=$(( $(awk '/MemTotal/ {print $2}' /proc/meminfo) * 1024 ))
-  DISK_BYTES=$(df -B1 --output=size "$DATA_ROOT" | tail -1 | tr -d ' ')
 
-  HOPPER_ROOT="$HOPPER_ROOT" hopper node:create \
-    --name "$(hostname -s)" --fqdn "$DOMAIN" --scheme "$NODE_SCHEME" \
-    --port "$DAEMON_PORT" --sftp-port "$SFTP_PORT" \
-    --memory "$MEMORY_BYTES" --disk "$DISK_BYTES" \
-    --output "$CONFIG_ROOT/daemon.yml" >/dev/null
-  good "local node declared"
-else
-  note "daemon.yml already present, kept"
-fi
-
-systemctl enable hopperd >/dev/null
-systemctl restart hopperd
-good "hopperd"
-
-# Not `restart`: this unit is a watcher, and restarting it while it is being
-# triggered by the very update running right now would cut that update short.
-systemctl enable hopper-update.path >/dev/null
-systemctl start hopper-update.path >/dev/null 2>&1 || true
-good "update watcher"
 
 # ---------------------------------------------------------------------------
 # Web server
@@ -586,10 +569,74 @@ EOF
       else
         warn "certbot failed — the installation stays on HTTP."
         warn "Check that $DOMAIN points at this machine and that port 80 is open."
+
+        # Decisive, not merely regretful. Left at https, the node below would
+        # write a certificate path into daemon.yml that is never going to
+        # exist, and the daemon would refuse to start for a reason nobody
+        # connects back to a DNS record.
+        TLS=no
+        NODE_SCHEME=http
+        APP_URL="http://$DOMAIN"
+        sed -i "s|^APP_URL=.*|APP_URL=$APP_URL|" "$HOPPER_ROOT/apps/panel/.env"
+        systemctl restart hopper-panel
+        warn "the panel has been put back on $APP_URL"
       fi
     fi
   fi
 fi
+
+# ---------------------------------------------------------------------------
+# The node, and the daemon
+#
+# Declared **after** the web server, and that order is not cosmetic. With TLS
+# the node is registered as `https`, and `hopper node:create` writes the
+# Let's Encrypt certificate path into daemon.yml. The daemon reads that path
+# when it starts. Started before certbot had run, it read a file that did not
+# exist yet and died — on a fresh install with a domain, which is the path the
+# documentation recommends. An operator who installs twice, or reboots, never
+# sees it.
+# ---------------------------------------------------------------------------
+
+# The local node is declared from the command line: on a single machine,
+# demanding a trip through the interface before anything works at all would gain
+# nothing.
+if [ ! -f "$CONFIG_ROOT/daemon.yml" ]; then
+  MEMORY_BYTES=$(( $(awk '/MemTotal/ {print $2}' /proc/meminfo) * 1024 ))
+  DISK_BYTES=$(df -B1 --output=size "$DATA_ROOT" | tail -1 | tr -d ' ')
+
+  HOPPER_ROOT="$HOPPER_ROOT" hopper node:create \
+    --name "$(hostname -s)" --fqdn "$DOMAIN" --scheme "$NODE_SCHEME" \
+    --port "$DAEMON_PORT" --sftp-port "$SFTP_PORT" \
+    --memory "$MEMORY_BYTES" --disk "$DISK_BYTES" \
+    --output "$CONFIG_ROOT/daemon.yml" >/dev/null
+  good "local node declared"
+else
+  note "daemon.yml already present, kept"
+fi
+
+systemctl enable hopperd >/dev/null
+systemctl restart hopperd
+
+# Verified, not assumed. `systemctl restart` returns as soon as the unit is
+# activating; a daemon that dies a second later on an unreadable certificate
+# would leave this script printing success over a broken installation.
+for _ in $(seq 1 20); do
+  systemctl is-active --quiet hopperd && break
+  sleep 1
+done
+
+if ! systemctl is-active --quiet hopperd; then
+  journalctl -u hopperd -n 20 --no-pager | sed 's/^/    /' >&2
+  die "hopperd did not stay up — its log is above."
+fi
+
+good "hopperd"
+
+# Not `restart`: this unit is a watcher, and restarting it while it is being
+# triggered by the very update running right now would cut that update short.
+systemctl enable hopper-update.path >/dev/null
+systemctl start hopper-update.path >/dev/null 2>&1 || true
+good "update watcher"
 
 # ---------------------------------------------------------------------------
 # Local policies

@@ -4,6 +4,13 @@ Documentation=https://github.com/hopper-panel/hopper
 After=network-online.target postgresql.service redis-server.service
 Wants=network-online.target
 
+# In [Unit], not [Service]: systemd has read them here since v230 and
+# ignores them there, with nothing but a line in the journal to say so.
+# The rate limit they were supposed to impose did not exist — a CI run
+# caught the daemon restarting four times in twenty seconds, unbounded.
+StartLimitBurst=5
+StartLimitIntervalSec=120
+
 [Service]
 Type=simple
 
@@ -14,7 +21,7 @@ User=hopper
 Group=hopper
 
 WorkingDirectory=/opt/hopper/apps/panel
-ExecStart=/usr/bin/node dist/main.js
+ExecStart={{NODE}} dist/main.js
 EnvironmentFile=/opt/hopper/apps/panel/.env
 
 # The working directory is the panel package, not the installation root, so
@@ -26,8 +33,6 @@ Environment=HOPPER_ROOT=/opt/hopper
 
 Restart=on-failure
 RestartSec=5
-StartLimitBurst=5
-StartLimitIntervalSec=120
 
 # Hardening: the panel must not write anywhere on the filesystem.
 NoNewPrivileges=true
