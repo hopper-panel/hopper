@@ -31,6 +31,17 @@ import { buildResourceUsage, emptyUsage, type DockerStats } from './stats.js';
 /** Minimum delay between two walks of the volume, in milliseconds. */
 const DISK_MEASURE_INTERVAL_MS = 60_000;
 
+/**
+ * A duration as the operator reads it, for the console.
+ *
+ * Readiness deadlines are configured in milliseconds because that is what the
+ * waits are written in, and "600000ms" in a console line is a number nobody
+ * converts in their head before deciding whether it was long enough.
+ */
+function seconds(milliseconds: number): string {
+  return `${Math.round(milliseconds / 1000)}s`;
+}
+
 export interface ServerInstanceEvents {
   state: (state: ServerState) => void;
   console: (line: string) => void;
@@ -106,16 +117,35 @@ export class ServerInstance extends EventEmitter {
    */
   private operation: Promise<unknown> = Promise.resolve();
 
-  private readonly readiness: ResolvedReadiness;
+  private readiness: ResolvedReadiness;
+
+  /**
+   * Set when this daemon gave up on a start and stopped the server itself.
+   *
+   * Read by the exit handler, which would otherwise report the stop that
+   * follows as a perfectly ordinary one — the container went down cleanly,
+   * after all — and hide the failure that caused it behind a "server stopped"
+   * notification.
+   */
+  private abandonedStart = false;
+
+  /**
+   * The start attempt in flight, aborted the moment the server leaves
+   * `starting` — however it leaves.
+   *
+   * A readiness wait belongs to the attempt that armed it and to nothing else.
+   * Without that ownership a wait outlives its attempt: the container dies
+   * fifty milliseconds into a four-hundred-millisecond deadline, the operator
+   * starts the server again, and the timer armed by the dead attempt fires
+   * into the live one and stops a server that was starting perfectly well.
+   * Every abandoned wait also left its `state` listener behind, so a server
+   * restarted often enough accumulated one per crashed start.
+   */
+  private startAttempt: AbortController | null = null;
 
   constructor(private options: ServerInstanceOptions) {
     super();
-    this.readiness = resolveReadiness(this.options.configuration, (pattern, error) =>
-      this.logger.warn(
-        { server: this.uuid, pattern, err: error },
-        'Invalid readiness pattern: it is ignored, the others still apply',
-      ),
-    );
+    this.readiness = this.resolvedReadiness();
   }
 
   get uuid(): string {
@@ -162,6 +192,32 @@ export class ServerInstance extends EventEmitter {
 
   updateConfiguration(configuration: ServerConfiguration): void {
     this.options = { ...this.options, configuration };
+
+    // Re-resolved, not carried over. The strategy was compiled once in the
+    // constructor, so until now a readiness the operator had just corrected in
+    // the panel did nothing until hopperd was restarted — the daemon went on
+    // watching for the old pattern with the old deadline. That was merely a
+    // server that hung for longer than it should while `readiness` could only
+    // hang one; it now stops the server when a deadline the operator has
+    // already fixed expires, which is a correction that makes things worse
+    // until the process is bounced.
+    this.readiness = this.resolvedReadiness();
+  }
+
+  /**
+   * Compiles the readiness strategy of the configuration currently held.
+   *
+   * A function rather than an inline expression in the two places that need
+   * it, so the pattern-warning callback cannot drift between the start of a
+   * server's life and a configuration sync in the middle of it.
+   */
+  private resolvedReadiness(): ResolvedReadiness {
+    return resolveReadiness(this.options.configuration, (pattern, error) =>
+      this.logger.warn(
+        { server: this.uuid, pattern, err: error },
+        'Invalid readiness pattern: it is ignored, the others still apply',
+      ),
+    );
   }
 
   consoleSnapshot(): string[] {
@@ -188,6 +244,17 @@ export class ServerInstance extends EventEmitter {
     }
 
     this.emit('state', state);
+
+    // Leaving `starting` ends the attempt, whichever way it left: promoted,
+    // crashed, stopped by the operator. Everything the attempt armed comes
+    // down with it — the deadline timer and the `state` listener behind it —
+    // so nothing it left running can reach into the next attempt. After the
+    // emit, so a wait watching for `running` still gets to see the transition
+    // it was waiting for before its signal is pulled.
+    if (state !== 'starting') {
+      this.startAttempt?.abort();
+      this.startAttempt = null;
+    }
   }
 
   /** A line emitted by Hopper, distinct from the server's own output. */
@@ -473,11 +540,11 @@ export class ServerInstance extends EventEmitter {
    * and a daemon that spoke each game's query protocol to find out would be a
    * daemon that has to know what game it runs.
    *
-   * Only ever promotes `starting`. A server that stopped, crashed or was
-   * restarted while this was waiting must not be dragged back to `running` by
-   * a check nobody cancelled.
+   * Only ever promotes the attempt it was armed for. A server that stopped,
+   * crashed or was restarted while this was waiting must not be dragged back
+   * to `running` — nor stopped — by a check belonging to a start that is over.
    */
-  private async waitForPort(): Promise<void> {
+  private async waitForPort(attempt: AbortController): Promise<void> {
     const readiness = this.readiness;
 
     if (readiness.type !== 'port') {
@@ -485,15 +552,25 @@ export class ServerInstance extends EventEmitter {
     }
 
     const { port, ip } = this.options.configuration.allocations.default;
-    const deadline = Date.now() + this.startupTimeoutMs();
 
+    // The grace period runs *before* the clock starts, not against it. The two
+    // fields read as separate quantities — one is how long to leave the process
+    // alone, the other how long to keep knocking — and nothing cross-validates
+    // them, so a template declaring `delayMs: 60000, timeoutMs: 30000` would
+    // otherwise sleep past its own deadline, never open a single socket, and
+    // fail the start with a message about a connection that was never
+    // attempted.
     if (readiness.delayMs > 0) {
       await new Promise((resolve) => setTimeout(resolve, readiness.delayMs));
     }
 
-    while (Date.now() < deadline && this.state === 'starting') {
+    // No declared deadline means the wait is open-ended, as every wait was
+    // before deadlines existed: the loop then ends only when the attempt does.
+    const deadline = readiness.timeoutMs === null ? Infinity : Date.now() + readiness.timeoutMs;
+
+    while (!attempt.signal.aborted && Date.now() < deadline) {
       if (await this.portAccepts(ip === '0.0.0.0' ? '127.0.0.1' : ip, port)) {
-        if (this.state === 'starting') {
+        if (!attempt.signal.aborted) {
           this.setState('running');
         }
         return;
@@ -502,20 +579,26 @@ export class ServerInstance extends EventEmitter {
       await new Promise((resolve) => setTimeout(resolve, 2000));
     }
 
-    if (this.state === 'starting') {
-      this.emitDaemonLine('The server never accepted a connection on its port.');
+    if (readiness.timeoutMs === null) {
+      return;
     }
+
+    this.failStart(
+      attempt,
+      `Nothing accepted a connection on port ${port} within ${seconds(readiness.timeoutMs)}.`,
+    );
   }
 
   /**
    * Logs in over RCON until the server accepts, which is the truest readiness
    * signal there is: a server answers only once it is serving.
    *
-   * A refused password is not "not ready yet" — it will be refused again in
-   * two seconds and in ten minutes. Saying so beats a server that sits in
-   * `starting` until it times out for a reason nobody can see.
+   * A refused password, or a variable holding no password at all, is not "not
+   * ready yet": it will be just as refused in two seconds and in ten minutes.
+   * Both fail the start on the spot rather than making somebody wait out a
+   * deadline for an answer that was already in.
    */
-  private async waitForRcon(): Promise<void> {
+  private async waitForRcon(attempt: AbortController): Promise<void> {
     const readiness = this.readiness;
 
     if (readiness.type !== 'rcon') {
@@ -525,7 +608,8 @@ export class ServerInstance extends EventEmitter {
     const password = this.options.configuration.environment[readiness.secretVariable];
 
     if (!password) {
-      this.emitDaemonLine(
+      this.failStart(
+        attempt,
         `This server's readiness check needs the variable ${readiness.secretVariable}, which is not set.`,
       );
       return;
@@ -533,20 +617,24 @@ export class ServerInstance extends EventEmitter {
 
     const { port, ip } = this.options.configuration.allocations.default;
     const host = ip === '0.0.0.0' ? '127.0.0.1' : ip;
-    const deadline = Date.now() + this.startupTimeoutMs();
+    // Open-ended when the template declared no deadline: see `waitForPort`.
+    const deadline = readiness.timeoutMs === null ? Infinity : Date.now() + readiness.timeoutMs;
 
-    while (Date.now() < deadline && this.state === 'starting') {
+    while (!attempt.signal.aborted && Date.now() < deadline) {
       try {
         await rconExecute({ host, port, password });
 
-        if (this.state === 'starting') {
+        if (!attempt.signal.aborted) {
           this.setState('running');
         }
 
         return;
       } catch (error: unknown) {
         if (error instanceof RconError && error.message.includes('refused the password')) {
-          this.emitDaemonLine('RCON refused the password: readiness cannot be checked.');
+          this.failStart(
+            attempt,
+            'RCON refused the password: this server cannot be checked for readiness.',
+          );
           return;
         }
       }
@@ -554,9 +642,114 @@ export class ServerInstance extends EventEmitter {
       await new Promise((resolve) => setTimeout(resolve, 2000));
     }
 
-    if (this.state === 'starting') {
-      this.emitDaemonLine('The server never answered on RCON.');
+    if (readiness.timeoutMs === null) {
+      return;
     }
+
+    this.failStart(
+      attempt,
+      `The server never answered on RCON within ${seconds(readiness.timeoutMs)}.`,
+    );
+  }
+
+  /**
+   * Waits for the console to say the words, and gives up if it never does.
+   *
+   * The promotion itself happens in `handleOutput`, line by line; all this does
+   * is put a bound on how long the daemon believes a start that never
+   * announced itself. Armed only when the template asked for one — a
+   * configuration carrying the deprecated `startupDetection`, or a `log`
+   * strategy naming no deadline, waits for ever exactly as it did before this
+   * existed.
+   */
+  private async waitForLog(attempt: AbortController): Promise<void> {
+    const readiness = this.readiness;
+
+    if (readiness.type !== 'log' || readiness.timeoutMs === null) {
+      return;
+    }
+
+    if (await this.waitForState('running', readiness.timeoutMs, attempt.signal)) {
+      return;
+    }
+
+    // The wait can also end because the attempt did — the container died, the
+    // operator stopped it. Only a genuine expiry gets to fail a start, and
+    // only the start this deadline was armed for: without the signal, a wait
+    // whose server had crashed went on ticking and fired its verdict into
+    // whatever attempt happened to be in `starting` when it did.
+    if (attempt.signal.aborted) {
+      return;
+    }
+
+    this.failStart(
+      attempt,
+      `The server printed nothing matching its startup pattern within ${seconds(readiness.timeoutMs)}.`,
+    );
+  }
+
+  /**
+   * Abandons a start that never became ready.
+   *
+   * All three waits can end without an answer: the pattern never printed,
+   * nothing ever accepted a connection, RCON never let us in. Each of them used
+   * to say so on the console and leave the state at `starting`, where it stayed
+   * until somebody happened to look — a permanent spinner in the panel over a
+   * server that was either dead or perfectly fine, with nothing to tell the two
+   * apart and no state change to notify anybody about.
+   *
+   * So a start is failed the way an installation is failed: the server ends in
+   * a state the panel shows, and the panel is told the stop was nobody's idea,
+   * which is what turns it into a notification rather than a line in a console
+   * nobody has open.
+   *
+   * The container is stopped rather than left running behind that verdict. A
+   * server the panel reports as down while it is quietly taking players is the
+   * worse of the two lies, and the deadline is the template's own: reaching it
+   * means the operator asked to be told, on this workload, after this long.
+   */
+  private failStart(attempt: AbortController, reason: string): void {
+    // The attempt is what this verdict applies to, and an aborted one means
+    // the wait was overtaken — the server was promoted by another signal, the
+    // operator stopped it, or the process died on its own and the exit handler
+    // has already had its say. The state alone would not tell: a server
+    // started again since is back in `starting`, and stopping it here would
+    // punish the new attempt for the previous one's silence.
+    if (attempt.signal.aborted || this.state !== 'starting') {
+      return;
+    }
+
+    this.abandonedStart = true;
+
+    this.emitDaemonLine(reason);
+    this.emitDaemonLine('Giving up on this start: the server is being stopped.');
+    this.logger.warn({ server: this.uuid, reason }, 'Start abandoned: readiness never confirmed');
+
+    // Queued rather than run here: this wait is a background promise nobody
+    // awaits, and stopping outside the queue would let it cross a restart the
+    // operator asked for in the meantime.
+    void this.enqueue(async () => {
+      // Re-checked inside the queue, which this may have spent seconds waiting
+      // in: whatever ran before it may already have resolved the start, or
+      // ended this attempt and begun another one that must not be stopped by
+      // a verdict passed on its predecessor.
+      if (attempt.signal.aborted || this.state !== 'starting') {
+        return;
+      }
+
+      await this.doStop();
+    }).catch((error: unknown) => {
+      // The stop itself failed: no console stream to write to, Docker refusing
+      // the signal. Killing is the only thing left that moves the state out of
+      // `stopping`, and leaving it stuck there would be the same hang under a
+      // different name.
+      this.logger.error(
+        { server: this.uuid, err: error },
+        'Could not stop an abandoned start: killing it instead',
+      );
+
+      return this.doKill().catch(() => undefined);
+    });
   }
 
   private portAccepts(host: string, port: number): Promise<boolean> {
@@ -571,11 +764,6 @@ export class ServerInstance extends EventEmitter {
       socket.once('error', () => settle(false));
       socket.once('timeout', () => settle(false));
     });
-  }
-
-  /** Bounded so a server that never becomes ready does not wait for ever. */
-  private startupTimeoutMs(): number {
-    return 10 * 60 * 1000;
   }
 
   private async attach(): Promise<void> {
@@ -610,9 +798,20 @@ export class ServerInstance extends EventEmitter {
           at: Date.now(),
           // A requested stop, or a `/stop` typed by a player — code 0 — is
           // expected. Everything else is not, and deserves to be reported.
-          expected: wasStopping || exit.exitCode === 0,
+          //
+          // A start this daemon gave up on is never expected, however cleanly
+          // the process then went down: the stop was Hopper's decision, taken
+          // because the server never became ready, and reporting it as an
+          // ordinary one would bury the only notification saying so.
+          expected: !this.abandonedStart && (wasStopping || exit.exitCode === 0),
           exitCode: exit.exitCode,
           oomKilled: exit.oomKilled,
+          // Named, because `expected: false` alone puts this stop under the
+          // panel's one hardcoded sentence — "the process stopped on its own"
+          // — beside the exit code of the SIGTERM this daemon had just sent.
+          // The operator was being told to investigate a crash that never
+          // happened, by the one notification meant to save them the search.
+          ...(this.abandonedStart ? { cause: 'readiness_failed' as const } : {}),
         });
       });
 
@@ -648,8 +847,12 @@ export class ServerInstance extends EventEmitter {
       this.emitDaemonLine(
         `The server was killed by the kernel for running out of memory (limit: ${limitMib} MiB).`,
       );
+      // Says nothing about what the server runs. This line reaches the console
+      // of every workload the daemon hosts, and a Factorio operator told to
+      // check their Minecraft version has been handed a false lead by the one
+      // message that was supposed to save them from looking in the wrong place.
       this.emitDaemonLine(
-        'Raise the memory allocated to this server: the installed Minecraft version needs more.',
+        'Raise the memory allocated to this server: what it is running needs more than this limit.',
       );
 
       this.logger.warn(
@@ -899,6 +1102,18 @@ export class ServerInstance extends EventEmitter {
       throw new Error('This server is suspended.');
     }
 
+    // A fresh attempt: the verdict on the previous one must not colour how this
+    // one's eventual stop is reported.
+    this.abandonedStart = false;
+
+    // Opened before the state moves, so that everything armed below belongs to
+    // this attempt and dies with it. `setState` ends an attempt on the way out
+    // of `starting`, so there is nothing here to inherit — the abort is belt
+    // and braces against a path that forgot to leave the state behind it.
+    this.startAttempt?.abort();
+    const attempt = new AbortController();
+    this.startAttempt = attempt;
+
     this.setState('starting');
     this.console.clear();
     this.emitDaemonLine('Starting the server…');
@@ -918,23 +1133,55 @@ export class ServerInstance extends EventEmitter {
     await this.container().start();
     await this.startStatsStream();
 
-    if (this.readiness.type === 'unsupported') {
-      // Refused rather than downgraded. Calling it running now would be the
-      // wrong answer for exactly the workloads that asked for this strategy.
-      this.emitDaemonLine(
-        `This server's readiness check is not supported by this node (${this.readiness.reason}). It will stay "starting" until it stops.`,
-      );
-    } else if (this.readiness.type === 'immediate') {
-      // Nothing announces itself here, so the container running is the only
-      // signal there is — and now it is a choice somebody made rather than a
-      // silent default.
-      this.setState('running');
-    } else if (this.readiness.type === 'port') {
-      this.emitDaemonLine('Waiting for the server to accept connections…');
-      void this.waitForPort();
-    } else if (this.readiness.type === 'rcon') {
-      this.emitDaemonLine('Waiting for the server to answer on RCON…');
-      void this.waitForRcon();
+    // Exhaustive on purpose: a strategy nobody handles here is a server left in
+    // `starting` with nothing running that could ever move it out.
+    switch (this.readiness.type) {
+      case 'unsupported': {
+        // The strategy is still refused — nothing here probes a UDP port. What
+        // changed is what refusing costs: this branch used to print a line and
+        // leave the state at `starting` for ever, so the server ran, took
+        // players, and the panel showed a spinner over it until somebody
+        // stopped it. Calling it running is the wrong answer, but it is the
+        // wrong answer the operator can see, work with and fix.
+        this.emitDaemonLine(
+          `This node cannot run this server's readiness check (${this.readiness.reason}).`,
+        );
+        this.emitDaemonLine(
+          'It is being called running now that its container is up, which may be well before it can actually be played on.',
+        );
+        this.logger.warn(
+          { server: this.uuid, reason: this.readiness.reason },
+          'Unsupported readiness strategy: the server is called running as soon as its container is up',
+        );
+
+        this.setState('running');
+        break;
+      }
+
+      case 'immediate':
+        // Nothing announces itself here, so the container running is the only
+        // signal there is — and now it is a choice somebody made rather than a
+        // silent default.
+        this.setState('running');
+        break;
+
+      case 'port':
+        this.emitDaemonLine('Waiting for the server to accept connections…');
+        void this.waitForPort(attempt);
+        break;
+
+      case 'rcon':
+        this.emitDaemonLine('Waiting for the server to answer on RCON…');
+        void this.waitForRcon(attempt);
+        break;
+
+      case 'log':
+        // Nothing is announced on the console for this one: the promotion
+        // happens in `handleOutput`, and every Minecraft server on every
+        // existing installation goes through here. All this arms is the
+        // deadline, and only if the template asked for one.
+        void this.waitForLog(attempt);
+        break;
     }
   }
 
@@ -985,27 +1232,49 @@ export class ServerInstance extends EventEmitter {
     this.stopStatsStream();
   }
 
-  /** Waits for a state, or times out. Returns `false` on timeout. */
-  private waitForState(target: ServerState, timeoutMs: number): Promise<boolean> {
+  /**
+   * Waits for a state, or times out. Returns `false` on timeout.
+   *
+   * `signal` is how a caller says the wait has an owner: aborting it settles
+   * the promise and, far more importantly, takes down both the timer and the
+   * `state` listener. Neither used to be released on any path except the two
+   * the wait itself controlled, so a wait whose start died another way left a
+   * live timer holding a verdict, and a listener on the emitter for as long as
+   * the server existed.
+   */
+  private waitForState(
+    target: ServerState,
+    timeoutMs: number,
+    signal?: AbortSignal,
+  ): Promise<boolean> {
     if (this.state === target) {
       return Promise.resolve(true);
     }
 
     return new Promise((resolve) => {
-      const timer = setTimeout(() => {
+      const settle = (reached: boolean): void => {
+        clearTimeout(timer);
         this.off('state', listener);
-        resolve(false);
-      }, timeoutMs);
-
-      const listener = (state: ServerState): void => {
-        if (state === target) {
-          clearTimeout(timer);
-          this.off('state', listener);
-          resolve(true);
-        }
+        signal?.removeEventListener('abort', onAbort);
+        resolve(reached);
       };
 
+      const timer = setTimeout(() => settle(false), timeoutMs);
+      const listener = (state: ServerState): void => {
+        if (state === target) {
+          settle(true);
+        }
+      };
+      const onAbort = (): void => settle(false);
+
       this.on('state', listener);
+      signal?.addEventListener('abort', onAbort, { once: true });
+
+      // A signal already aborted never fires, so the listener above would wait
+      // out the full deadline for an owner that is gone.
+      if (signal?.aborted) {
+        settle(false);
+      }
     });
   }
 

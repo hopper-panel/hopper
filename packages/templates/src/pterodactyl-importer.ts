@@ -1,5 +1,7 @@
+import type { readinessSchema } from '@hopper/shared';
 import { z } from 'zod';
 import {
+  JAVA_IMAGES,
   templateDefinitionSchema,
   type DockerImageOption,
   type TemplateDefinition,
@@ -104,6 +106,22 @@ function toBoolean(value: unknown, fallback: boolean): boolean {
 }
 
 /**
+ * Image repositories Hopper ships itself, tag excluded.
+ *
+ * `JAVA_IMAGES` is the whole of it today, because the shipped catalogue is
+ * still entirely Java. A second list added for another game has to be added
+ * here too, or eggs naming its images will be flagged as bringing something
+ * Hopper does not recognise. Reading it off the constant rather than spelling
+ * the repository name out at least means a new tag or a new JRE never needs a
+ * change in this file.
+ *
+ * The tag is dropped deliberately: `eclipse-temurin:8-jre-noble` and
+ * `eclipse-temurin:21-jre-noble` are the same answer to the only question asked
+ * below, which is whether Hopper has any idea what is inside the image.
+ */
+const CATALOGUE_REPOSITORIES = new Set(JAVA_IMAGES.map((option) => option.image.split(':')[0]!));
+
+/**
  * Normalises the Docker images.
  *
  * A JSON object would lose its order in the database: an array is produced,
@@ -129,14 +147,21 @@ function convertImages(egg: PterodactylEgg, warnings: string[]): DockerImageOpti
 
   // Hopper imposes the user, the capabilities and PID 1 on the container
   // itself, so an image from elsewhere is not less safe for being foreign. What
-  // it can lack is what a server needs at runtime — a JRE of the right major
-  // version, and curl for the plugins that fetch their resources on first
-  // start.
-  const foreign = images.filter((option) => !option.image.startsWith('eclipse-temurin:'));
+  // it can lack is what the server needs at runtime — and that question has no
+  // single answer any more. A Java server wants a JRE of the right major
+  // version; a Steam game wants the loader and the shared libraries its binary
+  // was linked against. The importer cannot tell which it is looking at, so the
+  // warning names the image and stops there. The previous wording asked the
+  // reader to check the Java version, which fired on every egg that was not
+  // Minecraft and told each of them to verify something irrelevant — advice
+  // nobody can act on is how a warnings list stops being read at all.
+  const unrecognised = images.filter(
+    (option) => !CATALOGUE_REPOSITORIES.has(option.image.split(':')[0]!),
+  );
 
-  if (foreign.length > 0) {
+  if (unrecognised.length > 0) {
     warnings.push(
-      `This egg names images of its own (${foreign[0]!.image}). They will work — Hopper sets the user, drops every capability and supplies PID 1 regardless of the image — but check the Java version matches the server, and that the image carries curl if a plugin downloads anything at startup.`,
+      `This egg names images of its own (${unrecognised[0]!.image}). They will work — Hopper sets the user, drops every capability and supplies PID 1 regardless of the image — but nothing here checks that the image carries what this particular game needs to run, nor the tools its startup relies on if it downloads anything.`,
     );
   }
 
@@ -194,38 +219,87 @@ function parseJsonBlock(raw: unknown): Record<string, unknown> {
   return {};
 }
 
+/** What an egg's `done` markers become on the template. */
+interface ConvertedReadiness {
+  /**
+   * The deprecated single pattern, still filled in.
+   *
+   * A node running a daemon older than the readiness union reads this field and
+   * nothing else. An import that stopped emitting it would leave every one of
+   * those nodes with a server stuck in "starting", which is precisely the
+   * lockstep upgrade the contract was written to avoid.
+   */
+  startupDetection: string | undefined;
+  /**
+   * The strategy as this function writes it, before the schema has run.
+   *
+   * `z.input` and not `Readiness`: the latter is what comes *out* of the
+   * schema, with `protocol` and `delayMs` already filled in from their
+   * defaults, and this importer has an opinion on neither.
+   *
+   * It has no opinion on `timeoutMs` either, and that omission is the
+   * deliberate part. An egg says nothing whatever about deadlines, and a
+   * deadline is what makes a start capable of failing: inventing one here
+   * would hand every egg ever imported a stop its author never asked for, on a
+   * workload nothing in this file has seen. So the strategy travels without
+   * one and the import keeps the open-ended wait it has always had. An
+   * administrator who wants the server given up on after so long adds the
+   * field to the template by hand, which is the one place the figure can be
+   * chosen by somebody who knows the game.
+   */
+  readiness: z.input<typeof readinessSchema>;
+}
+
 /**
- * Extracts the startup detection line.
+ * Extracts what the egg says about becoming ready.
  *
- * Pterodactyl stores it as a substring to look for, not as a regular
- * expression. It is therefore escaped before being handed to Hopper, which
- * compiles it: an egg containing `Done (` would otherwise produce an invalid
- * regex, and the server would never go "online".
+ * Pterodactyl stores markers as substrings to look for, not as regular
+ * expressions. They are escaped before being handed to Hopper, which compiles
+ * them: an egg containing `Done (` would otherwise produce an invalid regex,
+ * and the server would never go "online".
+ *
+ * Both fields come out of the same markers and both are emitted. The `log`
+ * strategy carries every marker the egg declares; `startupDetection` carries
+ * the first of them, because one string is all it can hold. That truncation is
+ * the whole reason `log.patterns` is a list: eggs for games outside Minecraft
+ * routinely declare several, either because the announcing line changed between
+ * builds or because the game reaches "ready" through more than one path, and
+ * the importer used to keep one of them and warn that it had discarded the
+ * rest. A discarded marker is a server that never leaves "starting" whenever
+ * the build in question happens to print the other line.
  */
-function convertStartupDetection(raw: unknown, warnings: string[]): string | undefined {
+function convertReadiness(raw: unknown, warnings: string[]): ConvertedReadiness {
   const block = parseJsonBlock(raw);
   const done = block.done;
 
-  const value = Array.isArray(done)
-    ? typeof done[0] === 'string'
-      ? done[0]
-      : undefined
-    : typeof done === 'string'
-      ? done
-      : undefined;
+  // A single string in older eggs, a list in newer ones. Blank entries are
+  // dropped rather than escaped: an empty pattern compiles to a regex matching
+  // every line, so keeping one would mean the first thing the server printed —
+  // a copyright banner, a deprecation notice — counted as "ready".
+  const markers = (Array.isArray(done) ? done : [done]).filter(
+    (marker): marker is string => typeof marker === 'string' && marker.trim() !== '',
+  );
 
-  if (!value || value.trim() === '') {
+  if (markers.length === 0) {
+    // Chosen rather than fallen into. The daemon already treats an absent
+    // strategy this way, so nothing changes about when the server is called
+    // running; what changes is that the template now says so. An operator
+    // looking at a server that went green before it had loaded anything can
+    // read `immediate` and know it was decided at import, instead of hunting
+    // for the console pattern that was never there.
     warnings.push(
-      'No startup marker: the server will count as "online" as soon as its container runs, without waiting for it to accept connections.',
+      'This egg declares no startup marker, so the template asks for the "immediate" strategy: the server counts as running as soon as its container does, without waiting for it to accept connections. If the game announces itself on the console, add the pattern to the template by hand.',
     );
-    return undefined;
+
+    return { startupDetection: undefined, readiness: { type: 'immediate' } };
   }
 
-  if (Array.isArray(done) && done.length > 1) {
-    warnings.push(`The egg declares several startup markers; only the first ("${value}") is kept.`);
-  }
+  const patterns = markers.map(escapeRegExp);
 
-  return escapeRegExp(value);
+  // The first marker, which is the one this importer has always picked. Keeping
+  // that choice matters beyond tidiness: an egg re-imported today has to leave
+  // an old node behaving exactly as the same egg did before this field existed.
+  return { startupDetection: patterns[0]!, readiness: { type: 'log', patterns } };
 }
 
 export function escapeRegExp(value: string): string {
@@ -305,16 +379,24 @@ export function importPterodactylEgg(raw: unknown, options: ImportOptions): EggI
     );
   }
 
+  const dockerImages = convertImages(egg, warnings);
+  const stopCommand = convertStop(egg.config?.stop, warnings);
+  // Two fields out of one read of the egg, so it cannot be called inline like
+  // its neighbours. It stays in their order all the same, because the warnings
+  // an administrator reads are in the order they were pushed.
+  const { startupDetection, readiness } = convertReadiness(egg.config?.startup, warnings);
+
   const template = templateDefinitionSchema.parse({
     key: options.key ?? slugify(egg.name),
     group: options.group,
     name: egg.name,
     description: egg.description ?? '',
     author: egg.author ?? 'Imported from Pterodactyl',
-    dockerImages: convertImages(egg, warnings),
+    dockerImages,
     startup: egg.startup.trim(),
-    stopCommand: convertStop(egg.config?.stop, warnings),
-    startupDetection: convertStartupDetection(egg.config?.startup, warnings),
+    stopCommand,
+    startupDetection,
+    readiness,
     configFiles: [],
     fileDenylist: [],
     installContainer: installation.container ?? 'debian:bookworm-slim',

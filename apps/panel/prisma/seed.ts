@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import { Algorithm, hash } from '@node-rs/argon2';
-import { PrismaClient } from '@prisma/client';
+import { Prisma, PrismaClient } from '@prisma/client';
 import { TEMPLATE_CATALOG } from '@hopper/templates';
 import { ENCRYPTION_INFO, deriveKey, encryptWithKey } from '../src/common/crypto/cipher.js';
 
@@ -103,6 +103,13 @@ async function seedTemplates(): Promise<void> {
       startup: definition.startup,
       stopCommand: definition.stopCommand,
       startupDetection: definition.startupDetection ?? null,
+      // Same reasoning as `TemplateSyncService.toPrismaData`, and the reason
+      // both copies have to be kept in step: an undefined field means "leave
+      // the column alone" on update, so a definition that dropped its
+      // readiness has to say so for the row to forget it too. `Prisma.DbNull`
+      // is how a nullable Json column is set to SQL NULL — a bare `null` is
+      // refused, because Prisma cannot tell it from the JSON value `null`.
+      readiness: definition.readiness ?? Prisma.DbNull,
       configFiles: definition.configFiles,
       fileDenylist: definition.fileDenylist,
       installContainer: definition.installContainer,

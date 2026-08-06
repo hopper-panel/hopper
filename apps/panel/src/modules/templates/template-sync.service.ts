@@ -1,6 +1,6 @@
 import { TEMPLATE_CATALOG, type TemplateDefinition } from '@hopper/templates';
 import { Injectable, Logger } from '@nestjs/common';
-import type { Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service.js';
 
 export interface SyncOutcome {
@@ -109,6 +109,14 @@ export class TemplateSyncService {
       startup: definition.startup,
       stopCommand: definition.stopCommand,
       startupDetection: definition.startupDetection ?? null,
+      // `Prisma.DbNull` and not `undefined`: on an update, an undefined field
+      // means "leave the column alone", so a template that dropped its
+      // readiness would keep the old strategy for ever with nothing in the
+      // catalogue declaring it. Not a bare `null` either — Prisma refuses one
+      // on a nullable Json column, since it cannot tell SQL NULL from the JSON
+      // value `null`. SQL NULL is what every row predating the column holds,
+      // and therefore what "declares nothing" has to mean.
+      readiness: definition.readiness ?? Prisma.DbNull,
       configFiles: definition.configFiles,
       fileDenylist: definition.fileDenylist,
       installContainer: definition.installContainer,

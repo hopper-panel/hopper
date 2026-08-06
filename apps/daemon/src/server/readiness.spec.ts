@@ -78,10 +78,76 @@ describe('resolveReadiness', () => {
 
   it('carries the port strategy through with its own defaults', () => {
     const resolved = resolveReadiness(
-      asConfig({ readiness: { type: 'port', protocol: 'tcp', delayMs: 5000 } }),
+      asConfig({
+        readiness: { type: 'port', protocol: 'tcp', delayMs: 5000, timeoutMs: 600_000 },
+      }),
     );
 
-    expect(resolved).toEqual({ type: 'port', role: undefined, protocol: 'tcp', delayMs: 5000 });
+    expect(resolved).toEqual({
+      type: 'port',
+      protocol: 'tcp',
+      delayMs: 5000,
+      timeoutMs: 600_000,
+    });
+  });
+
+  it('refuses a UDP port probe rather than knocking on TCP instead', () => {
+    // A TCP connect against a UDP game is not a weaker answer, it is a wrong
+    // one: nothing listens on the TCP port, so the probe fails for the whole
+    // timeout while the server is up and taking players. There is no real UDP
+    // probe to fall back on either — a closed connectionless port refuses
+    // nothing, and the ICMP that says so needs a raw socket the daemon has no
+    // capability for.
+    const resolved = resolveReadiness(
+      asConfig({ readiness: { type: 'port', protocol: 'udp', delayMs: 0, timeoutMs: 600_000 } }),
+    );
+
+    expect(resolved.type).toBe('unsupported');
+  });
+
+  it('names the strategies that do work when it refuses UDP', () => {
+    // The refusal reaches the operator through the console, and "unsupported"
+    // on its own leaves them with nothing to do about it.
+    const resolved = resolveReadiness(
+      asConfig({ readiness: { type: 'port', protocol: 'udp', delayMs: 0, timeoutMs: 600_000 } }),
+    );
+
+    const reason = resolved.type === 'unsupported' ? resolved.reason : '';
+
+    expect(reason).toContain('log');
+    expect(reason).toContain('rcon');
+  });
+
+  /**
+   * `role` is in the contract and reads as though it works, but an allocation
+   * carries no name to match it against. Ignoring it is the dangerous answer:
+   * a template naming its RCON port would have the daemon knock on the game
+   * port instead and, at the deadline, stop a server that was serving players
+   * — reported to its operator as a crash.
+   */
+  it.each([
+    ['port', { type: 'port' as const, role: 'rcon', protocol: 'tcp' as const, delayMs: 0 }],
+    ['rcon', { type: 'rcon' as const, role: 'rcon', secretVariable: 'RCON_PASSWORD' }],
+  ])(
+    'refuses a %s strategy that names a port instead of ignoring the name',
+    (_label, readiness) => {
+      const resolved = resolveReadiness(asConfig({ readiness }));
+
+      expect(resolved.type).toBe('unsupported');
+
+      const reason = resolved.type === 'unsupported' ? resolved.reason : '';
+
+      expect(reason).toContain('rcon');
+      expect(reason).toContain('log');
+    },
+  );
+
+  it('still resolves a port strategy that names no role', () => {
+    const resolved = resolveReadiness(
+      asConfig({ readiness: { type: 'port', protocol: 'tcp', delayMs: 0 } }),
+    );
+
+    expect(resolved.type).toBe('port');
   });
 
   it('names the variable holding the rcon password, never the password', () => {
@@ -90,10 +156,57 @@ describe('resolveReadiness', () => {
     // password itself would put it in every configuration payload the panel
     // sends and every log line that printed one.
     const resolved = resolveReadiness(
-      asConfig({ readiness: { type: 'rcon', secretVariable: 'RCON_PASSWORD' } }),
+      asConfig({ readiness: { type: 'rcon', secretVariable: 'RCON_PASSWORD', timeoutMs: 60_000 } }),
     );
 
-    expect(resolved).toEqual({ type: 'rcon', role: undefined, secretVariable: 'RCON_PASSWORD' });
+    expect(resolved).toEqual({
+      type: 'rcon',
+      secretVariable: 'RCON_PASSWORD',
+      timeoutMs: 60_000,
+    });
+  });
+
+  it('carries the declared deadline through for a log strategy', () => {
+    const resolved = resolveReadiness(
+      asConfig({ readiness: { type: 'log', patterns: ['Done \\('], timeoutMs: 90_000 } }),
+    );
+
+    expect(resolved).toEqual({ type: 'log', patterns: [/Done \(/], timeoutMs: 90_000 });
+  });
+
+  it('gives a legacy startupDetection no deadline at all', () => {
+    // These configurations were written when the daemon waited for ever. A
+    // modded pack that spends a quarter of an hour loading its world would be
+    // stopped mid-start by a timeout nobody chose, which is a migration
+    // imposed on every installation that never asked for one.
+    const resolved = resolveReadiness(asConfig({ startupDetection: 'Done \\(' }));
+
+    expect(resolved).toEqual({ type: 'log', patterns: [/Done \(/], timeoutMs: null });
+  });
+
+  it.each([
+    [
+      'log',
+      { type: 'log', patterns: ['Done \\('] },
+      { type: 'log', patterns: [/Done \(/], timeoutMs: null },
+    ],
+    [
+      'port',
+      { type: 'port', protocol: 'tcp', delayMs: 0 },
+      { type: 'port', role: undefined, protocol: 'tcp', delayMs: 0, timeoutMs: null },
+    ],
+    [
+      'rcon',
+      { type: 'rcon', secretVariable: 'RCON_PASSWORD' },
+      { type: 'rcon', role: undefined, secretVariable: 'RCON_PASSWORD', timeoutMs: null },
+    ],
+  ])('gives a %s strategy that names no deadline none at all', (_type, readiness, expected) => {
+    // A deadline is what makes a start capable of failing: reaching it stops
+    // the server and reports the stop as one nobody asked for. Only a template
+    // that asked for that gets it, which is what keeps every egg imported
+    // before deadlines existed behaving as it always has — an egg says nothing
+    // whatever about how long its game takes to load.
+    expect(resolveReadiness(asConfig({ readiness }))).toEqual(expected);
   });
 });
 
@@ -103,8 +216,8 @@ describe('announcesReady', () => {
     // line must never promote them by accident.
     for (const readiness of [
       { type: 'immediate' as const },
-      { type: 'port' as const, protocol: 'tcp' as const, delayMs: 0 },
-      { type: 'rcon' as const, secretVariable: 'RCON_PASSWORD' },
+      { type: 'port' as const, protocol: 'tcp' as const, delayMs: 0, timeoutMs: 600_000 },
+      { type: 'rcon' as const, secretVariable: 'RCON_PASSWORD', timeoutMs: 600_000 },
       { type: 'unsupported' as const, reason: 'x' },
     ]) {
       expect(announcesReady(readiness, 'Done (1.0s)!')).toBe(false);

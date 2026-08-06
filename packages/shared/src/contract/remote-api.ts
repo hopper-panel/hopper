@@ -85,6 +85,30 @@ export const statusReportSchema = z.object({
   exitCode: z.number().int().optional(),
   /** True if the kernel killed the container for lack of memory. */
   oomKilled: z.boolean().default(false),
+  /**
+   * Who ended the server, when it was the daemon itself.
+   *
+   * `expected: false` on its own leaves the panel one sentence — "the process
+   * stopped on its own" — and that sentence is a plain lie for the one stop
+   * Hopper orders: a start whose readiness check never succeeded is stopped by
+   * the daemon, and the operator was then told their process had died, next to
+   * the exit code of the SIGTERM the daemon had just sent them.
+   *
+   * `readiness_failed` covers the whole of that path — the deadline running
+   * out, and the checks that fail outright such as an RCON password the server
+   * refuses. Which of them it was is on the server's console, in the line the
+   * daemon printed before giving up; this field exists so the notification
+   * says who stopped it, not to reproduce that line.
+   *
+   * Additive, optional, and no `CONTRACT_VERSION` bump. A panel that predates
+   * it drops the key — `z.object` strips what it does not know — and falls
+   * back to the sentence it has always used, so a new daemon reporting to an
+   * old panel loses precision and nothing else. `.catch(undefined)` buys the
+   * same indulgence forward: a cause added later arrives here as "no cause
+   * given" instead of failing the parse and taking the entire crash
+   * notification down with it, which is the report nobody can afford to lose.
+   */
+  cause: z.enum(['readiness_failed']).optional().catch(undefined),
 });
 
 export type StatusReport = z.infer<typeof statusReportSchema>;
