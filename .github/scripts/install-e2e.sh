@@ -72,7 +72,7 @@ done
 say "reinstall answers, rather than 404"
 # The panel posted to a route the daemon never registered, and the interface
 # reported that as "is the node reachable?".
-curl -fsS -o /dev/null -X POST "${auth[@]}" "$API/api/servers/$UUID/reinstall"
+curl -fsS -o /dev/null -X POST "${auth[@]}" "$API/api/servers/$UUID/settings/reinstall"
 
 for _ in $(seq 1 60); do
   sleep 10
