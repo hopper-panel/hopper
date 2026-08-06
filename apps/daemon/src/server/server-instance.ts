@@ -20,6 +20,7 @@ import type { PanelClient } from '../panel/panel-client.js';
 import { JailedFilesystem } from '../fs/jailed-filesystem.js';
 import { applyConfigFiles } from './config-writer.js';
 import { announcesReady, resolveReadiness, type ResolvedReadiness } from './readiness.js';
+import { RconError, rconExecute } from './rcon.js';
 import { installContainerName } from './installer.js';
 import { ConsoleBuffer, LineAssembler } from './console-buffer.js';
 import { substitute } from './invocation.js';
@@ -506,6 +507,58 @@ export class ServerInstance extends EventEmitter {
     }
   }
 
+  /**
+   * Logs in over RCON until the server accepts, which is the truest readiness
+   * signal there is: a server answers only once it is serving.
+   *
+   * A refused password is not "not ready yet" — it will be refused again in
+   * two seconds and in ten minutes. Saying so beats a server that sits in
+   * `starting` until it times out for a reason nobody can see.
+   */
+  private async waitForRcon(): Promise<void> {
+    const readiness = this.readiness;
+
+    if (readiness.type !== 'rcon') {
+      return;
+    }
+
+    const password = this.options.configuration.environment[readiness.secretVariable];
+
+    if (!password) {
+      this.emitDaemonLine(
+        `This server's readiness check needs the variable ${readiness.secretVariable}, which is not set.`,
+      );
+      return;
+    }
+
+    const { port, ip } = this.options.configuration.allocations.default;
+    const host = ip === '0.0.0.0' ? '127.0.0.1' : ip;
+    const deadline = Date.now() + this.startupTimeoutMs();
+
+    while (Date.now() < deadline && this.state === 'starting') {
+      try {
+        await rconExecute({ host, port, password });
+
+        if (this.state === 'starting') {
+          this.setState('running');
+        }
+
+        return;
+      } catch (error: unknown) {
+        if (error instanceof RconError && error.message.includes('refused the password')) {
+          this.emitDaemonLine('RCON refused the password: readiness cannot be checked.');
+          return;
+        }
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+    }
+
+    if (this.state === 'starting') {
+      this.emitDaemonLine('The server never answered on RCON.');
+    }
+  }
+
   private portAccepts(host: string, port: number): Promise<boolean> {
     return new Promise((resolve) => {
       const socket = connect({ host, port, timeout: 2000 });
@@ -879,6 +932,9 @@ export class ServerInstance extends EventEmitter {
     } else if (this.readiness.type === 'port') {
       this.emitDaemonLine('Waiting for the server to accept connections…');
       void this.waitForPort();
+    } else if (this.readiness.type === 'rcon') {
+      this.emitDaemonLine('Waiting for the server to answer on RCON…');
+      void this.waitForRcon();
     }
   }
 

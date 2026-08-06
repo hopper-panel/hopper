@@ -84,15 +84,16 @@ describe('resolveReadiness', () => {
     expect(resolved).toEqual({ type: 'port', role: undefined, protocol: 'tcp', delayMs: 5000 });
   });
 
-  it('refuses rcon out loud rather than downgrading it', () => {
-    // There is no RCON client in the daemon. Silently answering `immediate`
-    // would call every server ready the moment its container starts — the
-    // wrong answer for exactly the workloads that asked for this strategy.
+  it('names the variable holding the rcon password, never the password', () => {
+    // The secret is a template variable resolved against the server's
+    // environment at connection time. A readiness strategy carrying the
+    // password itself would put it in every configuration payload the panel
+    // sends and every log line that printed one.
     const resolved = resolveReadiness(
       asConfig({ readiness: { type: 'rcon', secretVariable: 'RCON_PASSWORD' } }),
     );
 
-    expect(resolved.type).toBe('unsupported');
+    expect(resolved).toEqual({ type: 'rcon', role: undefined, secretVariable: 'RCON_PASSWORD' });
   });
 });
 
@@ -103,6 +104,7 @@ describe('announcesReady', () => {
     for (const readiness of [
       { type: 'immediate' as const },
       { type: 'port' as const, protocol: 'tcp' as const, delayMs: 0 },
+      { type: 'rcon' as const, secretVariable: 'RCON_PASSWORD' },
       { type: 'unsupported' as const, reason: 'x' },
     ]) {
       expect(announcesReady(readiness, 'Done (1.0s)!')).toBe(false);

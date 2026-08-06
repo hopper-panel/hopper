@@ -17,6 +17,7 @@ import type { Readiness, ServerConfiguration } from '@hopper/shared';
 export type ResolvedReadiness =
   | { type: 'log'; patterns: RegExp[] }
   | { type: 'port'; role?: string; protocol: 'tcp' | 'udp'; delayMs: number }
+  | { type: 'rcon'; role?: string; secretVariable: string }
   | { type: 'immediate' }
   /** A strategy the daemon cannot run. Refused out loud, never downgraded. */
   | { type: 'unsupported'; reason: string };
@@ -52,11 +53,15 @@ export function resolveReadiness(
       };
 
     case 'rcon':
-      // Declared in the contract, unimplemented in the daemon. Falling back to
-      // `immediate` would call every server ready the moment its container
-      // starts, which is exactly the wrong answer for the games that need
-      // this strategy in the first place.
-      return { type: 'unsupported', reason: 'rcon readiness is not implemented yet' };
+      // The password is named, never carried: it is a template variable, and
+      // the daemon resolves it against the server's environment at the moment
+      // it connects. A readiness strategy holding a secret would be a secret
+      // in every configuration payload and every log line that printed one.
+      return {
+        type: 'rcon',
+        role: declared.role,
+        secretVariable: declared.secretVariable,
+      };
 
     case 'log': {
       const patterns: RegExp[] = [];
