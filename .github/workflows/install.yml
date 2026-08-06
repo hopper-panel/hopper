@@ -1,0 +1,95 @@
+name: Installer
+
+# Runs install.sh on a blank machine and then uses what it built.
+#
+# Everything CI checked until now — lint, typecheck, build, unit tests — was
+# green through a run of releases in which the reinstall route answered 404,
+# a failed installation left a server saying "Installing" for ever, and a
+# server on any port other than 25565 was unreachable. Six of those nine
+# defects were on the path this job walks, and every one of them was found by
+# hand, on somebody's server, after release.
+#
+# So the assertions below are deliberately about outcomes an operator would
+# notice, not about internals. A green unit suite has already proved it cannot
+# see them.
+#
+# It runs on a GitHub runner rather than in a container: install.sh drives
+# systemd and Docker, and neither works properly inside one.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  # Fixed so the installer and the end-to-end script share it. The instance
+  # exists for eight minutes on a throwaway runner.
+  HOPPER_ADMIN_PASSWORD: ci-password-not-a-secret
+
+jobs:
+  install:
+    name: Install, then create a server on a non-default port
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Run the installer
+        env:
+          # No domain: an IP address cannot receive a certificate, and the
+          # certbot path needs public DNS pointing here. What this job covers
+          # is the ordering that made the daemon read a certificate before it
+          # existed — the readiness check below fails if the daemon does not
+          # stay up, whichever branch was taken.
+          HOPPER_NONINTERACTIVE: '1'
+          HOPPER_WEBSERVER: none
+          HOPPER_TLS: 'no'
+          HOPPER_ADMIN_EMAIL: ci@example.com
+          HOPPER_ADMIN_USERNAME: ci
+          # Installed from this checkout, not from the published repository:
+          # the point is to test the branch under review.
+          HOPPER_REPOSITORY: ${{ github.workspace }}
+        run: sudo -E bash install/install.sh
+
+      - name: The services are up, and stay up
+        run: |
+          set -euo pipefail
+          sleep 10
+          systemctl is-active --quiet hopper-panel || { sudo journalctl -u hopper-panel -n 40 --no-pager; exit 1; }
+          systemctl is-active --quiet hopperd     || { sudo journalctl -u hopperd     -n 40 --no-pager; exit 1; }
+
+      - name: The panel answers, and serves the bundle it advertises
+        run: |
+          set -euo pipefail
+          # `/` answers 200 on a panel serving a stale bundle, which is how a
+          # broken deployment survived three releases. Ask for the asset the
+          # page actually references.
+          ASSET=$(curl -fsS http://127.0.0.1:8080/ | grep -o 'assets/[A-Za-z0-9_-]*\.js' | head -1)
+          test -n "$ASSET"
+          curl -fsS -o /dev/null "http://127.0.0.1:8080/$ASSET"
+
+      - name: A node exists, with ports to give out
+        run: |
+          set -euo pipefail
+          # `hopper doctor` used to call an instance healthy with zero
+          # allocations, on which no server can be created at all.
+          sudo -u postgres psql -d hopper -tAc 'select count(*) from nodes' | grep -qv '^0$'
+
+      - name: End to end — a server on a port that is not the default
+        run: sudo -E bash .github/scripts/install-e2e.sh
+
+      - name: What the daemon said, if any of that failed
+        if: failure()
+        run: |
+          sudo journalctl -u hopperd -n 200 --no-pager || true
+          sudo journalctl -u hopper-panel -n 100 --no-pager || true
+          sudo docker ps -a || true
