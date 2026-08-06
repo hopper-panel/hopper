@@ -37,6 +37,37 @@ export const stopConfigurationSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('signal'), value: z.enum(['SIGTERM', 'SIGINT', 'SIGKILL']) }),
 ]);
 
+/**
+ * When a started server becomes a running one.
+ *
+ * Exported before the configuration that uses it, because the daemon resolves
+ * it through a pure function the panel never runs.
+ */
+export const readinessSchema = z.discriminatedUnion('type', [
+  z.object({
+    type: z.literal('log'),
+    /** Any one of them matching is enough; they are alternatives, not steps. */
+    patterns: z.array(z.string().min(1)).min(1),
+  }),
+  z.object({
+    type: z.literal('port'),
+    /** Which of the server's ports to knock on. The primary one by default. */
+    role: z.string().min(1).optional(),
+    protocol: z.enum(['tcp', 'udp']).default('tcp'),
+    /** Time to leave the process before knocking at all. */
+    delayMs: z.number().int().nonnegative().max(600_000).default(0),
+  }),
+  z.object({
+    type: z.literal('rcon'),
+    role: z.string().min(1).optional(),
+    /** Template variable holding the password. Never the password itself. */
+    secretVariable: z.string().min(1),
+  }),
+  z.object({ type: z.literal('immediate') }),
+]);
+
+export type Readiness = z.infer<typeof readinessSchema>;
+
 export const serverMetaSchema = z.object({
   name: z.string().min(1).max(191),
   description: z.string().max(2000).default(''),
@@ -121,9 +152,43 @@ export const serverConfigurationSchema = z.object({
 
   /**
    * Pattern announcing the server is ready, e.g. `\)! For help, type "help"`.
-   * Without it the server turns `running` as soon as the container runs.
+   *
+   * @deprecated Superseded by `readiness`. Kept because every imported
+   * Pterodactyl egg carries this shape and nothing else, and an import that
+   * stopped working the day the field moved would be a migration imposed on
+   * people who never asked for one. The daemon reads it when `readiness` is
+   * absent, and treats it as a single-pattern `log`.
    */
   startupDetection: z.string().optional(),
+
+  /**
+   * How the daemon decides the server is ready to be called `running`.
+   *
+   * A regular expression over the console was the only answer for as long as
+   * Minecraft was the only workload — `Done (12.4s)!` is a line a Source
+   * server will never print, and a game that says nothing at all on stdout
+   * cannot be waited for that way at all.
+   *
+   * Four answers, and each is somebody's only option:
+   *
+   * - `log` takes **several** patterns. Different versions of the same server
+   *   announce themselves differently, and the importer had to throw all but
+   *   one away.
+   * - `port` waits for something to accept a connection. Crude, and the only
+   *   thing available for a server that logs nothing useful.
+   * - `rcon` authenticates, which is the cheapest true readiness probe there
+   *   is — the server answers only once it is serving. **Declared and not yet
+   *   implemented**: there is no RCON client in the daemon, and a template
+   *   asking for it is refused rather than silently downgraded.
+   * - `immediate` is today's silent default, made explicit. A container that
+   *   is up is called running, which is right for a workload with no notion
+   *   of "ready" and wrong for every other one — so it has to be chosen.
+   *
+   * Deliberately no game-specific query protocol. A2S_INFO would answer the
+   * same question as `rcon` for Source alone, and put a per-game UDP parser
+   * inside a daemon that has no business knowing what game it runs.
+   */
+  readiness: readinessSchema.optional(),
 
   /** Rewritten by the daemon right before every start. */
   configFiles: z.array(configFileSchema).default([]),
