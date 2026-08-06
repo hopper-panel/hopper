@@ -1,6 +1,6 @@
 {
   "name": "@hopper/daemon",
-  "version": "0.2.6",
+  "version": "0.2.7",
   "private": true,
   "license": "AGPL-3.0-or-later",
   "description": "hopperd — the Hopper agent installed on each host machine",
