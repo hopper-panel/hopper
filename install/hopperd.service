@@ -9,6 +9,13 @@ After=network-online.target docker.service hopper-panel.service
 Requires=docker.service
 Wants=network-online.target
 
+# In [Unit], not [Service]: systemd has read them here since v230 and
+# ignores them there, with nothing but a line in the journal to say so.
+# The rate limit they were supposed to impose did not exist — a CI run
+# caught the daemon restarting four times in twenty seconds, unbounded.
+StartLimitBurst=5
+StartLimitIntervalSec=120
+
 [Service]
 Type=simple
 
@@ -27,14 +34,12 @@ User=root
 Group=root
 
 WorkingDirectory=/opt/hopper/apps/daemon
-ExecStart=/usr/bin/node dist/index.js --config /etc/hopper/daemon.yml
+ExecStart={{NODE}} dist/index.js --config /etc/hopper/daemon.yml
 
 Restart=on-failure
 RestartSec=5
 # A daemon restarting in a loop has to give up eventually, otherwise the failure
 # stays invisible in the logs, drowned under the restarts.
-StartLimitBurst=5
-StartLimitIntervalSec=120
 
 # Minecraft servers open a lot of descriptors: player sockets, region files,
 # console streams. The systemd default is reached at around twenty servers.
