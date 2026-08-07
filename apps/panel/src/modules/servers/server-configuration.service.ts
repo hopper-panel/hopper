@@ -1,6 +1,7 @@
 import {
   readinessSchema,
   serverConfigurationSchema,
+  stopConfigurationSchema,
   type ConfigFile,
   type Readiness,
   type ServerConfiguration,
@@ -98,7 +99,11 @@ export class ServerConfigurationService {
         requiresRebuild: server.requiresRebuild,
       },
 
-      stop: parseStopCommand(server.template.stopCommand),
+      stop: parseStop(server.template.stop, server.template.stopCommand, server.uuid),
+      // Absent means "this template said nothing", which the contract turns
+      // into its own 30 — the figure every server has run on since the first
+      // release, because until now no template could name another.
+      stopTimeoutSeconds: server.template.stopTimeoutSeconds ?? undefined,
       startupDetection: server.template.startupDetection ?? undefined,
       // Both are sent, and the daemon prefers `readiness` when it is there.
       // `startupDetection` keeps travelling regardless: it is what the entire
@@ -145,11 +150,75 @@ export class ServerConfigurationService {
 }
 
 /**
+ * Decodes how a template says its servers are stopped.
+ *
+ * Two shapes, in order. The structured `stop` column wins when it is there; the
+ * colon-encoded string is what the whole bundled catalogue, every imported
+ * Pterodactyl egg and every row written before that column carry, and it goes
+ * on being read exactly as it always was.
+ *
+ * **An unreadable structured stop refuses**, where the string below falls back
+ * to SIGTERM. That asymmetry is deliberate and it is the point of this
+ * function. The fallback down there is defensible for what it was written for:
+ * a Bukkit server takes SIGTERM well, and a less graceful stop beat a server
+ * nobody could launch. It is indefensible here. A template only fills this
+ * column when the string could not express its stop, and the reason it could
+ * not is almost always that the game answers on RCON and reads no standard
+ * input — which is another way of saying its save is written on shutdown and
+ * nowhere else. Inheriting the fallback would take the one template that
+ * declared it needs a real shutdown and give it the signal-then-SIGKILL it was
+ * declared to avoid, on every stop, with nothing anywhere saying so.
+ *
+ * So the server is refused instead, and refused where somebody is looking: this
+ * runs on creation, on every configuration push and on a node's reconciliation,
+ * and the last of those logs it with the server's uuid. A refused server is not
+ * destroyed and its container is not touched — the daemon reports a server it
+ * has that the panel did not describe, and never deletes one.
+ *
+ * The only way to reach that refusal is a hand-edited row or a dump restored
+ * from a Hopper that spelled this differently: everything writing the column
+ * validates first.
+ */
+export function parseStop(
+  raw: unknown,
+  stopCommand: string,
+  serverUuid: string,
+): StopConfiguration {
+  if (raw === null || raw === undefined) {
+    return parseStopCommand(stopCommand);
+  }
+
+  const result = stopConfigurationSchema.safeParse(raw);
+
+  if (!result.success) {
+    const issues = result.error.issues
+      .map((issue) => `${issue.path.join('.') || '(root)'}: ${issue.message}`)
+      .join('; ');
+
+    throw new Error(
+      `Server ${serverUuid} has a template whose stop configuration cannot be read (${issues}). ` +
+        'It is refused rather than stopped some other way: a template only sets this field ' +
+        'because the plain stop command could not express its shutdown, and guessing here ' +
+        'ends in a SIGKILL through whatever the game writes on exit. Fix the template, or ' +
+        'clear the field to fall back to its stop command.',
+    );
+  }
+
+  return result.data;
+}
+
+/**
  * Decodes a template's stop command, stored as `command:stop` or
  * `signal:SIGTERM`.
  *
  * An unknown value falls back to `SIGTERM` rather than failing the start: a
  * less graceful stop beats a server that cannot be launched at all.
+ *
+ * Left exactly as it was, fallback included. Every server in existence goes
+ * through here, and the fallback is load-bearing for the ones that arrived
+ * through an egg import: tightening it now would turn servers that start today
+ * into servers that refuse to, over a value nobody has looked at in months. The
+ * new path above is the one that refuses.
  */
 export function parseStopCommand(raw: string): StopConfiguration {
   const separator = raw.indexOf(':');

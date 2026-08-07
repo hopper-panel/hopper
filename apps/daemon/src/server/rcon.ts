@@ -14,7 +14,10 @@ import { connect, type Socket } from 'node:net';
  * is to write, and this one has to hold a password.
  *
  * The framing is where the bugs live, so it is a pure function and it is
- * tested. The socket work around it is not clever and is not tested here.
+ * tested. The socket work around it is mostly not clever — with one exception,
+ * also tested: *when* an exchange counts as having worked is not the same
+ * question for a readiness check and for a shutdown command, and answering it
+ * once for both is what made a delivered stop read as an undelivered one.
  */
 
 /** Client → server. `AUTH` and `EXEC` are the only two Hopper sends. */
@@ -124,14 +127,90 @@ export interface RconOptions {
 }
 
 /**
- * Connects, authenticates, optionally sends one command, and hangs up.
+ * What the caller is waiting for, which is not the same question for everybody
+ * who speaks this protocol.
+ *
+ * `response` is the obvious one and the one a readiness check needs: the server
+ * has to say something back, because saying something back *is* the evidence
+ * that it is serving. Silence there is a failure, and so is a peer that hangs
+ * up — a server that closes the socket without answering has not proved
+ * anything.
+ *
+ * `delivery` is the one a shutdown command needs, and reading the two as the
+ * same thing is a bug with teeth. `quit` is answered by the server exiting: it
+ * acknowledges nothing, closes the socket mid-hangup, or simply stops reading —
+ * so the exchange ends in a close or a five-second timeout **precisely when it
+ * worked**. A caller that treats those as "not delivered" concludes the server
+ * was never told, while the server is at that moment saving its world and going
+ * down. Everything it does next — refusing the stop, not waiting for the exit,
+ * not arming the SIGKILL — is decided from the exact opposite of the truth.
+ */
+type Settlement = 'response' | 'delivery';
+
+/**
+ * Connects, authenticates, optionally sends one command, and hangs up when the
+ * server has answered.
  *
  * One exchange per connection rather than a pooled session: Hopper uses this
  * to stop a server and to ask whether it is up, both of which happen rarely
  * and neither of which is worth a socket kept open against a process that may
  * die at any moment.
+ *
+ * Unchanged, and deliberately so: the readiness path is built on the answer and
+ * on nothing else, and `rconDeliver` below exists rather than a flag on this
+ * one so that no future edit can loosen what "ready" means by loosening what
+ * "succeeded" means here.
  */
 export async function rconExecute(options: RconOptions, command?: string): Promise<string> {
+  return rconExchange(options, command, 'response');
+}
+
+/**
+ * Connects, authenticates and sends one command, settling the moment the
+ * command has left.
+ *
+ * For a shutdown command that is the only honest place to draw the line. Once
+ * the bytes are gone the server has been told, and what happens to the socket
+ * afterwards says nothing about whether it was: an answer, a hangup and a
+ * silence are all ordinary outcomes of asking a game to exit, and only the
+ * first of them would satisfy `rconExecute`.
+ *
+ * So the failures this rejects on are the ones that happen **before** the write:
+ * a connection that never opens, a password the server refuses, a stream that
+ * is not RCON, a peer that hangs up during the handshake. In every one of them
+ * the command never left this process and the server is running exactly as it
+ * was — which is what makes refusing the stop safe, and what makes refusing it
+ * after a delivery a lie.
+ *
+ * `onResponse` is a bonus and it arrives late by construction: the promise has
+ * usually settled by the time anything can come back. It is here because some
+ * servers do answer a shutdown with a sentence, and the operator watching the
+ * console is the one person that sentence was written for. The socket is left
+ * open for it until the answer, the peer's hangup or the timeout — all three
+ * bounded, none of them waited on by the caller.
+ */
+export async function rconDeliver(
+  options: RconOptions,
+  command: string,
+  onResponse?: (body: string) => void,
+): Promise<void> {
+  await rconExchange(options, command, 'delivery', onResponse);
+}
+
+/**
+ * The socket work behind both entry points, written once.
+ *
+ * Two copies of a handshake is how the stop and the readiness check would come
+ * to disagree about what a `-1` id means, or about the empty preamble, months
+ * apart and in silence. The only thing that differs between them is when the
+ * caller is answered, so that is the only thing the parameter carries.
+ */
+function rconExchange(
+  options: RconOptions,
+  command: string | undefined,
+  settlement: Settlement,
+  onResponse?: (body: string) => void,
+): Promise<string> {
   const timeoutMs = options.timeoutMs ?? 5000;
 
   return new Promise<string>((resolve, reject) => {
@@ -141,19 +220,35 @@ export async function rconExecute(options: RconOptions, command?: string): Promi
 
     const socket: Socket = connect({ host: options.host, port: options.port, timeout: timeoutMs });
 
-    const finish = (error: Error | null, value = ''): void => {
+    /**
+     * Answers the caller, once, without touching the socket.
+     *
+     * Separate from hanging up because a delivered command settles while the
+     * connection is still worth keeping: whatever the server says next has
+     * somewhere to go, and nobody is waiting on it.
+     */
+    const settle = (error: Error | null, value = ''): void => {
       if (settled) {
         return;
       }
 
       settled = true;
-      socket.destroy();
 
       if (error) {
         reject(error);
       } else {
         resolve(value);
       }
+    };
+
+    /**
+     * Answers the caller and hangs up. The hangup is unconditional: a socket
+     * whose promise has already settled still has to be released, and this is
+     * the path every end of the connection goes through.
+     */
+    const finish = (error: Error | null, value = ''): void => {
+      settle(error, value);
+      socket.destroy();
     };
 
     socket.once('connect', () => {
@@ -193,8 +288,29 @@ export async function rconExecute(options: RconOptions, command?: string): Promi
             return;
           }
 
-          socket.write(encodePacket({ id: REQUEST_ID, type: EXEC, body: command }));
+          const request = encodePacket({ id: REQUEST_ID, type: EXEC, body: command });
+
+          if (settlement === 'response') {
+            socket.write(request);
+            continue;
+          }
+
+          // The write callback is the moment the bytes left this process, and
+          // that is the whole of what "delivered" means here. A write that
+          // fails still reports through it, and it is then a pre-delivery
+          // failure like any other — the command is still in this process.
+          socket.write(request, (error) => (error ? finish(error) : settle(null, '')));
           continue;
+        }
+
+        // Past the handshake, a body is the server's answer to the command.
+        // On the delivery path it also settles the promise if the write
+        // callback has not already: an answer is proof the command arrived, and
+        // proof arriving early is no reason to keep waiting for the callback.
+        if (settlement === 'delivery') {
+          onResponse?.(packet.body);
+          finish(null, '');
+          return;
         }
 
         finish(null, packet.body);
@@ -202,6 +318,10 @@ export async function rconExecute(options: RconOptions, command?: string): Promi
       }
     });
 
+    // All three are failures while the handshake is still going, and none of
+    // them is one afterwards on the delivery path: `settle` has answered, so
+    // these only release the socket. That asymmetry is the fix — a server told
+    // to `quit` ends the exchange by one of these three, every time.
     socket.once('timeout', () => finish(new RconError('RCON timed out.')));
     socket.once('error', (error: Error) => finish(error));
     socket.once('close', () => finish(new RconError('RCON closed before answering.')));

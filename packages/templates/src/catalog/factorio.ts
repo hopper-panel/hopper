@@ -147,14 +147,35 @@ export const factorio: TemplateDefinition = {
    * The save is also the risk, because it is unbounded. That one took about a
    * second and a half for a freshly generated map; a mature factory is orders
    * of magnitude larger. The daemon SIGKILLs whatever is still running once
-   * `stopTimeoutSeconds` elapses — 30 by default in the server configuration
-   * contract — and a kill landing inside that write is the one way this stop
-   * loses data. This template cannot raise it: `templateDefinitionSchema`
-   * carries no stop timeout, so there is no field here to set. Until it does,
-   * the value is the node's default for every Factorio server on it, and a
-   * host running large maps should raise it.
+   * `stopTimeoutSeconds` elapses, and a kill landing inside that write is the
+   * one way this stop loses data — which is what the field below is for.
    */
   stopCommand: 'command:/quit',
+
+  /**
+   * Four minutes, where the contract's default is thirty seconds.
+   *
+   * Thirty is a Minecraft figure and this is not Minecraft. A Bukkit server
+   * flushes the regions it has dirtied; Factorio serialises the **whole world**
+   * on every clean exit, and the time that takes scales with the factory, not
+   * with what has recently changed. The measured second and a half above was a
+   * map generated minutes earlier — the smallest world this template can
+   * produce, and the least useful number for sizing a deadline.
+   *
+   * So the figure is chosen from what it costs to be wrong in each direction,
+   * which is deeply asymmetric here. Too long costs an operator staring at a
+   * stopping server for a few extra minutes, once, and they can press Kill.
+   * Too short cuts the process mid-write: `--start-server-load-latest` then
+   * comes back on the newest **autosave** instead, and everything built since
+   * that autosave is gone. Four minutes is well past any save this game
+   * plausibly performs and still inside the ten-minute ceiling the contract
+   * puts on a stop.
+   *
+   * Not a value this template could set until now, and the reason the field
+   * exists: every Factorio server created before it ran on the Minecraft
+   * default.
+   */
+  stopTimeoutSeconds: 240,
 
   /**
    * Kept for a node running a daemon older than the `readiness` union.

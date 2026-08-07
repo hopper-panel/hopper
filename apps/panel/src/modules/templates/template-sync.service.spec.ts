@@ -124,6 +124,44 @@ describe('TemplateSyncService.upsert', () => {
     });
   });
 
+  it('writes the structured stop and the stop timeout', async () => {
+    // The two fields that decide whether a server ever shuts down cleanly. A
+    // stop that fails to make the crossing does not fail loudly either: the
+    // daemon goes on signalling a process that ignores signals, then kills it.
+    const prisma = new RecordingPrisma();
+
+    await new TemplateSyncService(prisma.asService()).upsert(
+      definition({
+        stop: { type: 'rcon', command: 'quit', role: 'rcon', secretVariable: 'RCON_PASSWORD' },
+        stopTimeoutSeconds: 240,
+      }),
+    );
+
+    expect(prisma.written[0]).toMatchObject({
+      stop: { type: 'rcon', command: 'quit', role: 'rcon', secretVariable: 'RCON_PASSWORD' },
+      stopTimeoutSeconds: 240,
+      // And the string is still written beside it: it is what a node running an
+      // older daemon reads, and the only thing it can read.
+      stopCommand: 'command:stop',
+    });
+  });
+
+  it('forgets a structured stop a definition has dropped', async () => {
+    // `undefined` means "leave the column alone" to Prisma, so without this the
+    // row would keep stopping over a transport the template has removed — over
+    // RCON to a port it no longer names, which by design refuses the stop
+    // outright rather than falling back.
+    const prisma = new RecordingPrisma();
+    prisma.existing = { id: 7, modifiedByAdmin: false };
+
+    await new TemplateSyncService(prisma.asService()).upsert(definition());
+
+    expect(prisma.written[0]).toHaveProperty('stop', Prisma.DbNull);
+    // A plain nullable column, so a plain null: "this template names no
+    // timeout", which the panel turns into the contract's default.
+    expect(prisma.written[0]).toHaveProperty('stopTimeoutSeconds', null);
+  });
+
   it('leaves an administrator-edited template untouched', async () => {
     const prisma = new RecordingPrisma();
     prisma.existing = { id: 7, modifiedByAdmin: true };
@@ -153,5 +191,19 @@ describe('the seed copy of the mapping', () => {
     expect(mapping?.[1]).toMatch(/^\s*readiness:/m);
     // And the field it falls back to is still there next to it.
     expect(mapping?.[1]).toMatch(/^\s*startupDetection:/m);
+  });
+
+  it('writes the stop transport and its timeout too', () => {
+    // The same duplication, one release later, and a quieter symptom: a seeded
+    // instance and a resynchronised one would hold the same template in two
+    // different states, and a stop transport is only exercised the first time
+    // somebody presses Stop.
+    const seed = readFileSync(join(process.cwd(), 'prisma', 'seed.ts'), 'utf8');
+    const mapping = /const data = \{(.*?)\n {4}\};/s.exec(seed);
+
+    expect(mapping?.[1]).toMatch(/^\s*stop:/m);
+    expect(mapping?.[1]).toMatch(/^\s*stopTimeoutSeconds:/m);
+    // The string the structured field falls back to, still beside it.
+    expect(mapping?.[1]).toMatch(/^\s*stopCommand:/m);
   });
 });

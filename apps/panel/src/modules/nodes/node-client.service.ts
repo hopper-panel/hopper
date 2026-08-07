@@ -2,6 +2,7 @@ import type { Readable } from 'node:stream';
 import {
   CONTRACT_VERSION,
   DAEMON_ROUTES,
+  daemonErrorSchema,
   redactNodeToken,
   serverStatusResponseSchema,
   systemInformationSchema,
@@ -25,6 +26,20 @@ export interface NodeConnection {
 export type NodeHealth =
   | { reachable: true; system: SystemInformation; latencyMs: number }
   | { reachable: false; reason: string; latencyMs: number };
+
+/**
+ * Whether a node's daemon honours something the panel is about to rely on.
+ *
+ * Three answers and not two, because "no" and "cannot say" are different
+ * refusals with different fixes: one is a node to upgrade, the other is a node
+ * to get answering again. Callers phrase both themselves — what is being
+ * refused, and what it would have cost to allow it, are theirs to know — and
+ * this only settles the part every caller gets wrong the same way.
+ */
+export type CapabilityVerdict =
+  | { honoured: true }
+  | { honoured: false; reachable: true }
+  | { honoured: false; reachable: false; reason: string };
 
 /**
  * HTTP client towards a daemon.
@@ -118,6 +133,36 @@ export class NodeClientService {
       this.logger.warn(`Node ${node.uuid} unreachable: ${reason}`);
       return { reachable: false, reason, latencyMs };
     }
+  }
+
+  /**
+   * Asks a node whether its daemon honours a capability, before relying on it.
+   *
+   * The whole point is that the payload cannot ask this question of itself. A
+   * daemon too old for a field either strips it — Zod discards what a schema
+   * does not know — or refuses the object outright, and neither outcome comes
+   * back as a complaint the panel could show to whoever pressed the button. So
+   * the panel asks first, and refuses the *write* rather than discovering the
+   * skew at the first stop, on a machine nobody is watching.
+   *
+   * `CONTRACT_VERSION` is the alternative and it is not one: a node announcing
+   * a different version is marked unreachable outright, so bumping it takes
+   * every server on every node offline until the last daemon is upgraded.
+   *
+   * **Unreachable is a refusal too.** "It will probably be fine" is exactly the
+   * guess these gates exist to remove, and none of the operations gated on this
+   * is urgent enough to be worth it.
+   */
+  async honoursCapability(node: NodeConnection, capability: string): Promise<CapabilityVerdict> {
+    const health = await this.fetchSystemInformation(node);
+
+    if (!health.reachable) {
+      return { honoured: false, reachable: false, reason: health.reason };
+    }
+
+    return health.system.capabilities.includes(capability)
+      ? { honoured: true }
+      : { honoured: false, reachable: true };
   }
 
   // -------------------------------------------------------------------------
@@ -330,11 +375,48 @@ export class NodeClientService {
       const detail = await response.text().catch(() => '');
       this.logger.error(`Node ${node.uuid} answered ${response.status} on ${path}: ${detail}`);
 
+      if (response.status === 401) {
+        throw new ServiceUnavailableException(
+          'Node token refused by the daemon. Regenerate it from the node page.',
+        );
+      }
+
+      const explanation = daemonMessage(detail);
+
       throw new ServiceUnavailableException(
-        response.status === 401
-          ? 'Node token refused by the daemon. Regenerate it from the node page.'
-          : `The daemon refused the operation (HTTP ${response.status}).`,
+        `The daemon refused the operation (HTTP ${response.status})${explanation === null ? '.' : `: ${explanation}`}`,
       );
     }
+  }
+}
+
+/**
+ * The sentence the daemon wrote for whoever pressed the button, if it wrote
+ * one.
+ *
+ * `proxy` above already passes the daemon's error bodies through unrewritten,
+ * on the stated grounds that they are written to be read by a user and hiding
+ * them deprives that user of the reason for the refusal. Exactly the same is
+ * true here and it was not being done: every failure came back as "the daemon
+ * refused the operation (HTTP 502)", which is then what a scheduled task's
+ * audit record says about a command that never reached the server. The daemon
+ * knew it was an unset password variable, or a port nobody has created; nothing
+ * carried that across, so the one person who could fix it never learnt of it.
+ *
+ * The status is kept alongside rather than replaced by the message, because the
+ * two answer different questions — whether the node refused or failed, and why
+ * — and a daemon too old to send a structured body still has to say something.
+ *
+ * Only a body parsing as the daemon's own error shape is trusted. Anything else
+ * is a reverse proxy's HTML error page or a truncated stream, and a status code
+ * beats either of those pasted into a notification.
+ */
+function daemonMessage(body: string): string | null {
+  try {
+    const parsed = daemonErrorSchema.safeParse(JSON.parse(body));
+
+    return parsed.success ? parsed.data.error.message : null;
+  } catch {
+    return null;
   }
 }

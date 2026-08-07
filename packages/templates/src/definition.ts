@@ -1,4 +1,4 @@
-import { configFileSchema, readinessSchema } from '@hopper/shared';
+import { configFileSchema, readinessSchema, stopConfigurationSchema } from '@hopper/shared';
 import { z } from 'zod';
 
 /**
@@ -51,6 +51,49 @@ export const templateDefinitionSchema = z.object({
   startup: z.string().min(1),
   /** `command:stop` ou `signal:SIGTERM`. */
   stopCommand: z.string().default('command:stop'),
+
+  /**
+   * How to stop a server built from this template, when the string above cannot
+   * say it.
+   *
+   * `stopCommand` is a colon-encoded pair — one word for the transport, one for
+   * the value — and an RCON stop is three fields: a command, the name of the
+   * variable holding the password, and optionally the name of the port to send
+   * it to. There is no encoding of that which survives a password containing a
+   * colon, and inventing one would put a parser between a template author and
+   * the only clean shutdown their game has.
+   *
+   * Optional, and it must stay optional, for the same reason `readiness` sits
+   * beside `startupDetection` rather than replacing it: `stopCommand` is what
+   * every shipped template and every imported Pterodactyl egg carries, and the
+   * panel still reads it whenever this is absent. Nothing about an existing
+   * template changes by this field existing.
+   */
+  stop: stopConfigurationSchema.optional(),
+
+  /**
+   * How long a server built from this template is given to shut down before it
+   * is SIGKILLed.
+   *
+   * The contract has always had this field and no template could ever set it,
+   * so every server on every installation runs on the thirty-second default —
+   * which is a Minecraft figure, taken from a Bukkit server flushing its
+   * regions in a second or two.
+   *
+   * It is the wrong figure for a game that writes its whole world on shutdown,
+   * and those are precisely the games the `stop` above exists for: the time a
+   * save takes scales with the world, so the template that most needs a stop
+   * that waits is the one whose stop was most likely to be cut in half. A
+   * SIGKILL landing inside that write is the single way a correctly configured
+   * RCON stop still loses data.
+   *
+   * Optional rather than defaulted here, so that "this template said nothing"
+   * stays distinguishable from "this template chose thirty". A template saying
+   * nothing keeps the contract's thirty and behaves exactly as it did before
+   * this field existed.
+   */
+  stopTimeoutSeconds: z.number().int().positive().max(600).optional(),
+
   /** Regular expression signalling that the server accepts connections. */
   startupDetection: z.string().optional(),
 

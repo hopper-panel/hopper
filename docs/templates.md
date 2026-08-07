@@ -36,7 +36,7 @@ The shipped templates are TypeScript in `packages/templates/src/catalog/`. A min
 
   dockerImages: JAVA_IMAGES,     // the first is offered by default
   startup: 'java -Xms128M -Xmx{{SERVER_MEMORY}}M -jar {{SERVER_JARFILE}}',
-  stopCommand: 'command:stop',   // or `signal:SIGTERM`
+  stopCommand: 'command:stop',   // or `signal:SIGTERM`, or a structured `stop` — see below
   startupDetection: BUKKIT_STARTUP_DETECTION,
 
   configFiles: [SERVER_PROPERTIES_CONFIG],
@@ -219,6 +219,132 @@ Pick a figure from the workload, not from habit. A headless Factorio prints its 
 seconds and gives up after five minutes; a modded pack loading three hundred mods needs far longer,
 and a deadline shorter than its slowest honest start is a template that stops working the day
 somebody adds a mod. An hour is the ceiling — past that a deadline is not one.
+
+### Stopping the server
+
+A stop is a save. The template says how to ask for one, and getting it wrong does not look like a
+bug — it looks like a world that is an hour old.
+
+`stopCommand` is the original answer, a colon-encoded pair:
+
+```ts
+stopCommand: 'command:stop',      // written to the server's standard input
+stopCommand: 'signal:SIGTERM',    // signalled to PID 1 of the container
+```
+
+Both answer for Minecraft and for very little else. **Rust, ARK, Palworld and most Source servers
+read no standard input at all**: `command:stop` writes into a pipe nobody is holding, nothing
+happens for the whole timeout, and the server is SIGKILLed — a "clean stop" that is a kill with
+extra waiting. `signal:` was the alternative, and a signal is a request the game may handle, ignore,
+or handle by exiting without writing its world.
+
+`stop` is the general answer, and its third transport is the reason it exists:
+
+```ts
+stop: {
+  type: 'rcon',
+  command: 'quit',                 // the game's own shutdown command
+  role: 'rcon',                    // optional — the port named `rcon`
+  secretVariable: 'RCON_PASSWORD', // the variable's NAME, never the password
+},
+```
+
+The daemon connects, authenticates, sends that one command and then waits for the process exactly as
+it does for the other two. Which command depends on the game: `quit` for Rust and Factorio, `DoExit`
+for ARK, `shutdown 30 Restarting` for Palworld, `stop` for Minecraft. It is sent as written — nothing
+in the daemon knows which game is on the other end, so nothing adds a leading slash or a save
+beforehand.
+
+`role` names the port the same way a readiness strategy does, with the same refusal: a role matching
+no port on the server is refused, never read as "the primary one then". `secretVariable` names the
+**variable**, resolved against the server's environment at the moment of connecting — a stop
+configuration holding a password would be a password in every payload the panel sends and every log
+line that printed one.
+
+`stopCommand` stays filled in beside it. It is what the panel falls back to if the structured field
+is ever cleared, and every existing template and imported egg carries nothing else.
+
+#### A stop that cannot be delivered is refused, not forced
+
+Four things can go wrong before the command reaches the game: the role names no port, the variable
+holds no password, the password is refused, nothing accepts the connection. In all four the server
+has been told **nothing** — it is running exactly as it was, with its world in memory.
+
+So the daemon refuses instead of falling through to the SIGKILL the other transports end in. It says
+on the console what to fix, says the server is still running, and leaves it running. Killing a
+process that was never asked to stop loses the whole session and buys nothing; the operator asked for
+a stopped server and would get a damaged one. The forceful answer already exists, one button away and
+labelled **Kill** — what this refuses is to take that decision on somebody's behalf over a mistyped
+variable name.
+
+The line is delivery, not success. Once the command is acknowledged, the timeout below and the
+SIGKILL after it apply exactly as they do to a stdin command that was read and ignored.
+
+#### Declaring an RCON stop also moves the console
+
+A server that reads no standard input reads none of it for the console either. Declaring `stop.type:
+'rcon'` therefore routes **console commands** the same way — same port, same password variable — and
+that is the whole declaration. There is no second field for it: repeating a port name and a password
+variable in two places has exactly one interesting state, which is disagreeing, and the symptom would
+be a server that stops perfectly and a console that reaches nobody.
+
+Before this, those servers had a console that appeared to work. Every command went down the
+container's attach stream into a pty nothing was reading, the write succeeded — a write to a socket
+does — and the panel reported it as sent. A scheduled task running `save-all` and announcing a
+restart was a no-op recorded as having run.
+
+Two things follow, and both are visible in the console:
+
+- **RCON answers.** stdin returns nothing; RCON returns the body the command produced. It appears on
+  the console prefixed `[RCON]`, preceded by an echo of the command itself — `[RCON] > list` — because
+  these games log nothing when a command is issued, so without the echo an operator watches their own
+  commands vanish and never sees a scheduled one at all. A command the server acknowledged with no
+  output says so rather than printing a blank line.
+- **An undelivered command fails.** The same four faults as above, and the same refusal: nothing is
+  sent, the console names what to fix, and the call fails. That failure travels — HTTP 502 from the
+  daemon, carrying its sentence, into the schedule's audit record — so a nightly task whose commands
+  reached nobody is a run with a named failure rather than a run that looks like every other one.
+
+Nothing about permissions moves: sending a command is still gated on `control.console`, and the
+answers ride the same console stream that already carries every byte the server prints.
+
+Declaring `command:` or `signal:` leaves the console on standard input, which is right for Minecraft
+— it reads stdin _and_ speaks RCON, and the channel that needs no password is the better of the two.
+
+#### The stop timeout
+
+```ts
+stopTimeoutSeconds: 240,   // optional — the contract's default is 30
+```
+
+Thirty seconds is a Bukkit figure: a Minecraft server flushes the regions it has dirtied in a second
+or two. It is the wrong figure for a game that serialises its **whole world** on shutdown, and that
+is every game the RCON transport exists for — the time taken scales with the world, not with what has
+recently changed. When it expires the kernel cuts the process mid-write, and what comes back is the
+last autosave.
+
+Size it from what being wrong costs in each direction. Too long is an operator watching a stopping
+server for a few extra minutes, once, with Kill available. Too short is silent data loss on a server
+that was shutting down correctly. Ten minutes is the ceiling.
+
+A template that says nothing keeps the 30 every server has run on since the first release.
+
+#### A node too old to understand an RCON stop
+
+Worse than the skew on named ports, and worth stating plainly. `stop` is a discriminated union, so a
+daemon that knows only `command` and `signal` does not strip the field — it **fails to parse the
+whole server configuration**. Configurations are fetched a page at a time, so one such server makes
+the page unreadable and the node ends up knowing about none of its servers: every console answers
+"server unknown to this node", every power action fails, and the containers go on running with
+nothing driving them.
+
+Nothing in the payload can warn anybody, so the panel asks first. A daemon that honours this
+announces `rcon-stop` on `/api/system`, and the panel refuses to create a server from such a template
+on a node that does not — and refuses to transfer one there. An unreachable node is refused too.
+
+Two gaps, left open on purpose because both need the capability re-checked when a configuration is
+pushed rather than when a server is placed: a node **downgraded** after such a server was created,
+and a template **edited** into an RCON stop once its servers already exist.
 
 ### The install script
 

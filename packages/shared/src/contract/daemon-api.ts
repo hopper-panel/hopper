@@ -53,6 +53,22 @@ export const NODE_CAPABILITIES = {
    * that does not announce this.
    */
   allocationRoles: 'allocation-roles',
+
+  /**
+   * Understands `stop.type === 'rcon'`, and therefore stops a server by sending
+   * its shutdown command over RCON instead of writing to a standard input
+   * nothing is reading.
+   *
+   * The same silent stripping as above, with a worse ending. An older daemon
+   * receives a `stop` whose `type` it has never heard of; `stopConfigurationSchema`
+   * is a discriminated union, so the whole object fails to parse and the server
+   * is refused rather than misread — which is at least loud, but loud on the
+   * node's console and nowhere the operator is looking. The panel therefore
+   * refuses to put a server built from such a template on such a node in the
+   * first place, rather than let it be created and then discover at the first
+   * stop that the only clean shutdown this game has is unavailable.
+   */
+  rconStop: 'rcon-stop',
 } as const;
 
 export const systemInformationSchema = z.object({

@@ -30,6 +30,22 @@ describe('statusReportSchema', () => {
     );
   });
 
+  it('carries a refused stop through, on the state the server never left', () => {
+    // The one report here that is not about a transition. A stop the daemon
+    // would not deliver leaves the server running, so there is no `offline` to
+    // hang a reason on — and without this the only trace of a nightly schedule
+    // failing to stop a server is a console line at four in the morning.
+    const parsed = statusReportSchema.parse({
+      state: 'running',
+      at: 1_754_500_000_000,
+      expected: false,
+      cause: 'stop_refused',
+    });
+
+    expect(parsed.cause).toBe('stop_refused');
+    expect(parsed.state).toBe('running');
+  });
+
   it('degrades a cause it has never heard of instead of refusing the report', () => {
     // This panel is the old panel of every release after it. A cause added
     // later has to arrive as "no cause given" — the report is still the only

@@ -1,7 +1,12 @@
 import type { Logger } from '@nestjs/common';
 import { describe, expect, it } from 'vitest';
 import type { PrismaService } from '../../prisma/prisma.service.js';
-import { ServerConfigurationService, parseReadiness } from './server-configuration.service.js';
+import {
+  ServerConfigurationService,
+  parseReadiness,
+  parseStop,
+  parseStopCommand,
+} from './server-configuration.service.js';
 
 /**
  * What the panel tells the daemon about readiness.
@@ -104,6 +109,72 @@ describe('parseReadiness', () => {
 });
 
 /**
+ * How the panel decides what a stop is.
+ *
+ * Two shapes, and the interesting thing about them is that they fail in
+ * opposite directions on purpose. The colon-encoded string falls back to
+ * SIGTERM, which is defensible for what it was written for — a Bukkit server
+ * takes SIGTERM well, and a less graceful stop beat a server nobody could
+ * launch. The structured column refuses, because a template only fills it in
+ * when the string could not express its stop, and the reason it could not is
+ * almost always a game whose save is written on shutdown and nowhere else.
+ */
+describe('parseStop', () => {
+  const UUID = 'server-uuid';
+
+  it('reads the string when no structured stop is stored', () => {
+    // Every server in existence takes this path: the whole bundled catalogue
+    // and every imported egg carry the string and nothing else.
+    expect(parseStop(null, 'command:stop', UUID)).toEqual({ type: 'command', value: 'stop' });
+    expect(parseStop(undefined, 'signal:SIGINT', UUID)).toEqual({
+      type: 'signal',
+      value: 'SIGINT',
+    });
+  });
+
+  it('prefers the structured stop when the template declares one', () => {
+    const stop = {
+      type: 'rcon',
+      command: 'quit',
+      role: 'rcon',
+      secretVariable: 'RCON_PASSWORD',
+    };
+
+    // And the string is ignored rather than merged: they are two ways of saying
+    // the same thing, and a template that filled in the column meant it.
+    expect(parseStop(stop, 'command:stop', UUID)).toEqual(stop);
+  });
+
+  it('refuses an unreadable structured stop instead of falling back', () => {
+    // The single most dangerous silent default this could have inherited. A
+    // template that declared an RCON stop and then could not be read would be
+    // handed the signal-then-SIGKILL it was written to avoid, on every stop,
+    // through whatever the game writes on exit.
+    expect(() => parseStop({ type: 'rcon', command: 'quit' }, 'command:stop', UUID)).toThrow(
+      /cannot be read/,
+    );
+    expect(() => parseStop({ type: 'telnet' }, 'command:stop', UUID)).toThrow(UUID);
+  });
+
+  it('names the way out in the refusal', () => {
+    // A refusal an operator cannot act on is an outage with an explanation.
+    // Clearing the column is the escape hatch, and it has to be in the message.
+    expect(() => parseStop({ type: 'telnet' }, 'command:stop', UUID)).toThrow(/clear the field/);
+  });
+});
+
+describe('parseStopCommand', () => {
+  it('still falls back to SIGTERM, exactly as it always has', () => {
+    // Left alone deliberately. Every server that starts today goes through
+    // here, and tightening it would turn servers that start into servers that
+    // refuse to, over a value nobody has looked at in months.
+    expect(parseStopCommand('who knows')).toEqual({ type: 'signal', value: 'SIGTERM' });
+    expect(parseStopCommand('signal:SIGUSR1')).toEqual({ type: 'signal', value: 'SIGTERM' });
+    expect(parseStopCommand('command:/quit')).toEqual({ type: 'command', value: '/quit' });
+  });
+});
+
+/**
  * A server row complete enough to be translated. Only the fields the
  * translation reads are here; the rest would be noise.
  */
@@ -130,6 +201,8 @@ function serverRow(template: Record<string, unknown>, allocations?: Record<strin
     variables: [],
     template: {
       stopCommand: 'command:stop',
+      stop: null,
+      stopTimeoutSeconds: null,
       startupDetection: null,
       readiness: null,
       configFiles: [],
@@ -194,6 +267,54 @@ describe('ServerConfigurationService.build', () => {
 
     expect(configuration.readiness).toBeUndefined();
     expect(configuration.startupDetection).toBe('\\)! For help, type "help"');
+  });
+});
+
+/**
+ * What the daemon is told about stopping the server.
+ *
+ * The failure this guards is the quiet one: a template declares that its game
+ * only shuts down cleanly over RCON, the field does not make the crossing, and
+ * the daemon goes on signalling a process that ignores signals — then kills it.
+ * Nothing about that looks like a bug until somebody loads a world that is
+ * hours old.
+ */
+describe('ServerConfigurationService.build stop', () => {
+  const UUID = '1b32d12d-7b10-443e-a259-6a31d67e28e6';
+
+  it('sends the structured stop a template declares', async () => {
+    const stop = { type: 'rcon', command: 'quit', role: 'rcon', secretVariable: 'RCON_PASSWORD' };
+
+    expect((await serviceFor({ stop }).build(UUID)).stop).toEqual(stop);
+  });
+
+  it('decodes the string for every template that declares no structured stop', async () => {
+    // The whole shipped catalogue, unchanged.
+    const configuration = await serviceFor({ stopCommand: 'command:/quit' }).build(UUID);
+
+    expect(configuration.stop).toEqual({ type: 'command', value: '/quit' });
+  });
+
+  it('leaves a template with no stop timeout on the contract default', async () => {
+    // Thirty seconds: what every server on every installation has run on since
+    // the first release, because until now no template could name anything.
+    expect((await serviceFor({}).build(UUID)).stopTimeoutSeconds).toBe(30);
+  });
+
+  it('takes the stop timeout the template declares', async () => {
+    // The gap this closes: a large world SIGKILLed mid-save loses everything
+    // since the last autosave, and that is exactly the failure an RCON-stopped
+    // game is most exposed to.
+    expect((await serviceFor({ stopTimeoutSeconds: 240 }).build(UUID)).stopTimeoutSeconds).toBe(
+      240,
+    );
+  });
+
+  it('refuses to describe a server whose stored stop is unreadable', async () => {
+    // Rather than describing it wrongly. `buildForNode` logs this and skips the
+    // server; the daemon reports a server it has that the panel did not
+    // describe and never deletes one, so nothing is destroyed by the refusal.
+    await expect(serviceFor({ stop: { type: 'rcon' } }).build(UUID)).rejects.toThrow(/stop/);
   });
 });
 

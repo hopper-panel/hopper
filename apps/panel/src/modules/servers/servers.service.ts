@@ -21,6 +21,7 @@ import { NodeClientService } from '../nodes/node-client.service.js';
 import { NodesService } from '../nodes/nodes.service.js';
 import { checkCapacity } from './capacity.js';
 import { ServerConfigurationService } from './server-configuration.service.js';
+import { assertStopTransportHonoured } from './stop-transport.js';
 import type { CreateServerDto, UpdateServerBuildDto, UpdateServerDto } from './servers.dto.js';
 
 export interface ServerListItem {
@@ -158,6 +159,15 @@ export class ServersService {
     }
 
     await this.assertNodeHasCapacity(node, BigInt(dto.memoryBytes), BigInt(dto.diskBytes));
+
+    // Before anything is written. A template that stops over RCON on a node
+    // that cannot read such a configuration does not merely stop badly — that
+    // node loses track of every server it has, see `stop-transport.ts`.
+    await assertStopTransportHonoured(
+      template.stop,
+      { name: node.name, connection: () => this.nodes.getConnection(node.uuid) },
+      this.client,
+    );
 
     const dockerImage = this.resolveDockerImage(template.dockerImages, dto.dockerImage);
     const variables = this.resolveVariables(template.variables, dto.variables);

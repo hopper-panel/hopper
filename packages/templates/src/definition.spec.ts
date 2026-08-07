@@ -119,3 +119,72 @@ describe('templateDefinitionSchema readiness', () => {
     ).toThrow();
   });
 });
+
+/**
+ * What a template is allowed to say about stopping.
+ *
+ * The same arrival problem as readiness, one field later: `stopCommand` is a
+ * colon-encoded pair carried by the whole catalogue and every imported egg, and
+ * it cannot express a stop with three parts. So the structured field has to be
+ * additive in the strictest sense — a template that says nothing about it must
+ * parse to exactly what it parsed to before the field existed.
+ */
+describe('templateDefinitionSchema stop', () => {
+  it('leaves a template that declares nothing exactly as it was', () => {
+    const parsed = templateDefinitionSchema.parse(MINIMAL);
+
+    expect(parsed.stop).toBeUndefined();
+    expect(parsed.stopTimeoutSeconds).toBeUndefined();
+    // And still falls back on the pair it always had.
+    expect(parsed.stopCommand).toBe('command:stop');
+  });
+
+  it('accepts an RCON stop beside the string it falls back to', () => {
+    // Both travel. The string is what the panel reads if the structured field
+    // is ever cleared, and it is all an older daemon could ever have used.
+    const parsed = templateDefinitionSchema.parse({
+      ...MINIMAL,
+      stopCommand: 'command:quit',
+      stop: { type: 'rcon', command: 'quit', role: 'rcon', secretVariable: 'RCON_PASSWORD' },
+    });
+
+    expect(parsed.stopCommand).toBe('command:quit');
+    expect(parsed.stop).toEqual({
+      type: 'rcon',
+      command: 'quit',
+      role: 'rcon',
+      secretVariable: 'RCON_PASSWORD',
+    });
+  });
+
+  it('refuses an RCON stop with nothing to send or nowhere to get the password', () => {
+    // Both would parse into a stop that reaches the server and does nothing,
+    // followed by the SIGKILL this transport exists to avoid.
+    expect(() =>
+      templateDefinitionSchema.parse({
+        ...MINIMAL,
+        stop: { type: 'rcon', secretVariable: 'RCON_PASSWORD' },
+      }),
+    ).toThrow();
+    expect(() =>
+      templateDefinitionSchema.parse({ ...MINIMAL, stop: { type: 'rcon', command: 'quit' } }),
+    ).toThrow();
+  });
+
+  it('keeps a stop timeout the template chose', () => {
+    // The gap this closes: `stopTimeoutSeconds` has been in the contract since
+    // the first release with a default of 30 and no way for a template to name
+    // anything else, so every server ever created ran on a Bukkit figure.
+    expect(
+      templateDefinitionSchema.parse({ ...MINIMAL, stopTimeoutSeconds: 240 }).stopTimeoutSeconds,
+    ).toBe(240);
+  });
+
+  it('refuses a stop timeout the contract would not accept', () => {
+    // The same bounds as the contract's own field, checked here so the mistake
+    // fails on the template that made it rather than on the server built from
+    // it months later.
+    expect(() => templateDefinitionSchema.parse({ ...MINIMAL, stopTimeoutSeconds: 0 })).toThrow();
+    expect(() => templateDefinitionSchema.parse({ ...MINIMAL, stopTimeoutSeconds: 601 })).toThrow();
+  });
+});

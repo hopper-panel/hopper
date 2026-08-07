@@ -121,7 +121,31 @@ export function registerServerRoutes(app: FastifyInstance, manager: ServerManage
     const server = manager.require(uuid);
 
     for (const command of body.data.commands) {
-      await server.sendCommand(command);
+      try {
+        await server.sendCommand(command);
+      } catch (error: unknown) {
+        // Answered here rather than left to the global error handler, which
+        // replaces the message of every 500 with "Internal daemon error." — on
+        // purpose, because an unexpected 500 can carry a file path or a
+        // fragment of configuration. This failure is not one of those: it is a
+        // sentence written for the operator, naming the variable or the port
+        // that has to change, and it is the only copy of that sentence the
+        // panel will ever see. A scheduled task whose audit record reads "HTTP
+        // 500" tells whoever finds it that something went wrong and nothing
+        // whatsoever about what.
+        //
+        // 502 and not 500: the daemon did its part, and the thing that did not
+        // answer is behind it.
+        request.log.warn({ server: uuid, err: error }, 'Command not delivered');
+
+        return reply.code(502).send({
+          error: {
+            code: 'command_undelivered',
+            message: error instanceof Error ? error.message : 'The command was not delivered.',
+            requestId: request.id,
+          },
+        });
+      }
     }
 
     return reply.code(204).send();

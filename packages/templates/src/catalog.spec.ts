@@ -206,6 +206,32 @@ describe('catalogue de templates', () => {
     });
 
     /**
+     * The stop, which is where this game differs from every other template
+     * here by more than a string.
+     *
+     * Factorio serialises its **whole world** on a clean exit and rewrites the
+     * save it was loaded from; a kill landing inside that write is the one way
+     * this stop loses data, and `--start-server-load-latest` then comes back on
+     * an autosave instead. The contract's thirty seconds is a Bukkit figure —
+     * regions flushed in a second or two — and it was the only figure available
+     * until a template could name its own.
+     */
+    it('gives its shutdown far longer than the Minecraft default', () => {
+      expect(factorio?.stopTimeoutSeconds).toBeGreaterThan(30);
+      // Inside the ceiling the contract puts on a stop: past ten minutes an
+      // operator cannot tell a server that is saving from one that has hung.
+      expect(factorio?.stopTimeoutSeconds).toBeLessThanOrEqual(600);
+    });
+
+    it('still stops over standard input, which this game does read', () => {
+      // Deliberately not the RCON transport, which exists for the games that
+      // read no stdin at all. Factorio does, and the leading slash is what
+      // tells its console a command from a chat message.
+      expect(factorio?.stop).toBeUndefined();
+      expect(factorio?.stopCommand).toBe('command:/quit');
+    });
+
+    /**
      * The declaration is the half that cannot really break. This is the other
      * half: what a node actually executes.
      */
