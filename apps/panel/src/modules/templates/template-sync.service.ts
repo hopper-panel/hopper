@@ -108,6 +108,16 @@ export class TemplateSyncService {
       dockerImages: definition.dockerImages,
       startup: definition.startup,
       stopCommand: definition.stopCommand,
+      // Same `Prisma.DbNull` reasoning as `readiness` below, and the stakes are
+      // higher: a template that dropped its structured stop while the column
+      // kept the old one would go on being stopped over a transport its author
+      // has removed — over RCON to a port they no longer name, which fails and,
+      // by design, refuses the stop outright.
+      stop: definition.stop ?? Prisma.DbNull,
+      // Plain `null` and not `DbNull`: an ordinary nullable column takes one,
+      // and it says the same thing — this template names no timeout, so the
+      // panel supplies the contract's default.
+      stopTimeoutSeconds: definition.stopTimeoutSeconds ?? null,
       startupDetection: definition.startupDetection ?? null,
       // `Prisma.DbNull` and not `undefined`: on an update, an undefined field
       // means "leave the column alone", so a template that dropped its

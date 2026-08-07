@@ -86,7 +86,7 @@ export const statusReportSchema = z.object({
   /** True if the kernel killed the container for lack of memory. */
   oomKilled: z.boolean().default(false),
   /**
-   * Who ended the server, when it was the daemon itself.
+   * Who ended the server, when it was the daemon itself — or who refused to.
    *
    * `expected: false` on its own leaves the panel one sentence — "the process
    * stopped on its own" — and that sentence is a plain lie for the one stop
@@ -100,15 +100,27 @@ export const statusReportSchema = z.object({
    * daemon printed before giving up; this field exists so the notification
    * says who stopped it, not to reproduce that line.
    *
+   * `stop_refused` is the mirror image and it is the report nothing else can
+   * carry: a stop the daemon would not deliver — an RCON role naming a port
+   * nobody created, a password variable left empty — leaves the server exactly
+   * where it was, so there is no state change to notice and no `offline` report
+   * to attach a reason to. Without this the only trace is a console line, and a
+   * stop is most often ordered by a schedule at four in the morning, at which
+   * point nobody is reading one. The `state` alongside it is therefore the
+   * state the server is *still in*, not one it moved to.
+   *
    * Additive, optional, and no `CONTRACT_VERSION` bump. A panel that predates
-   * it drops the key — `z.object` strips what it does not know — and falls
-   * back to the sentence it has always used, so a new daemon reporting to an
-   * old panel loses precision and nothing else. `.catch(undefined)` buys the
-   * same indulgence forward: a cause added later arrives here as "no cause
-   * given" instead of failing the parse and taking the entire crash
-   * notification down with it, which is the report nobody can afford to lose.
+   * either value drops the key — `z.object` strips what it does not know — and
+   * falls back to the sentence it has always used, so a new daemon reporting to
+   * an old panel loses precision and nothing else. That fallback is only safe
+   * for `stop_refused` because a panel too old to know the value is also too
+   * old to configure the RCON stop transport that produces it, so the pairing
+   * cannot arise. `.catch(undefined)` buys the same indulgence forward: a cause
+   * added later arrives here as "no cause given" instead of failing the parse
+   * and taking the entire crash notification down with it, which is the report
+   * nobody can afford to lose.
    */
-  cause: z.enum(['readiness_failed']).optional().catch(undefined),
+  cause: z.enum(['readiness_failed', 'stop_refused']).optional().catch(undefined),
 });
 
 export type StatusReport = z.infer<typeof statusReportSchema>;

@@ -26,23 +26,12 @@ export const configFileSchema = z.object({
 });
 
 /**
- * How to stop the server cleanly.
- *
- * `command` writes a string to stdin (`stop` for Minecraft) and waits for the
- * process to end; `signal` signals PID 1 of the container. Either way a SIGKILL
- * follows after `stopTimeoutSeconds`.
- */
-export const stopConfigurationSchema = z.discriminatedUnion('type', [
-  z.object({ type: z.literal('command'), value: z.string().min(1) }),
-  z.object({ type: z.literal('signal'), value: z.enum(['SIGTERM', 'SIGINT', 'SIGKILL']) }),
-]);
-
-/**
  * The name a port answers to.
  *
  * Declared here, above the readiness strategies, because they are its first
  * consumer: `role` is what a strategy knocks on something other than the game
- * port by.
+ * port by. The stop configuration below is its second, and the two mean the
+ * same thing by it — see `stopConfigurationSchema`.
  *
  * A lookup key, not a label: a strategy matches against it exactly, and it is
  * meant to become part of a variable name as well — the way a startup command
@@ -159,6 +148,81 @@ export const readinessSchema = z.discriminatedUnion('type', [
 
 export type Readiness = z.infer<typeof readinessSchema>;
 
+/**
+ * How to stop the server cleanly.
+ *
+ * Declared below `allocationRoleSchema` rather than at the top of the file,
+ * where it used to sit, because the third arm names a port the same way a
+ * readiness strategy does — and the two definitions have to be readable side by
+ * side to stay in agreement about what a name means.
+ *
+ * `command` writes a string to stdin (`stop` for Minecraft) and waits for the
+ * process to end; `signal` signals PID 1 of the container. Either way a SIGKILL
+ * follows after `stopTimeoutSeconds`.
+ *
+ * `rcon` is the third, and it exists because the first two answer for Minecraft
+ * and for very little else. **Rust, ARK, Palworld and most Source servers read
+ * no standard input at all**: the string goes into a pipe nobody is holding,
+ * nothing happens for the whole deadline, and the server is SIGKILLed — a
+ * "clean stop" that is a kill with extra waiting. `signal` was the only
+ * alternative, and a signal is a request the game may handle, ignore, or handle
+ * by exiting without writing its world. RCON is the channel those servers do
+ * answer on, and their own shutdown command is the one that ends in a save.
+ *
+ * The password is **named, never carried**, exactly as in the rcon readiness
+ * arm above: a stop configuration holding a secret would be a secret in every
+ * configuration payload the panel sends and in every log line that printed one.
+ *
+ * **Choosing `rcon` here also chooses it for the console**, and that is a
+ * property of this field worth stating where it is declared rather than leaving
+ * to be discovered in the daemon. A template reaches for this transport for one
+ * reason — the game reads nothing on standard input — and a console writing to
+ * a standard input nobody reads is the same failure as a stop writing to it,
+ * minus the SIGKILL that eventually made the stop visible. So the daemon routes
+ * console commands the same way, to the port named by `role`, with the password
+ * held in `secretVariable`.
+ *
+ * There is deliberately no separate field saying so. It would repeat all three
+ * values, and two copies of a port name and a password variable have exactly
+ * one interesting state: disagreeing. The symptom of that would be a server
+ * that stops perfectly and a console that reaches nobody, with nothing anywhere
+ * saying the two were meant to match.
+ *
+ * The corollary, equally deliberate: declaring `command` or `signal` leaves the
+ * console on standard input, which is right for Minecraft — it reads stdin and
+ * speaks RCON, and the channel that needs no password is the better of the two.
+ */
+export const stopConfigurationSchema = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('command'), value: z.string().min(1) }),
+  z.object({ type: z.literal('signal'), value: z.enum(['SIGTERM', 'SIGINT', 'SIGKILL']) }),
+  z.object({
+    type: z.literal('rcon'),
+    /**
+     * The game's own shutdown command — `quit` for Factorio, `DoExit` for ARK,
+     * `shutdown 30 Restarting` for Palworld, `quit` for Rust.
+     *
+     * Sent as written. Nothing here knows which game is on the other end, so
+     * nothing here can add a leading slash, a delay or a save beforehand; a
+     * template that wants its world flushed first names a command that does
+     * that.
+     */
+    command: z.string().min(1),
+    /**
+     * Which port to speak RCON to, when it is not the game's own — which is the
+     * ordinary case, and the reason names exist at all.
+     *
+     * The same meaning as `readiness`'s `role`, down to the failure: a role
+     * naming no port on this server is **refused**, never read as "the primary
+     * one then". Guessing there speaks the RCON handshake at the game port,
+     * which answers nothing — and the stop that follows a failed handshake is a
+     * SIGKILL through the save this transport was chosen to protect.
+     */
+    role: allocationRoleSchema.optional(),
+    /** Template variable holding the password. Never the password itself. */
+    secretVariable: z.string().min(1),
+  }),
+]);
+
 export const serverMetaSchema = z.object({
   name: z.string().min(1).max(191),
   description: z.string().max(2000).default(''),
@@ -258,6 +322,28 @@ export const serverConfigurationSchema = z.object({
   container: serverContainerSchema,
 
   stop: stopConfigurationSchema,
+
+  /**
+   * How long the server is given to go down before it is SIGKILLed.
+   *
+   * The one number in this contract that is measured in lost work. A stop is
+   * requested, the game begins writing its world, and this expires: the kernel
+   * cuts the process mid-write, and what the operator gets back is whatever the
+   * last autosave held — or a save file half-written by a process that will
+   * never finish it.
+   *
+   * Thirty seconds is the default and it is a Minecraft figure: a Bukkit server
+   * flushes its regions in a second or two. It is not a figure for a game that
+   * writes its entire world on shutdown, where the time taken scales with the
+   * world — and those are exactly the games the `rcon` transport above exists
+   * for. A template declares its own through `stopTimeoutSeconds`, which the
+   * panel reads when it builds this object; templates that say nothing keep the
+   * thirty they have always had.
+   *
+   * Bounded at ten minutes. Past that a stop stops being one, and an operator
+   * watching a spinner has no way to tell a server that is saving from one that
+   * has hung.
+   */
   stopTimeoutSeconds: z.number().int().positive().max(600).default(30),
 
   /**

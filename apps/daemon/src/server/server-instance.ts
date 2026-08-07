@@ -9,6 +9,7 @@ import type {
   ServerConfiguration,
   ServerState,
   StatusReport,
+  StopConfiguration,
 } from '@hopper/shared';
 import type Dockerode from 'dockerode';
 import type { Duplex } from 'node:stream';
@@ -20,7 +21,8 @@ import type { PanelClient } from '../panel/panel-client.js';
 import { JailedFilesystem } from '../fs/jailed-filesystem.js';
 import { applyConfigFiles } from './config-writer.js';
 import { announcesReady, resolveReadiness, type ResolvedReadiness } from './readiness.js';
-import { RconError, rconExecute } from './rcon.js';
+import { RconError, rconDeliver, rconExecute } from './rcon.js';
+import { describeRconFailure, dialHost, rconPassword, resolveRconTarget } from './rcon-target.js';
 import { installContainerName } from './installer.js';
 import { ConsoleBuffer, LineAssembler } from './console-buffer.js';
 import { InvocationError, substitute } from './invocation.js';
@@ -30,6 +32,19 @@ import { buildResourceUsage, emptyUsage, type DockerStats } from './stats.js';
 
 /** Minimum delay between two walks of the volume, in milliseconds. */
 const DISK_MEASURE_INTERVAL_MS = 60_000;
+
+/**
+ * Marks what came back over RCON, so it cannot be mistaken for the server's own
+ * output.
+ *
+ * Distinct from `[Hopper]` because the two are different things: that prefix is
+ * the daemon talking *about* the server, this one is the server talking, on a
+ * channel with no other way onto the console. Unmarked, an answer would appear
+ * among the container's log lines as though the server had printed it — and on
+ * these games the server prints nothing, so the console would show output whose
+ * timing and origin nobody could account for.
+ */
+const RCON_CONSOLE_PREFIX = '[RCON]';
 
 /**
  * A duration as the operator reads it, for the console.
@@ -259,7 +274,18 @@ export class ServerInstance extends EventEmitter {
 
   /** A line emitted by Hopper, distinct from the server's own output. */
   private emitDaemonLine(message: string): void {
-    const line = `[Hopper] ${message}`;
+    this.emitConsoleLine(`[Hopper] ${message}`);
+  }
+
+  /**
+   * Puts a line on the console, whoever it came from.
+   *
+   * Buffered *and* emitted, which is the half worth naming: a line only emitted
+   * reaches the consoles that happen to be open at that instant and nobody
+   * else. A scheduled task runs at four in the morning with nobody watching,
+   * and whether it worked has to still be readable at nine.
+   */
+  private emitConsoleLine(line: string): void {
     this.console.push(line);
     this.emit('console', line);
   }
@@ -596,7 +622,7 @@ export class ServerInstance extends EventEmitter {
     const deadline = readiness.timeoutMs === null ? Infinity : Date.now() + readiness.timeoutMs;
 
     while (!attempt.signal.aborted && Date.now() < deadline) {
-      if (await this.portAccepts(ip === '0.0.0.0' ? '127.0.0.1' : ip, port)) {
+      if (await this.portAccepts(dialHost(ip), port)) {
         if (!attempt.signal.aborted) {
           this.setState('running');
         }
@@ -632,13 +658,14 @@ export class ServerInstance extends EventEmitter {
       return;
     }
 
-    const password = this.options.configuration.environment[readiness.secretVariable];
+    // The same lookup the stop transport makes, and deliberately not a second
+    // one: a readiness check that logs in and a stop that cannot would be two
+    // components disagreeing about where this server's password lives, with
+    // neither message saying they were meant to agree.
+    const secret = rconPassword(this.options.configuration.environment, readiness.secretVariable);
 
-    if (!password) {
-      this.failStart(
-        attempt,
-        `This server's readiness check needs the variable ${readiness.secretVariable}, which is not set.`,
-      );
+    if ('refusal' in secret) {
+      this.failStart(attempt, `This server's readiness check cannot run: ${secret.refusal}.`);
       return;
     }
 
@@ -647,7 +674,8 @@ export class ServerInstance extends EventEmitter {
     // the game's own port, so before this the handshake went to the game and
     // failed until the deadline stopped a healthy server.
     const { ip, port } = readiness;
-    const host = ip === '0.0.0.0' ? '127.0.0.1' : ip;
+    const host = dialHost(ip);
+    const password = secret.password;
     // Open-ended when the template declared no deadline: see `waitForPort`.
     const deadline = readiness.timeoutMs === null ? Infinity : Date.now() + readiness.timeoutMs;
 
@@ -1020,13 +1048,36 @@ export class ServerInstance extends EventEmitter {
    * wait, not overwrite the files under the feet of a JVM reading them.
    */
   async install(startOnCompletion: boolean): Promise<void> {
+    // Whether the reinstall got far enough to have changed anything.
+    //
+    // Read by the catch at the end, which otherwise reports every failure as an
+    // installation that failed — including one that never began.
+    let began = false;
+
     return this.enqueue(async () => {
       // A running server has to be stopped first: reinstalling under a live
       // process is guaranteed to corrupt something.
+      //
+      // A refused stop aborts the reinstall before anything is touched, and it
+      // does so *without* moving the server out of the state it is in. Letting
+      // the refusal escape into the catch below would set `install_failed` on a
+      // server whose container is still up and serving players — and the panel
+      // refuses every power action in that state, including the Kill the
+      // daemon's own refusal line has just told the operator to use. That is a
+      // server nobody can touch from the interface, produced by a safety check
+      // doing its job.
       if (this.state === 'running' || this.state === 'starting') {
-        await this.doStop();
+        try {
+          await this.doStop();
+        } catch (error) {
+          this.emitDaemonLine(
+            'Reinstallation cancelled: the server could not be stopped, and nothing has been changed.',
+          );
+          throw error;
+        }
       }
 
+      began = true;
       this.setState('installing');
       this.console.clear();
       this.emit('install_started');
@@ -1100,6 +1151,17 @@ export class ServerInstance extends EventEmitter {
       if (error instanceof InvocationError) {
         this.emitDaemonLine(error.message);
         this.emit('install_output', error.message);
+      }
+
+      // A reinstall that never began leaves the server exactly where it was.
+      // Reporting it as a failed installation would be a lie with teeth: the
+      // panel refuses every power action in `install_failed`, so a server that
+      // is up and serving players becomes one nobody can stop from the
+      // interface — over a stop that was refused precisely to avoid touching
+      // it. The caller still gets the rejection, and the console still carries
+      // the reason.
+      if (!began) {
+        throw error;
       }
 
       this.setState('install_failed');
@@ -1257,23 +1319,34 @@ export class ServerInstance extends EventEmitter {
   /**
    * Clean stop.
    *
-   * Sends the template's stop command on stdin (`stop` for a Bukkit server) and
-   * lets the server save its worlds. An immediate SIGKILL would corrupt map
-   * regions.
+   * Sends the template's stop command — down standard input for a Bukkit
+   * server, over RCON for a game that reads none — and lets the server save its
+   * worlds. An immediate SIGKILL would corrupt map regions.
    */
   private async doStop(): Promise<void> {
     if (this.state === 'offline') {
       return;
     }
 
-    this.setState('stopping');
-
     const { stop, stopTimeoutSeconds } = this.options.configuration;
+
+    // RCON delivers *before* the state moves, where the other two deliver
+    // after, and that is not tidiness — it is what lets this path refuse.
+    // `stopping` is a state only the container can leave, so entering it and
+    // then failing to say anything to the server would park the panel on a
+    // spinner over a server that is running perfectly well and has been told
+    // nothing. Everything that can fail happens while the server is still
+    // `running`, and a refusal leaves it exactly there.
+    if (stop.type === 'rcon') {
+      await this.sendStopOverRcon(stop);
+    }
+
+    this.setState('stopping');
 
     if (stop.type === 'command') {
       this.emitDaemonLine(`Stopping (command "${stop.value}")…`);
       await this.sendCommand(stop.value);
-    } else {
+    } else if (stop.type === 'signal') {
       this.emitDaemonLine(`Stopping (signal ${stop.value})…`);
       await this.container().kill({ signal: stop.value });
     }
@@ -1286,6 +1359,147 @@ export class ServerInstance extends EventEmitter {
       );
       await this.doKill();
     }
+  }
+
+  /**
+   * Stops the server by sending its own shutdown command over RCON.
+   *
+   * For the games this transport exists for — Rust, ARK, Palworld, most Source
+   * servers — this is the only channel that ends in a save. They read no
+   * standard input, so a `command` stop goes into a pipe nobody holds; and a
+   * signal is a request the game may handle, ignore, or handle by exiting
+   * without writing its world.
+   *
+   * **A stop that cannot be delivered refuses instead of falling through to the
+   * SIGKILL.** That is the decision in this method, and it goes against what
+   * every other stop here does, so here is the argument.
+   *
+   * The existing behaviour — wait `stopTimeoutSeconds`, then kill — is right
+   * for a command that was *delivered*. It went down a pipe the process is
+   * reading, and a process that then does not exit is one choosing not to; the
+   * deadline is the operator's declared patience with that.
+   *
+   * Every failure that refuses below is a failure to *deliver*, and the four of
+   * them are all there are: the role names no port, the variable is empty,
+   * nothing accepts a connection, the password is refused. In each the game has
+   * been told nothing whatsoever. It is running exactly as it was a second
+   * earlier, with its world in memory and no save in progress. So the choice is
+   * not "graceful or forceful" — it is between killing a process that was never
+   * asked to stop and leaving it alone.
+   *
+   * Killing it loses everything since the last autosave, which on a game whose
+   * save is written on shutdown is the whole session, and it buys nothing: the
+   * operator asked for a stopped server and would get a damaged one. Refusing
+   * loses nothing at all. The server keeps serving players, the console names
+   * the variable or the port to fix, and the stop works on the next attempt.
+   *
+   * And the forceful answer already exists, one button away and clearly
+   * labelled: Kill. An operator who needs the process down now can say so
+   * knowing what it costs. What this refuses is to make that the automatic
+   * consequence of a mistyped variable name, taken on their behalf, silently.
+   *
+   * **The line is delivery and not acknowledgement**, and that distinction is
+   * the whole of `rconDeliver`. A server that has just executed `quit` answers
+   * nothing, closes the socket mid-hangup, or goes quiet until the five-second
+   * timeout — those are not three ways of failing, they are the three ordinary
+   * shapes of success. Reading them as "the command never left" refused a stop
+   * that had in fact been delivered: the game went down because it had been
+   * told to, while this method reported that nothing had happened, so nothing
+   * waited for the exit, no SIGKILL was armed, `power('restart')` never
+   * restarted and `install` marked a server that was going down INSTALL_FAILED.
+   *
+   * Once the command is on the wire the wait and the SIGKILL after it apply
+   * exactly as they do for a stdin command. At that point the server has been
+   * asked, is presumably saving, and the deadline is the template's own.
+   *
+   * Two callers inherit the refusal, and both are better for it. `failStart` is
+   * the exception that still kills: it catches a stop that threw and kills
+   * instead, because a start being abandoned has nothing worth saving — the
+   * server never became ready — and leaving it in `stopping` would be the hang
+   * that whole mechanism exists to end. `install` is the other, and there the
+   * refusal is the point: a reinstall that cannot stop the server cleanly must
+   * not go on to overwrite the files under a live process, which is the only
+   * reason it stops the server first.
+   */
+  private async sendStopOverRcon(
+    stop: Extract<StopConfiguration, { type: 'rcon' }>,
+  ): Promise<void> {
+    const target = resolveRconTarget(this.options.configuration, stop);
+
+    if ('refusal' in target) {
+      throw this.rconStopRefused(target.refusal);
+    }
+
+    this.emitDaemonLine(`Stopping (RCON "${stop.command}")…`);
+
+    try {
+      await rconDeliver(
+        { host: target.host, port: target.port, password: target.password },
+        stop.command,
+        // Late by construction — the stop has already been delivered by the
+        // time anything can come back — and worth carrying anyway: a server
+        // that has something to say about being shut down says it once, to
+        // whoever happens to be watching the console.
+        (body) => this.emitRconResponse(body),
+      );
+    } catch (error: unknown) {
+      // A refused password is worth telling apart from an unreachable port, and
+      // the console path draws the same distinction in the same words — see
+      // `describeRconFailure`.
+      throw this.rconStopRefused(describeRconFailure(error, target, stop.secretVariable));
+    }
+  }
+
+  /**
+   * Says why the stop was refused, and returns the error to throw.
+   *
+   * Returns rather than throws so the caller writes `throw this.…()`: a method
+   * that throws in the middle of another one reads as a side effect, and the
+   * one thing every caller here needs to be obvious is that nothing after it
+   * runs.
+   *
+   * Two lines, because the first alone leaves the important half unsaid. An
+   * operator who reads "RCON refused the password" and nothing else has no way
+   * to know whether their server is now down, saving, or untouched — and the
+   * answer decides whether they reach for the Kill button.
+   *
+   * **And the console is not enough.** Both lines are for somebody watching,
+   * and the caller that most needs this is the one nobody watches: a nightly
+   * schedule with a `stop` step runs at four in the morning, the HTTP request
+   * behind it was acknowledged before this ran, and the throw below dies in a
+   * log line on the node. The run was then recorded as having succeeded, over a
+   * server that is still up and still taking players. So the refusal is also
+   * reported to the panel, through the same channel a start abandoned for
+   * readiness uses — the only difference being that this one names a state the
+   * server never left.
+   */
+  private rconStopRefused(reason: string): Error {
+    const message = `This server could not be stopped over RCON: ${reason}.`;
+
+    this.emitDaemonLine(message);
+    this.emitDaemonLine(
+      'It is still running and nothing has been killed. Fix that and stop it again — or use Kill, which cuts the process without letting it save.',
+    );
+    this.logger.warn(
+      { server: this.uuid, reason },
+      'RCON stop refused: the server is left running',
+    );
+
+    this.reportStatus({
+      // Where the server actually is, which for every refusal is where it was
+      // before the stop was ordered. Reporting `offline` or `stopping` here
+      // would be inventing a transition to carry a message, and the panel would
+      // then be wrong about the one thing it uses these reports for.
+      state: this.state,
+      at: Date.now(),
+      // Nobody asked for this outcome. The field decides whether a report is
+      // routine, and a stop that did not happen is not.
+      expected: false,
+      oomKilled: false,
+      cause: 'stop_refused',
+    });
+
+    return new Error(message);
   }
 
   private async doKill(): Promise<void> {
@@ -1348,13 +1562,40 @@ export class ServerInstance extends EventEmitter {
   }
 
   /**
-   * Writes a command on the server's standard input.
+   * Sends a command to the server, over whichever channel it actually reads.
    *
-   * The newline is added here and the command is stripped of its own: a value
-   * containing `\n` would otherwise send several commands at once, which would
-   * bypass line-by-line audit logging.
+   * Standard input for a Bukkit server; RCON for a server whose template
+   * declared an RCON **stop**. That declaration is the evidence, and it is
+   * deliberately not joined by a second field saying the same thing: a template
+   * reaches for that stop transport for exactly one reason — the game reads
+   * nothing on standard input — and the field already carries the port and the
+   * name of the variable holding the password. A separate `commandTransport`
+   * would repeat all three, and the day the copies drifted the symptom would be
+   * a server that stops perfectly and a console that reaches nobody, with
+   * nothing anywhere saying the two were meant to match.
+   *
+   * **What this did to those servers before is the failure the multi-game work
+   * is built around.** The command went down the attach stream into a pty
+   * nobody reads, the write succeeded because a write to a socket succeeds, and
+   * every caller was told it had worked. A scheduled task running `save-all`
+   * and announcing a restart was a no-op the panel recorded as having run.
+   *
+   * The stdin branch below is untouched, down to the order of its guards: every
+   * server on every existing installation goes through it. A write there is
+   * still not proof of a read — nothing on a pipe ever is — but it is a pipe
+   * chosen by a template that says the game reads it, and those games echo what
+   * they were told into a log the console already carries. What this removes is
+   * not the uncertainty of stdin; it is the servers that were on stdin while
+   * having no reader at all.
    */
   async sendCommand(command: string): Promise<void> {
+    const { stop } = this.options.configuration;
+
+    if (stop.type === 'rcon') {
+      await this.sendCommandOverRcon(stop, command);
+      return;
+    }
+
     if (!this.stream) {
       throw new Error('The server is not started.');
     }
@@ -1365,9 +1606,152 @@ export class ServerInstance extends EventEmitter {
       return;
     }
 
+    // The newline is added here and the command is stripped of its own: a value
+    // containing `\n` would otherwise send several commands at once, which
+    // would bypass line-by-line audit logging.
     await new Promise<void>((resolve, reject) => {
       this.stream!.write(`${sanitized}\n`, (error) => (error ? reject(error) : resolve()));
     });
+  }
+
+  /**
+   * Sends one command over RCON, and puts the answer where the operator is.
+   *
+   * **The answer is half the reason this exists.** stdin returns nothing —
+   * whatever the server has to say arrives later on its log, if it says
+   * anything — so every caller of `sendCommand` was written for a channel with
+   * no reply, and dropping RCON's would be worse than the silence it replaces:
+   * an operator would type `list`, be told nothing, and still have no way to
+   * tell a console that works from the one that has been quietly discarding
+   * their commands.
+   *
+   * It goes on the console rather than back down whatever asked, because only
+   * one of the callers has anywhere to put a reply. A WebSocket session does; a
+   * scheduled task arriving over HTTP does not, so answering the asker alone
+   * would discard every answer to a command nobody was there to type — which is
+   * precisely the run nobody is checking. The console is also where a stdin
+   * command's answer already lands, for everybody watching rather than only for
+   * whoever typed it, so this shows the same thing to the same people as before
+   * and widens no permission: these lines ride the `console` event that already
+   * carries every byte the server prints.
+   *
+   * **Every failure to deliver throws**, and that is the point of the method.
+   * The role names no port, the variable is empty, the password is refused,
+   * nothing accepts the connection: in all four the server has been told
+   * nothing at all, and reporting success would be the silent no-op this whole
+   * change exists to remove.
+   */
+  private async sendCommandOverRcon(
+    stop: Extract<StopConfiguration, { type: 'rcon' }>,
+    command: string,
+  ): Promise<void> {
+    // The same guard as the stdin path, in the same words. The stream exists
+    // exactly while the container is attached, so this keeps one answer to "is
+    // there a server to talk to" rather than deriving a second from the state
+    // machine — and it beats letting the connection fail with a message about
+    // an unreachable port when the truth is that nothing is running.
+    if (!this.stream) {
+      throw new Error('The server is not started.');
+    }
+
+    const sanitized = command.replace(/[\r\n]+/g, ' ').trim();
+
+    if (sanitized === '') {
+      return;
+    }
+
+    const target = resolveRconTarget(this.options.configuration, stop);
+
+    if ('refusal' in target) {
+      throw this.commandUndelivered(sanitized, target.refusal);
+    }
+
+    // Delivered, not answered — the same line the stop transport draws, for the
+    // same reason. `rconExecute` waits for a reply and calls its absence a
+    // failure, which is right for a readiness check and wrong here: plenty of
+    // commands answer with nothing, and a server told to `quit` or `save` from
+    // the console closes the socket or simply says nothing before the fixed
+    // five-second window elapses. Reporting that as "was not delivered" is
+    // false in the direction that matters, because a scheduled task would
+    // record a failure for a command the server ran — and an operator retrying
+    // it would run it twice.
+    //
+    // A reply that does arrive still reaches the console through `onResponse`;
+    // it just is not what decides whether the command left.
+    //
+    // The echo goes first, so the console reads in the order things happened —
+    // the command, then whatever came back, then a refusal if one did. It is
+    // echoed at all because on this transport the server logs nothing of its
+    // own: without it an operator watches their commands vanish as they type
+    // them, and a scheduled task's commands appear nowhere.
+    this.emitConsoleLine(`${RCON_CONSOLE_PREFIX} > ${sanitized}`);
+
+    try {
+      await rconDeliver(
+        { host: target.host, port: target.port, password: target.password },
+        sanitized,
+        (body) => this.emitRconResponse(body),
+      );
+    } catch (error: unknown) {
+      throw this.commandUndelivered(
+        sanitized,
+        describeRconFailure(error, target, stop.secretVariable),
+      );
+    }
+  }
+
+  /**
+   * Puts whatever the server said on the console, if it said anything.
+   *
+   * Silence gets no line of its own. It used to earn an `(accepted, no output)`
+   * back when an answer was what proved the command had arrived — but delivery
+   * is what proves that now, and most shutdown and save commands acknowledge
+   * with nothing at all, so the note would appear under almost everything and
+   * mean almost nothing. The echo above the answer is what tells an operator
+   * their command went; this only carries a reply that exists.
+   *
+   * The body is reassembled through `LineAssembler` rather than split on
+   * newlines, so a multi-line answer gets the same line discipline and the same
+   * per-line truncation as the container's output. An RCON body is untrusted
+   * server output like any other: one arbitrarily long line is exactly what
+   * that cap is for.
+   */
+  private emitRconResponse(response: string): void {
+    if (response.trim() === '') {
+      return;
+    }
+
+    const assembler = new LineAssembler();
+
+    for (const line of [...assembler.push(response), ...assembler.flush()]) {
+      this.emitConsoleLine(`${RCON_CONSOLE_PREFIX} ${line}`);
+    }
+  }
+
+  /**
+   * Says a command never reached the server, and returns the error to throw.
+   *
+   * Returns rather than throws, as `rconStopRefused` does and for the same
+   * reason: the caller writes `throw this.…()`, so nothing after it can be read
+   * as still running.
+   *
+   * Both halves are load-bearing and they are for different people. The console
+   * lines are for the operator who is looking; the throw is for the one who is
+   * not — it is what turns an undelivered command into an HTTP failure, and an
+   * HTTP failure into a named entry in the schedule's audit record. A nightly
+   * `save-all` that reached nobody has to end up somewhere a person will
+   * eventually read, and a console line at four in the morning is not that.
+   */
+  private commandUndelivered(command: string, reason: string): Error {
+    const message = `The command "${command}" was not delivered: ${reason}.`;
+
+    this.emitDaemonLine(message);
+    this.emitDaemonLine(
+      'This server takes its commands over RCON, because it reads nothing on standard input. It has not run this one.',
+    );
+    this.logger.warn({ server: this.uuid, command, reason }, 'Console command not delivered');
+
+    return new Error(message);
   }
 
   // -------------------------------------------------------------------------

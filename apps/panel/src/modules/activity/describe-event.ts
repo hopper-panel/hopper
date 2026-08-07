@@ -45,6 +45,20 @@ export function describeEvent(event: string, metadata: Metadata): string {
 
     case AUDIT_EVENTS.SERVER_POWER: {
       const action = text(metadata, 'action');
+
+      // A refusal is the same event with the opposite outcome, and reading only
+      // `action` renders it as the thing that did not happen. That is worse
+      // than saying nothing: the Activity tab is where an operator goes after a
+      // scheduled stop to find out whether it ran, and "Stopped the server."
+      // over a server still serving players ends the investigation there.
+      if (metadata !== null && typeof metadata === 'object' && 'refused' in metadata) {
+        if ((metadata as { refused?: unknown }).refused === true) {
+          return action === 'stop'
+            ? 'Refused to stop the server: it could not be told to shut down.'
+            : 'Refused the power action: the server could not be reached.';
+        }
+      }
+
       const labels: Record<string, string> = {
         start: 'Started the server.',
         stop: 'Stopped the server.',

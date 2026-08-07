@@ -236,6 +236,29 @@ export class RemoteController {
       throw new NotFoundException('This server does not belong to this node.');
     }
 
+    // A stop the daemon would not deliver, and the one report here that is not
+    // about a transition: the server never left the state it names. It has to
+    // be answered before anything below reads that state, because the very next
+    // branch would announce a server started — for a server that has been
+    // running all along, and whose operator has just been told it stopped.
+    //
+    // The Activity tab rather than a notification, because that is where a
+    // power action already goes and this is one: a stop, ordered, refused.
+    // Whoever finds a server up that a schedule was meant to stop looks there,
+    // and the daemon has written the reason — the empty variable, the port
+    // nobody created — on that server's console.
+    if (body.cause === 'stop_refused') {
+      await this.audit.record({
+        event: AUDIT_EVENTS.SERVER_POWER,
+        // The daemon, not a user: the person who scheduled the stop months ago
+        // is not the one this record is about.
+        actorId: null,
+        serverId: server.id,
+        metadata: { action: 'stop', refused: true, state: body.state },
+      });
+      return;
+    }
+
     if (body.state === 'running') {
       this.webhooks.dispatch(server.id, WEBHOOK_EVENTS.SERVER_STARTED);
       return;

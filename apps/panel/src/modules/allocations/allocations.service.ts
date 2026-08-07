@@ -175,6 +175,11 @@ export class AllocationsService {
    * notices. Closing that needs the capability re-checked when the
    * configuration is pushed rather than when it is stored, and that belongs
    * with whatever else the panel comes to gate on capabilities.
+   *
+   * The asking itself lives in `NodeClientService.honoursCapability`, shared
+   * with the gate on the RCON stop transport. What must not be shared is the
+   * wording: a refusal that does not name the thing being refused is a refusal
+   * nobody can act on.
    */
   private async requireRolesHonoured(nodeId: number, role: string): Promise<void> {
     const node = await this.prisma.node.findUniqueOrThrow({
@@ -182,21 +187,24 @@ export class AllocationsService {
       select: { uuid: true },
     });
 
-    const health = await this.client.fetchSystemInformation(
+    const verdict = await this.client.honoursCapability(
       await this.nodes.getConnection(node.uuid),
+      NODE_CAPABILITIES.allocationRoles,
     );
 
-    if (!health.reachable) {
+    if (verdict.honoured) {
+      return;
+    }
+
+    if (!verdict.reachable) {
       throw new ServiceUnavailableException(
-        `This server's node cannot be reached (${health.reason}), so there is no telling whether it would honour the name "${role}". Try again once it answers.`,
+        `This server's node cannot be reached (${verdict.reason}), so there is no telling whether it would honour the name "${role}". Try again once it answers.`,
       );
     }
 
-    if (!health.system.capabilities.includes(NODE_CAPABILITIES.allocationRoles)) {
-      throw new ConflictException(
-        `The daemon on this server's node is too old to understand named ports: it would ignore "${role}" without a word and go on using the primary port. Upgrade the node, then name the port.`,
-      );
-    }
+    throw new ConflictException(
+      `The daemon on this server's node is too old to understand named ports: it would ignore "${role}" without a word and go on using the primary port. Upgrade the node, then name the port.`,
+    );
   }
 
   /**

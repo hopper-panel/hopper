@@ -1,3 +1,4 @@
+import { readinessSchema, stopConfigurationSchema } from '@hopper/shared';
 import {
   BadRequestException,
   ConflictException,
@@ -11,6 +12,7 @@ import { AUDIT_EVENTS, AuditService } from '../audit/audit.service.js';
 import { NodeClientService, type NodeConnection } from '../nodes/node-client.service.js';
 import { NodesService } from '../nodes/nodes.service.js';
 import { ServerConfigurationService } from './server-configuration.service.js';
+import { assertStopTransportHonoured } from './stop-transport.js';
 
 /**
  * Moving a server to another node.
@@ -35,8 +37,42 @@ import { ServerConfigurationService } from './server-configuration.service.js';
 /** Compressing a large world takes minutes, not seconds. */
 const ARCHIVE_TIMEOUT_MS = 30 * 60 * 1000;
 
-/** How long to wait for the server to actually stop before giving up. */
-const STOP_TIMEOUT_MS = 2 * 60 * 1000;
+/**
+ * The wait a server gets when its template names no deadline of its own.
+ *
+ * Two minutes, which is what every transfer has waited since the first release,
+ * and it stays a floor rather than becoming one term of a sum: a template
+ * declaring ten seconds must not shorten a wait that works today, and a
+ * template declaring nothing must not have its wait changed at all.
+ */
+const STOP_WAIT_FLOOR_MS = 2 * 60 * 1000;
+
+/**
+ * Room on top of the deadline the daemon itself honours.
+ *
+ * The panel's wait and the daemon's are not the same clock. The daemon starts
+ * counting when it writes the stop command; the panel started earlier, at the
+ * HTTP request that carried it, and finds out the server is down on a poll two
+ * seconds wide — after the SIGKILL that ends an expired deadline, after Docker
+ * has reaped the container, after the state change has reached the API. Giving
+ * the daemon exactly its own figure would have the panel give up in the seconds
+ * between the kill and the news of it, on a stop that had in fact happened.
+ */
+const STOP_WAIT_MARGIN_MS = 30 * 1000;
+
+/**
+ * The point past which no stop is worth waiting for.
+ *
+ * `stopTimeoutSeconds` is bounded at 600 by the contract and by the template
+ * definition, so this never binds on a value either of them wrote — it binds on
+ * a hand-edited row or a restored dump, where the column is a plain nullable
+ * integer with nothing in the database stopping it holding a day. Without a
+ * ceiling that row does not fail a transfer: it holds the request open for as
+ * long as it says, with the server already stopped and the operator watching a
+ * spinner that will outlive their session.
+ */
+const STOP_WAIT_CEILING_MS = 15 * 60 * 1000;
+
 const STOP_POLL_MS = 2000;
 
 const TRANSFER_ARCHIVE = 'hopper-transfer.tar.gz';
@@ -130,10 +166,64 @@ export class TransferService {
       throw new ConflictException('The target node has no free port to give this server.');
     }
 
+    // Refused while the server is still running on the node it knows, and
+    // before the node the operator picked is even asked anything — this costs
+    // no round trip, and a transfer refused for a reason no upgrade can fix
+    // should not spend one.
+    //
+    // What a transfer does to a named port is the reason. It claims exactly one
+    // allocation on the target and releases every name the old ones carried —
+    // a name means a port *for one server*, so it cannot follow the row across
+    // on its own — and the server lands with a single unnamed port. A template
+    // that resolves a port by name then finds nothing under it, for ever: Stop
+    // is refused for want of that port, Restart with it, and Kill, the one
+    // power action that needs no port, becomes the only way down. Which is
+    // through the save an `rcon` stop was declared to protect. Nothing about
+    // that state is repairable from the Network tab either — the name can be
+    // given back, but only after the move has already cost a world.
+    //
+    // Carrying the names across was weighed and left out, not missed. It means
+    // claiming one free allocation per declared role on the target inside the
+    // same transaction, naming each of them, and failing the whole transfer
+    // when the target is one port short of the set — a change to how a transfer
+    // chooses its ports, which is a good deal more than adding a stop
+    // transport. Until that exists, the honest answer is not to move the server.
+    const roles = declaredPortRoles({
+      ...server.template,
+      startup: server.startupCommand,
+    });
+
+    if (roles.length > 0) {
+      const named =
+        roles.length === 1
+          ? `a port named "${roles[0]}"`
+          : `ports named ${roles.map((role) => `"${role}"`).join(' and ')}`;
+      const those = roles.length === 1 ? 'that name' : 'those names';
+
+      throw new ConflictException(
+        `This server's template reaches ${named}, and a transfer can only give it one unnamed port on ${target.name}. ` +
+          `It would arrive with nothing answering to ${those}: every Stop and every Restart would be refused, and ` +
+          'Kill — which cuts the server off before it has written its world — would be the only way to bring it ' +
+          `down. Move this one by hand instead: create the server on ${target.name}, give it ${named} in its ` +
+          'Network tab, and restore a backup into it.',
+      );
+    }
+
+    // Checked before the server is stopped, let alone moved. A transfer is the
+    // other way a template meets a node, and landing a server that stops over
+    // RCON on a daemon too old to read that field would leave the target unable
+    // to parse the configurations of every server it already has — after this
+    // one's files had been copied across and the original deleted.
+    await assertStopTransportHonoured(
+      server.template.stop,
+      { name: target.name, connection: () => this.nodes.getConnection(target.uuid) },
+      this.client,
+    );
+
     const source = await this.nodes.getConnection(server.node.uuid);
     const destination = await this.nodes.getConnection(target.uuid);
 
-    await this.stopAndWait(source, server.uuid);
+    await this.stopAndWait(source, server.uuid, server.template.stopTimeoutSeconds);
 
     let archive: string | null = null;
 
@@ -225,8 +315,15 @@ export class TransferService {
    * half-written. What arrives on the other node would be a world that loads
    * with holes in it — the kind of damage nobody notices until a player walks
    * into it.
+   *
+   * How long it waits is the template's business, not this file's — see
+   * `stopWaitMs`.
    */
-  private async stopAndWait(node: NodeConnection, uuid: string): Promise<void> {
+  private async stopAndWait(
+    node: NodeConnection,
+    uuid: string,
+    stopTimeoutSeconds: number | null,
+  ): Promise<void> {
     const state = await this.client.fetchServerState(node, uuid);
 
     if (state === 'offline') {
@@ -235,7 +332,8 @@ export class TransferService {
 
     await this.client.powerServer(node, uuid, 'stop');
 
-    const deadline = Date.now() + STOP_TIMEOUT_MS;
+    const waitMs = stopWaitMs(stopTimeoutSeconds);
+    const deadline = Date.now() + waitMs;
 
     while (Date.now() < deadline) {
       await new Promise((resolve) => setTimeout(resolve, STOP_POLL_MS));
@@ -245,11 +343,12 @@ export class TransferService {
       }
     }
 
-    // Not killed. A server that ignores `stop` for two minutes is saving
-    // something or stuck, and killing it here would produce exactly the
-    // half-written world this wait exists to avoid. The administrator decides.
+    // Not killed. A server still up after its own deadline and the margin on
+    // top has either been SIGKILLed already and not noticed, or is stuck; a
+    // kill from here would produce exactly the half-written world this wait
+    // exists to avoid. The administrator decides.
     throw new ConflictException(
-      'The server did not stop within two minutes. Stop it yourself — killing it here could damage the world being written.',
+      `The server did not stop within ${Math.round(waitMs / 1000)} seconds. Stop it yourself — killing it here could damage the world being written.`,
     );
   }
 
@@ -371,7 +470,22 @@ export class TransferService {
   private async endpoints(serverUuid: string, targetNodeUuid: string) {
     const server = await this.prisma.server.findUnique({
       where: { uuid: serverUuid },
-      include: { node: true },
+      // The template comes along for everything the stop depends on: whether
+      // this server can be stopped at all on the target node decides whether it
+      // may go there, `readiness` is the second place a port name can be
+      // declared, `configFiles` is the fourth, and `stopTimeoutSeconds` is how
+      // long the stop below is waited for.
+      //
+      // The startup command is read off the *server*, not the template. It is
+      // copied from the template at creation and editable afterwards, and it is
+      // the server's copy the daemon actually runs — a name added there by an
+      // operator counts exactly as much as one the template shipped with.
+      include: {
+        node: true,
+        template: {
+          select: { stop: true, readiness: true, stopTimeoutSeconds: true, configFiles: true },
+        },
+      },
     });
 
     if (!server) {
@@ -390,4 +504,122 @@ export class TransferService {
 
     return { server, target };
   }
+}
+
+/**
+ * Every `{{server.allocations.<role>.…}}` token a startup command or a config
+ * file replacement reaches for.
+ *
+ * The two structured declarations below are the ones a reader thinks of; these
+ * two are the ones that bite. A template that writes
+ * `--rcon-port {{server.allocations.rcon.port}}` in its startup command has
+ * named a port just as surely as one that put it in a stop transport, and after
+ * a transfer stripped the name the daemon refuses the start outright rather
+ * than building a command nobody wrote. Config file replacements resolve the
+ * same tokens on the way into `server.properties` and its equivalents.
+ *
+ * Matched rather than parsed because that is how the daemon reads them too —
+ * the same shape as `invocation.ts`'s own pattern, deliberately, so the two
+ * cannot drift into disagreeing about what counts as a name.
+ */
+const ALLOCATION_TOKEN = /\{\{server\.allocations\.([a-z][a-z0-9]*)\.(?:ip|port)\}\}/g;
+
+function rolesInText(value: unknown, into: string[]): void {
+  if (typeof value !== 'string') {
+    return;
+  }
+
+  for (const match of value.matchAll(ALLOCATION_TOKEN)) {
+    into.push(match[1]!);
+  }
+}
+
+/**
+ * Every port name a template reaches for, from all four places one can appear.
+ *
+ * All four, because they are written months apart by different hands and a
+ * check that looked at some of them would pass the template it exists for. The
+ * two structured ones — the stop transport and the readiness strategy — are the
+ * obvious pair; the startup command and the config file replacements name a
+ * port through a `{{server.allocations.<role>.port}}` token and are the easy
+ * ones to forget, which is precisely why a transfer that stripped the name
+ * would break them silently.
+ *
+ * They are collected together rather than answered separately because the
+ * caller has one question: is there a name here that a transfer cannot honour.
+ *
+ * A structured value that does not parse declares nothing, deliberately. It is
+ * not this function's failure to report: an unreadable `stop` is refused
+ * outright when the configuration is built, and an unreadable `readiness` is
+ * dropped there with an error to the log. Refusing a transfer over it would put
+ * a message about ports in front of an operator whose template is broken in
+ * some entirely unrelated way. The two text fields are scanned regardless of
+ * whether anything else parses, since a token is a token.
+ */
+export function declaredPortRoles(template: {
+  stop: unknown;
+  readiness: unknown;
+  startup?: unknown;
+  configFiles?: unknown;
+}): string[] {
+  const roles: string[] = [];
+
+  const stop = stopConfigurationSchema.safeParse(template.stop);
+
+  if (stop.success && stop.data.type === 'rcon' && stop.data.role) {
+    roles.push(stop.data.role);
+  }
+
+  const readiness = readinessSchema.safeParse(template.readiness);
+
+  // `immediate` and `log` have no port to name; the union narrows to the two
+  // arms that do. A strategy naming no role means the primary port, which is
+  // the one thing a transfer *does* hand over, so it is not a role at all here.
+  if (readiness.success && 'role' in readiness.data && readiness.data.role) {
+    roles.push(readiness.data.role);
+  }
+
+  rolesInText(template.startup, roles);
+  // Walked as raw JSON rather than parsed into `configFileSchema` first: a
+  // replacement value is a string wherever it sits in that structure, and a
+  // config file list that fails to parse is still a config file list whose
+  // tokens the daemon would try to resolve.
+  rolesInText(JSON.stringify(template.configFiles ?? null), roles);
+
+  return [...new Set(roles)];
+}
+
+/**
+ * How long a transfer waits for a stop, given what the template asked for.
+ *
+ * A constant two minutes was right for exactly as long as thirty seconds was
+ * the only stop deadline in existence. A template can now declare up to six
+ * hundred seconds and the shipped Factorio one declares two hundred and forty,
+ * so a fixed wait is a second, shorter deadline sitting in front of the
+ * daemon's: a mature world that takes a hundred and fifty seconds to serialise
+ * is given up on with thirty to go, the transfer fails, and the operator is
+ * told to stop a server that was in the middle of doing exactly that.
+ *
+ * So the figure follows the template, with a margin for the round trip — see
+ * `STOP_WAIT_MARGIN_MS` — and is then clamped at both ends:
+ *
+ * - **A floor**, because a template declaring a small number must not shorten
+ *   the wait a transfer has always had. The daemon SIGKILLs at its own deadline
+ *   and the server goes down whether or not the panel is still watching; the
+ *   only thing a shorter wait can add is a transfer that fails after the stop
+ *   it asked for succeeded.
+ * - **A ceiling**, because the column holding this is a nullable integer and
+ *   nothing in the database bounds it. See `STOP_WAIT_CEILING_MS`.
+ *
+ * Null — which is what every template that has never named a deadline stores —
+ * comes out as the floor, unchanged, which is the whole point of expressing
+ * this as a clamp rather than a sum.
+ */
+export function stopWaitMs(stopTimeoutSeconds: number | null | undefined): number {
+  const declaredMs = (stopTimeoutSeconds ?? 0) * 1000;
+
+  return Math.min(
+    Math.max(declaredMs + STOP_WAIT_MARGIN_MS, STOP_WAIT_FLOOR_MS),
+    STOP_WAIT_CEILING_MS,
+  );
 }

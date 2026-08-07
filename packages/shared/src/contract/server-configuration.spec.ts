@@ -74,6 +74,118 @@ describe('serverConfigurationSchema', () => {
 });
 
 /**
+ * Stopping a server that reads no standard input.
+ *
+ * Rust, ARK, Palworld and most Source servers never read stdin, so the
+ * `command` transport writes into a pipe nobody holds: nothing happens for the
+ * whole deadline and the server is SIGKILLed. `signal` was the alternative, and
+ * a signal is a request a game may handle, ignore, or handle by exiting without
+ * writing its world. RCON is the channel those servers answer on.
+ */
+describe('the rcon stop transport', () => {
+  const RCON_STOP = {
+    type: 'rcon',
+    command: 'quit',
+    role: 'rcon',
+    secretVariable: 'RCON_PASSWORD',
+  };
+
+  const withStop = (stop: unknown) => serverConfigurationSchema.safeParse({ ...MINIMAL, stop });
+
+  it('carries a command, a port name and the name of a variable', () => {
+    expect(withStop(RCON_STOP).data?.stop).toEqual(RCON_STOP);
+  });
+
+  it('takes the primary port when it names none', () => {
+    // The same reading as a readiness strategy that names nothing, and the
+    // reading every configuration written before names existed asks for.
+    const stop = { type: 'rcon', command: 'quit', secretVariable: 'RCON_PASSWORD' };
+
+    expect(withStop(stop).data?.stop).toEqual(stop);
+  });
+
+  it('refuses a stop with no command to send', () => {
+    // There is no default worth having: `stop` is Minecraft's, `quit` is
+    // Factorio's and Rust's, `DoExit` is ARK's. A guess here is a stop that
+    // reaches the server, is not understood, and changes nothing — followed by
+    // the SIGKILL this transport exists to avoid.
+    expect(withStop({ ...RCON_STOP, command: '' }).success).toBe(false);
+    expect(withStop({ type: 'rcon', secretVariable: 'RCON_PASSWORD' }).success).toBe(false);
+  });
+
+  it('refuses a stop that names no password variable', () => {
+    expect(withStop({ type: 'rcon', command: 'quit' }).success).toBe(false);
+    expect(withStop({ ...RCON_STOP, secretVariable: '' }).success).toBe(false);
+  });
+
+  it('holds the name of a variable, never a password', () => {
+    // Nothing in the schema can stop somebody putting a literal password in
+    // `secretVariable`, and nothing here pretends otherwise. What it can do is
+    // refuse to grow a field for one: a configuration holding a secret is a
+    // secret in every payload the panel sends and in every log line that
+    // prints one.
+    expect(Object.keys(withStop(RCON_STOP).data?.stop ?? {})).not.toContain('password');
+  });
+
+  it.each(['RCON', 'rcon.port', 'rcon-port', 'rcon_port', '2rcon'])(
+    'refuses the port name %s, exactly as a readiness strategy does',
+    (role) => {
+      // The same schema, so the two cannot drift into meaning different things
+      // by the same string. A stop and a readiness check that resolved `RCON`
+      // differently would send the handshake to two different ports.
+      expect(withStop({ ...RCON_STOP, role }).success).toBe(false);
+    },
+  );
+
+  it('leaves the two transports that came before it untouched', () => {
+    // The whole existing catalogue, every imported egg and every server in
+    // production goes through one of these two.
+    expect(withStop({ type: 'command', value: 'stop' }).data?.stop).toEqual({
+      type: 'command',
+      value: 'stop',
+    });
+    expect(withStop({ type: 'signal', value: 'SIGINT' }).data?.stop).toEqual({
+      type: 'signal',
+      value: 'SIGINT',
+    });
+    expect(withStop({ type: 'quit' }).success).toBe(false);
+  });
+});
+
+/**
+ * How long a server is given to shut down.
+ *
+ * The one number in this contract measured in lost work: it expires, the kernel
+ * cuts the process mid-save, and what comes back is the last autosave. Thirty
+ * seconds is a Bukkit figure, and a game that writes its whole world on
+ * shutdown — which is every game the transport above exists for — needs its own.
+ */
+describe('stopTimeoutSeconds', () => {
+  const withTimeout = (stopTimeoutSeconds: unknown) =>
+    serverConfigurationSchema.safeParse({ ...MINIMAL, stopTimeoutSeconds });
+
+  it('stays at thirty seconds when nothing says otherwise', () => {
+    // Every server in existence runs on this, because until templates could
+    // name a figure there was nothing else to run on. It must not move.
+    expect(serverConfigurationSchema.parse(MINIMAL).stopTimeoutSeconds).toBe(30);
+  });
+
+  it('accepts a figure a template chose', () => {
+    expect(withTimeout(240).data?.stopTimeoutSeconds).toBe(240);
+  });
+
+  it('refuses a deadline that is not one', () => {
+    // Zero and negative kill instantly, which is Kill under another name; past
+    // ten minutes an operator watching a spinner cannot tell a server that is
+    // saving from one that has hung.
+    expect(withTimeout(0).success).toBe(false);
+    expect(withTimeout(-1).success).toBe(false);
+    expect(withTimeout(601).success).toBe(false);
+    expect(withTimeout(30.5).success).toBe(false);
+  });
+});
+
+/**
  * How long the daemon believes a start that never announced itself.
  *
  * The daemon hardcoded ten minutes and gave up in a console line, leaving the

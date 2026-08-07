@@ -1,6 +1,14 @@
 import type { StatusReport } from '@hopper/shared';
-import { describe, expect, it } from 'vitest';
-import { describeStop } from './remote.controller.js';
+import { describe, expect, it, vi } from 'vitest';
+import type { PrismaService } from '../../prisma/prisma.service.js';
+import { AUDIT_EVENTS, type AuditService } from '../audit/audit.service.js';
+import type { BackupsService } from '../backups/backups.service.js';
+import type { ServerConfigurationService } from '../servers/server-configuration.service.js';
+import { WEBHOOK_EVENTS } from '../webhooks/events.js';
+import type { WebhooksService } from '../webhooks/webhooks.service.js';
+import type { RemoteRequest } from './remote-node.guard.js';
+import type { SftpAuthService } from './sftp-auth.service.js';
+import { RemoteController, describeStop } from './remote.controller.js';
 
 /**
  * What the recipient of a crash notification is told.
@@ -48,5 +56,77 @@ describe('describeStop', () => {
     expect(describeStop(report({ oomKilled: true, cause: 'readiness_failed' }))).toContain(
       'out of memory',
     );
+  });
+});
+
+/**
+ * A stop the daemon would not deliver.
+ *
+ * The only report that arrives without a transition behind it: the server is
+ * still running, and saying so is the point. Every branch of this handler was
+ * written for a state the server had just moved into, and the first of them
+ * would announce that a server had started — to an operator whose stop had just
+ * silently failed.
+ */
+interface AuditEntry {
+  event: string;
+  serverId: number;
+  metadata: Record<string, unknown>;
+}
+
+function controller() {
+  const record = vi.fn((_entry: AuditEntry) => Promise.resolve());
+  const dispatch = vi.fn();
+
+  const prisma = {
+    server: { findFirst: vi.fn(() => Promise.resolve({ id: 7, name: 'Test' })) },
+  } as unknown as PrismaService;
+
+  const instance = new RemoteController(
+    {} as unknown as ServerConfigurationService,
+    prisma,
+    { record } as unknown as AuditService,
+    {} as unknown as SftpAuthService,
+    {} as unknown as BackupsService,
+    { dispatch } as unknown as WebhooksService,
+  );
+
+  return { instance, record, dispatch };
+}
+
+const fromNode = { node: { id: 1, name: 'node-1' } } as unknown as RemoteRequest;
+
+describe('a refused stop reported by a daemon', () => {
+  it('is recorded as a power action that did not happen', async () => {
+    const { instance, record, dispatch } = controller();
+
+    await instance.reportStatus(
+      'server-uuid',
+      report({ state: 'running', cause: 'stop_refused' }),
+      fromNode,
+    );
+
+    const entry = record.mock.calls[0]?.[0];
+
+    expect(entry?.event).toBe(AUDIT_EVENTS.SERVER_POWER);
+    expect(entry?.serverId).toBe(7);
+    expect(entry?.metadata).toMatchObject({ action: 'stop', refused: true });
+    // The regression this guard exists for: without it the running branch fires
+    // and the operator is told their server started, moments after the stop
+    // they asked for was refused.
+    expect(dispatch).not.toHaveBeenCalled();
+  });
+
+  it('leaves an ordinary start alone', async () => {
+    const { instance, record, dispatch } = controller();
+
+    await instance.reportStatus(
+      'server-uuid',
+      report({ state: 'running', expected: true }),
+      fromNode,
+    );
+
+    expect(dispatch).toHaveBeenCalledWith(7, WEBHOOK_EVENTS.SERVER_STARTED);
+    expect(record).not.toHaveBeenCalled();
   });
 });

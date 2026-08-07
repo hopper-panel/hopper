@@ -110,6 +110,13 @@ async function seedTemplates(): Promise<void> {
       // is how a nullable Json column is set to SQL NULL — a bare `null` is
       // refused, because Prisma cannot tell it from the JSON value `null`.
       readiness: definition.readiness ?? Prisma.DbNull,
+      // The same two fields the sync service writes, kept in step by hand
+      // because this file is deliberately a second copy. Missing one here is
+      // the obvious bug and it is a quiet one: `pnpm seed` and Resynchronise
+      // would leave the same template in two different states, and a stop
+      // transport is only exercised the first time somebody presses Stop.
+      stop: definition.stop ?? Prisma.DbNull,
+      stopTimeoutSeconds: definition.stopTimeoutSeconds ?? null,
       configFiles: definition.configFiles,
       fileDenylist: definition.fileDenylist,
       installContainer: definition.installContainer,

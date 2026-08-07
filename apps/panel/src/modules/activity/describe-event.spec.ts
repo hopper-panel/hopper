@@ -9,6 +9,32 @@ describe('describeEvent', () => {
     );
   });
 
+  /**
+   * The Activity tab is where an operator goes after a scheduled stop to find
+   * out whether it ran. Reading only `action` renders a refusal as the thing
+   * that did not happen — "Stopped the server." over a server still serving
+   * players — and ends the investigation there.
+   */
+  it('says a power action was refused rather than reporting it as done', () => {
+    expect(describeEvent(AUDIT_EVENTS.SERVER_POWER, { action: 'stop', refused: true })).toContain(
+      'Refused',
+    );
+    expect(
+      describeEvent(AUDIT_EVENTS.SERVER_POWER, { action: 'stop', refused: true }),
+    ).not.toContain('Stopped the server.');
+  });
+
+  it('still reports an ordinary stop as a stop', () => {
+    // The flag is absent on every power record written before it existed, and
+    // on every one that succeeded.
+    expect(describeEvent(AUDIT_EVENTS.SERVER_POWER, { action: 'stop' })).toBe(
+      'Stopped the server.',
+    );
+    expect(describeEvent(AUDIT_EVENTS.SERVER_POWER, { action: 'stop', refused: false })).toBe(
+      'Stopped the server.',
+    );
+  });
+
   it('quotes the command that was run', () => {
     expect(describeEvent(AUDIT_EVENTS.SERVER_COMMAND, { command: 'say hello' })).toContain(
       'say hello',

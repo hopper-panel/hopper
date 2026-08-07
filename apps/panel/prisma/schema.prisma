@@ -372,6 +372,26 @@ model Template {
 
   /// How to stop the server: `command:stop` or `signal:SIGTERM`.
   stopCommand      String  @default("command:stop")
+
+  /// How to stop the server when the string above cannot say it
+  /// (StopConfiguration shape from the contract).
+  ///
+  /// Nullable, and every existing row keeps a NULL: the panel then decodes
+  /// `stopCommand` exactly as it always has. Two words separated by a colon
+  /// cannot carry an RCON stop — a command, a password variable and a port
+  /// name — so the structured form lives here instead of being encoded into a
+  /// column every existing template and every imported egg already fills.
+  stop Json?
+
+  /// Seconds a server gets to shut down before it is SIGKILLed.
+  ///
+  /// Nullable, meaning "this template did not say", which the panel turns into
+  /// the contract's default of 30. That default is a Minecraft figure and it
+  /// is wrong for a game that writes its whole world on shutdown, where the
+  /// kill lands inside the save — but changing it for everybody would extend
+  /// every stop on every existing server, so it is the template's to raise.
+  stopTimeoutSeconds Int?
+
   /// Regex signalling that the server is ready.
   startupDetection String?
 

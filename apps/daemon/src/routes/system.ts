@@ -33,7 +33,7 @@ export function registerSystemRoutes(
       // What this build honours that an older one silently did not. The panel
       // gates operations on it rather than on the daemon's version string,
       // which says nothing about what was backported into it.
-      capabilities: [NODE_CAPABILITIES.allocationRoles],
+      capabilities: [NODE_CAPABILITIES.allocationRoles, NODE_CAPABILITIES.rconStop],
     };
 
     return reply.header('x-hopper-contract', CONTRACT_VERSION).send(info);

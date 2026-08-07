@@ -84,18 +84,21 @@ function serviceFor(fixture: Fixture = {}) {
     },
   } as unknown as PrismaService;
 
+  // The capability probe as `NodeClientService` exposes it: one question, three
+  // answers, because "no" and "cannot say" are different refusals with
+  // different fixes.
   const client = {
-    fetchSystemInformation: vi.fn(() =>
+    honoursCapability: vi.fn((_node: unknown, capability: string) =>
       Promise.resolve(
         fixture.unreachable
-          ? { reachable: false as const, reason: 'Could not connect to the daemon.', latencyMs: 1 }
-          : {
-              reachable: true as const,
-              latencyMs: 1,
-              system: {
-                capabilities: fixture.capabilities ?? [NODE_CAPABILITIES.allocationRoles],
-              },
-            },
+          ? {
+              honoured: false as const,
+              reachable: false as const,
+              reason: 'Could not connect to the daemon.',
+            }
+          : (fixture.capabilities ?? [NODE_CAPABILITIES.allocationRoles]).includes(capability)
+            ? { honoured: true as const }
+            : { honoured: false as const, reachable: true as const },
       ),
     ),
   } as unknown as NodeClientService;
@@ -157,7 +160,7 @@ describe('AllocationsService.setRole', () => {
     await service.setRole(SERVER_UUID, 2, null);
 
     expect(updated).toHaveBeenCalledWith({ where: { id: 2 }, data: { role: null } });
-    expect(client.fetchSystemInformation).not.toHaveBeenCalled();
+    expect(client.honoursCapability).not.toHaveBeenCalled();
   });
 
   it('refuses to name the primary port', async () => {
