@@ -56,7 +56,7 @@ Hopper aims for the middle:
 | 🥚 **Egg import**        | Reuse the hundreds of existing Pterodactyl eggs                  |
 | 📁 **File manager**      | In-browser editing, upload, archives — behind a strict path jail |
 | 🔌 **Built-in SFTP**     | Sign in with your panel credentials, permissions honoured        |
-| 💾 **Backups**           | Local or S3 (MinIO, Backblaze, Wasabi), one-click restore        |
+| 💾 **Backups**           | Compressed archives on the node, one-click restore               |
 | ⏰ **Scheduler**         | Daily restart, nightly backup, scheduled commands                |
 | 👥 **Subusers**          | Share a server with your staff, permission by permission         |
 | 🔔 **Notifications**     | Discord or a signed webhook: server down, backup finished        |
@@ -104,7 +104,7 @@ hopper/
 │   ├── shared/           # Zod panel↔daemon contract, permissions
 │   ├── templates/        # server templates + Pterodactyl egg import
 │   └── config/           # shared ESLint / TypeScript
-├── docker/               # dev compose (PostgreSQL, Redis, MinIO)
+├── docker/               # dev compose (PostgreSQL, Redis)
 ├── install/              # install.sh, systemd units, nginx & apache vhosts
 └── docs/                 # installation, updating, CLI, templates, security
 ```
@@ -130,12 +130,11 @@ pnpm --filter @hopper/panel db:seed   # prints the generated admin password
 pnpm dev
 ```
 
-| Service          | Address                                           |
-| ---------------- | ------------------------------------------------- |
-| Interface (Vite) | <http://localhost:5173>                           |
-| Panel API        | <http://localhost:8080>                           |
-| Daemon           | <http://localhost:8443>                           |
-| MinIO console    | <http://localhost:9001> (hopperadmin/hopperadmin) |
+| Service          | Address                 |
+| ---------------- | ----------------------- |
+| Interface (Vite) | <http://localhost:5173> |
+| Panel API        | <http://localhost:8080> |
+| Daemon           | <http://localhost:8443> |
 
 The interface calls the API on a relative path: Vite forwards `/api` to the panel, which avoids any
 client-side CORS configuration in development.
