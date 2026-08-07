@@ -12,8 +12,16 @@ import {
 const CONTEXT = {
   environment: { SERVER_JARFILE: 'server.jar', MINECRAFT_VERSION: '1.21.4' },
   memoryMib: 4096,
-  ip: '0.0.0.0',
-  port: 25565,
+  allocations: { default: { ip: '0.0.0.0', port: 25565 }, additional: [] },
+};
+
+/** The same server, with a second port the operator has named. */
+const WITH_NAMED_PORT = {
+  ...CONTEXT,
+  allocations: {
+    default: { ip: '0.0.0.0', port: 25565 },
+    additional: [{ ip: '0.0.0.0', port: 27015, role: 'rcon' }],
+  },
 };
 
 describe('tokenize', () => {
@@ -86,11 +94,115 @@ describe('substitute', () => {
     expect(result.missing).toEqual(['UNKNOWN']);
   });
 
+  // `{{constructor}}` matches the variable pattern, and a plain lookup answers
+  // it out of Object.prototype: the argument would come out holding `function
+  // Object() { [native code] }` and nothing would call it missing.
+  it('does not answer a variable out of the prototype chain', () => {
+    const result = substitute('{{constructor}}/{{toString}}', CONTEXT);
+
+    expect(result.value).toBe('/');
+    expect(result.missing).toEqual(['constructor', 'toString']);
+  });
+
   // A template must not be able to redirect the listening port announced to
   // players by redefining the variable.
   it('does not let the template overwrite a built-in variable', () => {
     const context = { ...CONTEXT, environment: { SERVER_PORT: '1337' } };
     expect(substitute('{{SERVER_PORT}}', context).value).toBe('25565');
+  });
+});
+
+/**
+ * Reaching a port by the name the operator gave it.
+ *
+ * The primary port has always been `{{SERVER_PORT}}`. These are for the others
+ * — an RCON port, a query port — which until now a command had no way to name
+ * at all, since an allocation was an `{ip, port}` with nothing to match on.
+ */
+describe('the named ports', () => {
+  it('resolves a role to its port and its address', () => {
+    expect(substitute('{{server.allocations.rcon.port}}', WITH_NAMED_PORT).value).toBe('27015');
+    expect(substitute('{{server.allocations.rcon.ip}}', WITH_NAMED_PORT).value).toBe('0.0.0.0');
+  });
+
+  it('leaves the primary port to SERVER_PORT alone', () => {
+    // The primary carries no role — the contract gives it no field to hold one
+    // — so `default` here is not an alias for it. A server that has no port
+    // named `default` has no such variable, which is what makes the refusal
+    // below possible rather than a wrong answer.
+    expect(substitute('{{server.allocations.default.port}}', WITH_NAMED_PORT).missing).toEqual([
+      'server.allocations.default.port',
+    ]);
+    expect(substitute('{{SERVER_PORT}}', WITH_NAMED_PORT).value).toBe('25565');
+  });
+
+  it('defines nothing for a port the operator has not named', () => {
+    // An unnamed additional allocation is the ordinary case, and it is
+    // unreachable by name on purpose: nothing was named, so nothing answers.
+    const context = {
+      ...CONTEXT,
+      allocations: {
+        default: { ip: '0.0.0.0', port: 25565 },
+        additional: [{ ip: '0.0.0.0', port: 8123 }],
+      },
+    };
+
+    expect(substitute('{{server.allocations.dynmap.port}}', context).missing).toEqual([
+      'server.allocations.dynmap.port',
+    ]);
+  });
+
+  it('refuses a name it does not have rather than answer with another port', () => {
+    // The role exists on some other server, not on this one. Reading it as the
+    // primary port is the failure the whole design refuses: the command would
+    // speak RCON to the game port, and nobody would be told.
+    expect(() =>
+      buildInvocation('./factorio --rcon-port {{server.allocations.rcon.port}}', CONTEXT),
+    ).toThrow(/no port on this server is named "rcon"|has none/);
+  });
+
+  it('says which name went unmatched, and where to create it', () => {
+    const message = refusalFor('./factorio --rcon-port {{server.allocations.rcon.port}}', CONTEXT);
+
+    expect(message).toContain('"rcon"');
+    // The same two ways out the readiness refusal offers, in the same words:
+    // name the port, or stop asking for it.
+    expect(message).toContain('Network tab');
+  });
+
+  it('builds the command the template wrote once the port is named', () => {
+    const { argv } = buildInvocation(
+      './factorio --port {{SERVER_PORT}} --rcon-port {{server.allocations.rcon.port}}',
+      WITH_NAMED_PORT,
+    );
+
+    expect(argv).toEqual(['./factorio', '--port', '25565', '--rcon-port', '27015']);
+  });
+
+  it('answers one port for a name a payload carries twice', () => {
+    // The panel's unique index makes this impossible and the contract cannot
+    // say so. If it ever arrives, the command and the readiness probe have to
+    // agree, and `allocationForRole` takes the first.
+    const context = {
+      ...CONTEXT,
+      allocations: {
+        default: { ip: '0.0.0.0', port: 25565 },
+        additional: [
+          { ip: '0.0.0.0', port: 27015, role: 'rcon' },
+          { ip: '0.0.0.0', port: 27016, role: 'rcon' },
+        ],
+      },
+    };
+
+    expect(substitute('{{server.allocations.rcon.port}}', context).value).toBe('27015');
+  });
+
+  // Dotted names are not POSIX and never reach the container's environment —
+  // see `buildEnvironment`. The command is the only place they resolve.
+  it('stays out of the environment of the container', () => {
+    expect(buildEnvironment(WITH_NAMED_PORT).some((entry) => entry.startsWith('server.'))).toBe(
+      false,
+    );
   });
 });
 
@@ -212,12 +324,53 @@ describe('buildInvocation', () => {
 
   // ---------------------------------------------------------------------------
 
-  it('drops an argument that became entirely empty', () => {
-    const context = { ...CONTEXT, environment: {} };
-    const { argv, missingVariables } = buildInvocation('java {{MISSING}} -jar s.jar', context);
+  // ---------------------------------------------------------------------------
+  // An argument that resolves to nothing. Two accidents wearing one face, and
+  // the tests below are the record of which is which.
+  // ---------------------------------------------------------------------------
+
+  it('drops an argument whose variables are set and empty', () => {
+    // `{{JAVA_FLAGS}}` holding nothing is how half the imported eggs say "no
+    // extra flags". Passing `java` an empty argument fails the start, so the
+    // argument goes — exactly as it always has, because these servers run
+    // today and this change is not allowed to stop them.
+    const context = { ...CONTEXT, environment: { JAVA_FLAGS: '', SERVER_JARFILE: 's.jar' } };
+    const { argv } = buildInvocation('java {{JAVA_FLAGS}} -jar {{SERVER_JARFILE}}', context);
 
     expect(argv).toEqual(['java', '-jar', 's.jar']);
-    expect(missingVariables).toEqual(['MISSING']);
+  });
+
+  it('reports the argument it dropped instead of dropping it quietly', () => {
+    const context = { ...CONTEXT, environment: { JAVA_FLAGS: '' } };
+    const { droppedArguments } = buildInvocation('java {{JAVA_FLAGS}} -jar s.jar', context);
+
+    // The caller writes this on the server's console. Nothing else would ever
+    // tell an operator that the argv is one argument shorter than the command
+    // they are reading in the panel.
+    expect(droppedArguments).toEqual(['{{JAVA_FLAGS}}']);
+  });
+
+  it('refuses to build a command that names a variable nobody defined', () => {
+    // This used to produce `['java', '-jar', 's.jar']` and a
+    // `missingVariables` list the only caller threw away.
+    expect(() =>
+      buildInvocation('java {{MISSING}} -jar s.jar', { ...CONTEXT, environment: {} }),
+    ).toThrow(InvocationError);
+  });
+
+  /**
+   * The reason the refusal above is worth a broken start.
+   *
+   * Dropping the value of a flag does not give a command one argument short:
+   * it gives a command where the flag eats the next argument. Here `--rcon-port`
+   * would take `--port` as its value, the game would be given no port at all,
+   * and the only symptom is the game's own complaint, several lines into a
+   * console nobody has open.
+   */
+  it('never leaves a flag holding the argument that followed its value', () => {
+    const template = './factorio --rcon-port {{RCON_PORT}} --port {{SERVER_PORT}}';
+
+    expect(() => buildInvocation(template, { ...CONTEXT, environment: {} })).toThrow(/RCON_PORT/);
   });
 
   it('rejects an empty template', () => {
@@ -225,20 +378,43 @@ describe('buildInvocation', () => {
   });
 
   it('rejects a template whose executable disappears after substitution', () => {
-    expect(() => buildInvocation('{{MISSING}}', { ...CONTEXT, environment: {} })).toThrow(
-      /no executable/,
-    );
+    // A *defined* variable holding nothing, so the drop rule applies and the
+    // argv comes out empty — the unknown-variable refusal would otherwise be
+    // the one that fires, and this guard would stop testing anything.
+    expect(() =>
+      buildInvocation('{{JAVA_HOME}}', { ...CONTEXT, environment: { JAVA_HOME: '' } }),
+    ).toThrow(/no executable/);
   });
 
-  it('reports each missing variable only once', () => {
-    const { missingVariables } = buildInvocation('java {{X}} {{X}} {{Y}} -jar s.jar', {
+  it('names every unknown variable, once each, in one refusal', () => {
+    // One start, one list: an operator fixing a template should not have to
+    // press start once per typo to discover the next one.
+    const message = refusalFor('java {{X}} {{X}} {{Y}} -jar s.jar', {
       ...CONTEXT,
       environment: {},
     });
 
-    expect(missingVariables.sort()).toEqual(['X', 'Y']);
+    expect(message).toContain('{{X}}');
+    expect(message).toContain('{{Y}}');
+    expect(message.match(/\{\{X\}\}/g)).toHaveLength(1);
   });
 });
+
+/**
+ * The message a refused command comes back with.
+ *
+ * Returns the empty string when the command builds, so a test that expected a
+ * refusal fails on what it was asserting rather than on a thrown assertion
+ * caught by its own `catch`.
+ */
+function refusalFor(template: string, context: Parameters<typeof buildInvocation>[1]): string {
+  try {
+    buildInvocation(template, context);
+    return '';
+  } catch (error: unknown) {
+    return error instanceof Error ? error.message : String(error);
+  }
+}
 
 describe('buildEnvironment', () => {
   it('exposes the template variables and the built-in ones', () => {

@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { serverConfigurationSchema } from './server-configuration.js';
+import {
+  allocationForRole,
+  serverAllocationsSchema,
+  serverConfigurationSchema,
+} from './server-configuration.js';
 
 const MINIMAL = {
   uuid: '3f2504e0-4f89-41d3-9a0c-0305e82c3301',
@@ -147,5 +151,118 @@ describe('readiness deadlines', () => {
 
     expect(parsed.startupDetection).toBe('\\)! For help, type "help"');
     expect(parsed.readiness).toBeUndefined();
+  });
+});
+
+/**
+ * A port that has a name.
+ *
+ * `readiness.role` shipped in two releases meaning nothing: an allocation was
+ * `{ip, port}`, so the daemon refused any strategy naming one rather than
+ * knock on the game port and stop a healthy server at its deadline. This is
+ * the field that makes the name resolvable, and the shape it is allowed to
+ * take is the whole of its reliability — it is typed once by whoever names the
+ * port and once by whoever writes the template, months apart.
+ */
+describe('allocation names', () => {
+  const withAllocations = (allocations: unknown) =>
+    serverConfigurationSchema.safeParse({ ...MINIMAL, allocations });
+
+  it('accepts a named additional port', () => {
+    const parsed = withAllocations({
+      default: { ip: '0.0.0.0', port: 25565 },
+      additional: [{ ip: '0.0.0.0', port: 25575, role: 'rcon' }],
+    });
+
+    expect(parsed.success && parsed.data.allocations.additional[0]?.role).toBe('rcon');
+  });
+
+  it('leaves an unnamed port with no name at all', () => {
+    // Not `null`, not an empty string: absent. Every allocation on every
+    // existing installation is this one, and its payload has to be the payload
+    // it has always been.
+    const parsed = serverConfigurationSchema.parse({
+      ...MINIMAL,
+      allocations: {
+        default: { ip: '0.0.0.0', port: 25565 },
+        additional: [{ ip: '0.0.0.0', port: 8123 }],
+      },
+    });
+
+    expect(JSON.stringify(parsed.allocations.additional)).toBe('[{"ip":"0.0.0.0","port":8123}]');
+  });
+
+  it('gives the primary port nowhere to keep a name', () => {
+    // One port, one way to name it. The primary is named by being the primary
+    // — it is what a strategy naming nothing resolves to — and a second name
+    // for it would follow the primary around the moment somebody moved it.
+    const parsed = withAllocations({
+      default: { ip: '0.0.0.0', port: 25565, role: 'game' },
+      additional: [],
+    });
+
+    expect(parsed.success && 'role' in parsed.data.allocations.default).toBe(false);
+  });
+
+  it.each([
+    ['RCON', 'uppercase, when the match is exact'],
+    ['voice.udp', 'a dot, which would split {{server.allocations.<role>.port}}'],
+    ['rcon-port', 'a separator, which invents a second spelling of one intent'],
+    ['rcon_port', 'the other separator, for the same reason'],
+    ['2nd', 'a leading digit, in something that becomes a variable name'],
+    ['', 'nothing at all'],
+    ['a'.repeat(25), 'more characters than anybody will retype correctly'],
+  ])('refuses %s — %s', (role) => {
+    expect(
+      withAllocations({
+        default: { ip: '0.0.0.0', port: 25565 },
+        additional: [{ ip: '0.0.0.0', port: 25575, role }],
+      }).success,
+    ).toBe(false);
+  });
+
+  it('refuses the same shape on a readiness strategy', () => {
+    // The strategy and the allocation are the two ends of one match. A role
+    // the panel would refuse to store but a template could declare is a name
+    // that can only ever go unmatched.
+    expect(
+      serverConfigurationSchema.safeParse({
+        ...MINIMAL,
+        readiness: { type: 'rcon', role: 'RCON', secretVariable: 'RCON_PASSWORD' },
+      }).success,
+    ).toBe(false);
+  });
+});
+
+/**
+ * Which port a role means.
+ *
+ * One function, because two lookups written separately would eventually
+ * disagree about the fallback — and the disagreement would surface as a daemon
+ * probing one port while the server was configured to listen on another.
+ */
+describe('allocationForRole', () => {
+  const ALLOCATIONS = serverAllocationsSchema.parse({
+    default: { ip: '0.0.0.0', port: 25565 },
+    additional: [
+      { ip: '0.0.0.0', port: 25575, role: 'rcon' },
+      { ip: '0.0.0.0', port: 8123 },
+    ],
+  });
+
+  it('reads no name as the primary port', () => {
+    // What every configuration written before names existed asks for.
+    expect(allocationForRole(ALLOCATIONS, undefined)).toEqual({ ip: '0.0.0.0', port: 25565 });
+  });
+
+  it('finds the port carrying the name', () => {
+    expect(allocationForRole(ALLOCATIONS, 'rcon')?.port).toBe(25575);
+  });
+
+  it('answers nothing for a name no port carries', () => {
+    // Nothing, and deliberately not the primary port: the caller has to be
+    // able to refuse. Falling back here is precisely the failure the daemon's
+    // refusal exists to prevent.
+    expect(allocationForRole(ALLOCATIONS, 'query')).toBeUndefined();
   });
 });

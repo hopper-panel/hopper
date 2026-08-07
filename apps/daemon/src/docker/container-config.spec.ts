@@ -223,4 +223,68 @@ describe('buildContainerOptions', () => {
     expect(options.Env).toContain('SERVER_JARFILE=server.jar');
     expect(options.Env).toContain('SERVER_PORT=25565');
   });
+
+  /**
+   * A startup command that names one of the server's ports.
+   *
+   * The three cases a template author meets, in the order they meet them: the
+   * port is named and the command is built; the port is not named and nothing
+   * is started; the value is empty and the argument goes, out loud.
+   */
+  describe('a command that names a port', () => {
+    const withRcon = makeConfiguration({
+      invocation: './factorio --port {{SERVER_PORT}} --rcon-port {{server.allocations.rcon.port}}',
+      allocations: {
+        default: { ip: '0.0.0.0', port: 34197 },
+        additional: [{ ip: '0.0.0.0', port: 27015, role: 'rcon' }],
+      },
+    });
+
+    it('resolves the name to the port the operator gave it', () => {
+      const built = buildContainerOptions({ configuration: withRcon, ...OPTIONS });
+
+      expect(built.Cmd).toEqual(['./factorio', '--port', '34197', '--rcon-port', '27015']);
+    });
+
+    it('publishes both ports, whether or not one is named', () => {
+      expect(Object.keys(portBindingsFor(withRcon).exposed).sort()).toEqual([
+        '27015/tcp',
+        '27015/udp',
+        '34197/tcp',
+        '34197/udp',
+      ]);
+    });
+
+    it('builds no container at all when the server has no such port', () => {
+      // `--rcon-port` would otherwise be left holding `--port`, and the game
+      // would start with no port of its own. Nothing is created, and the
+      // refusal carries the name that went unmatched.
+      const unnamed = makeConfiguration({
+        invocation: withRcon.invocation,
+        allocations: { default: { ip: '0.0.0.0', port: 34197 }, additional: [] },
+      });
+
+      expect(() => buildContainerOptions({ configuration: unnamed, ...OPTIONS })).toThrow(/rcon/);
+    });
+
+    it('says which argument it dropped when a variable is set and empty', () => {
+      const warnings: string[] = [];
+
+      const built = buildContainerOptions({
+        configuration: makeConfiguration({
+          invocation: 'java {{JAVA_FLAGS}} -jar {{SERVER_JARFILE}}',
+          environment: { SERVER_JARFILE: 'server.jar', JAVA_FLAGS: '' },
+        }),
+        ...OPTIONS,
+        onWarning: (message) => warnings.push(message),
+      });
+
+      // The argv is what it has always been for an empty `{{JAVA_FLAGS}}` —
+      // half the imported eggs depend on that — and the operator is now told
+      // that the command they read in the panel is not quite the one running.
+      expect(built.Cmd).toEqual(['java', '-jar', 'server.jar']);
+      expect(warnings).toHaveLength(1);
+      expect(warnings[0]).toContain('{{JAVA_FLAGS}}');
+    });
+  });
 });

@@ -56,6 +56,10 @@ export class ServerConfigurationService {
       environment,
 
       allocations: {
+        // No `role` here even when the row carries one: the primary port is
+        // named by being the primary, and the contract gives it no field to
+        // hold a second name in. `AllocationsService` refuses to create the
+        // situation in the first place.
         default: {
           ip: server.primaryAllocation.ip,
           port: server.primaryAllocation.port,
@@ -64,7 +68,18 @@ export class ServerConfigurationService {
         // so the same port is not published twice.
         additional: server.allocations
           .filter((allocation) => allocation.id !== server.primaryAllocationId)
-          .map((allocation) => ({ ip: allocation.ip, port: allocation.port })),
+          .map((allocation) => ({
+            ip: allocation.ip,
+            port: allocation.port,
+            // Spread rather than `role: allocation.role ?? undefined`, so that
+            // an unnamed port produces no key at all. The payload a server
+            // with no named port sends has to be the one it has always sent,
+            // down to the byte: a key holding `undefined` survives the parse
+            // as a key, and anything comparing payloads to decide whether a
+            // node needs resyncing would see every server on every node change
+            // the day this shipped.
+            ...(allocation.role ? { role: allocation.role } : {}),
+          })),
       },
 
       build: {

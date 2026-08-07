@@ -12,7 +12,22 @@ import { announcesReady, resolveReadiness } from './readiness.js';
  * wrong for a Minecraft server still loading its world.
  */
 
-const asConfig = (fields: Record<string, unknown>) => fields as never;
+/**
+ * A server with a game port and a second one named `rcon`.
+ *
+ * Every strategy that knocks on something is now resolved against these, so a
+ * test that left them out would be exercising a configuration no daemon is
+ * ever handed. `rcon` on its own port with the game on another is not an
+ * exotic case: it is the ordinary shape of every server that speaks RCON, and
+ * the reason ports have names at all.
+ */
+const ALLOCATIONS = {
+  default: { ip: '0.0.0.0', port: 25565 },
+  additional: [{ ip: '0.0.0.0', port: 25575, role: 'rcon' }],
+};
+
+const asConfig = (fields: Record<string, unknown>) =>
+  ({ allocations: ALLOCATIONS, ...fields }) as never;
 
 describe('resolveReadiness', () => {
   it('reads a legacy startupDetection as a single log pattern', () => {
@@ -86,6 +101,8 @@ describe('resolveReadiness', () => {
     expect(resolved).toEqual({
       type: 'port',
       protocol: 'tcp',
+      ip: '0.0.0.0',
+      port: 25565,
       delayMs: 5000,
       timeoutMs: 600_000,
     });
@@ -119,35 +136,86 @@ describe('resolveReadiness', () => {
   });
 
   /**
-   * `role` is in the contract and reads as though it works, but an allocation
-   * carries no name to match it against. Ignoring it is the dangerous answer:
-   * a template naming its RCON port would have the daemon knock on the game
-   * port instead and, at the deadline, stop a server that was serving players
-   * — reported to its operator as a crash.
+   * A named port is knocked on, at last.
+   *
+   * `role` was in the contract for two releases and did nothing an operator
+   * could use: an allocation was `{ip, port}` with no name to match against,
+   * so a strategy naming one was refused outright. Refusing was the right
+   * answer to have and the wrong one to keep — it left the single realistic
+   * use of the rcon strategy, RCON on its own port and the game on another,
+   * with no readiness check at all.
    */
   it.each([
     ['port', { type: 'port' as const, role: 'rcon', protocol: 'tcp' as const, delayMs: 0 }],
     ['rcon', { type: 'rcon' as const, role: 'rcon', secretVariable: 'RCON_PASSWORD' }],
-  ])(
-    'refuses a %s strategy that names a port instead of ignoring the name',
-    (_label, readiness) => {
-      const resolved = resolveReadiness(asConfig({ readiness }));
+  ])('resolves the %s strategy against the port the role names', (_label, readiness) => {
+    const resolved = resolveReadiness(asConfig({ readiness }));
 
-      expect(resolved.type).toBe('unsupported');
+    expect(resolved).toMatchObject({ ip: '0.0.0.0', port: 25575 });
+  });
 
-      const reason = resolved.type === 'unsupported' ? resolved.reason : '';
+  it.each([
+    ['port', { type: 'port' as const, protocol: 'tcp' as const, delayMs: 0 }],
+    ['rcon', { type: 'rcon' as const, secretVariable: 'RCON_PASSWORD' }],
+  ])('sends a %s strategy naming no role to the primary port', (_label, readiness) => {
+    // What every configuration written before names existed asks for, and it
+    // has to go on meaning exactly what it always did.
+    const resolved = resolveReadiness(asConfig({ readiness }));
 
-      expect(reason).toContain('rcon');
-      expect(reason).toContain('log');
-    },
-  );
+    expect(resolved).toMatchObject({ ip: '0.0.0.0', port: 25565 });
+  });
 
-  it('still resolves a port strategy that names no role', () => {
+  /**
+   * The refusal that survives, and has to.
+   *
+   * A role matching nothing is a template naming a port the operator never
+   * created. Reading it as "the primary one then" is the exact failure the old
+   * blanket refusal existed to prevent: the daemon would speak the RCON
+   * handshake at the game port, fail every two seconds, and at the deadline
+   * stop a server that was up and serving players — reported to its operator
+   * as a crash.
+   */
+  it.each([
+    ['port', { type: 'port' as const, role: 'query', protocol: 'tcp' as const, delayMs: 0 }],
+    ['rcon', { type: 'rcon' as const, role: 'query', secretVariable: 'RCON_PASSWORD' }],
+  ])('refuses a %s strategy naming a port this server has not got', (_label, readiness) => {
+    const resolved = resolveReadiness(asConfig({ readiness }));
+
+    expect(resolved.type).toBe('unsupported');
+
+    const reason = resolved.type === 'unsupported' ? resolved.reason : '';
+
+    // Named, and pointed at the one place the operator can fix it. A refusal
+    // they cannot act on is a hang with an explanation.
+    expect(reason).toContain('query');
+    expect(reason).toContain('Network');
+  });
+
+  it('never matches a role against the primary port', () => {
+    // The primary port is reachable by naming nothing, and the contract gives
+    // it no field to hold a second name in. A role resolving to it would give
+    // one port two names — and the day an operator moved the primary, the name
+    // would quietly follow it to a different port.
     const resolved = resolveReadiness(
-      asConfig({ readiness: { type: 'port', protocol: 'tcp', delayMs: 0 } }),
+      asConfig({
+        allocations: { default: { ip: '0.0.0.0', port: 25565 }, additional: [] },
+        readiness: { type: 'port', role: 'game', protocol: 'tcp', delayMs: 0 },
+      }),
     );
 
-    expect(resolved.type).toBe('port');
+    expect(resolved.type).toBe('unsupported');
+  });
+
+  it('refuses a UDP probe whichever port it names', () => {
+    // The protocol describes the declaration, the role describes the server:
+    // a UDP probe is impossible here regardless of which port it points at, so
+    // it is refused first and the reason names the strategies that do work.
+    const resolved = resolveReadiness(
+      asConfig({ readiness: { type: 'port', role: 'rcon', protocol: 'udp', delayMs: 0 } }),
+    );
+
+    expect(resolved.type).toBe('unsupported');
+    expect(resolved.type === 'unsupported' ? resolved.reason : '').toContain('UDP');
   });
 
   it('names the variable holding the rcon password, never the password', () => {
@@ -161,6 +229,8 @@ describe('resolveReadiness', () => {
 
     expect(resolved).toEqual({
       type: 'rcon',
+      ip: '0.0.0.0',
+      port: 25565,
       secretVariable: 'RCON_PASSWORD',
       timeoutMs: 60_000,
     });
@@ -193,12 +263,18 @@ describe('resolveReadiness', () => {
     [
       'port',
       { type: 'port', protocol: 'tcp', delayMs: 0 },
-      { type: 'port', role: undefined, protocol: 'tcp', delayMs: 0, timeoutMs: null },
+      { type: 'port', protocol: 'tcp', ip: '0.0.0.0', port: 25565, delayMs: 0, timeoutMs: null },
     ],
     [
       'rcon',
       { type: 'rcon', secretVariable: 'RCON_PASSWORD' },
-      { type: 'rcon', role: undefined, secretVariable: 'RCON_PASSWORD', timeoutMs: null },
+      {
+        type: 'rcon',
+        ip: '0.0.0.0',
+        port: 25565,
+        secretVariable: 'RCON_PASSWORD',
+        timeoutMs: null,
+      },
     ],
   ])('gives a %s strategy that names no deadline none at all', (_type, readiness, expected) => {
     // A deadline is what makes a start capable of failing: reaching it stops
@@ -216,8 +292,21 @@ describe('announcesReady', () => {
     // line must never promote them by accident.
     for (const readiness of [
       { type: 'immediate' as const },
-      { type: 'port' as const, protocol: 'tcp' as const, delayMs: 0, timeoutMs: 600_000 },
-      { type: 'rcon' as const, secretVariable: 'RCON_PASSWORD', timeoutMs: 600_000 },
+      {
+        type: 'port' as const,
+        protocol: 'tcp' as const,
+        ip: '0.0.0.0',
+        port: 25565,
+        delayMs: 0,
+        timeoutMs: 600_000,
+      },
+      {
+        type: 'rcon' as const,
+        ip: '0.0.0.0',
+        port: 25575,
+        secretVariable: 'RCON_PASSWORD',
+        timeoutMs: 600_000,
+      },
       { type: 'unsupported' as const, reason: 'x' },
     ]) {
       expect(announcesReady(readiness, 'Done (1.0s)!')).toBe(false);

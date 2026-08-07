@@ -12,6 +12,14 @@ interface Allocation {
   ip: string;
   port: number;
   alias: string | null;
+  /**
+   * What the server's own configuration reaches this port by. Unlike the
+   * alias, which is a note for whoever is reading the page, this is matched
+   * against: a readiness check declaring `rcon` knocks on the port named
+   * `rcon`. The primary port carries none — it is what everything means by
+   * "the port" already.
+   */
+  role: string | null;
   primary: boolean;
 }
 
@@ -50,6 +58,22 @@ export function ServerNetworkPage() {
         alias: input.alias.trim() || null,
       }),
     onSuccess: refresh,
+    onError: fail,
+  });
+
+  // Its own request rather than a field on the one above: the panel asks the
+  // node whether its daemon understands names before storing one, and the
+  // refusal it can come back with has to reach the operator instead of being
+  // lost behind a note being saved at the same time.
+  const setRole = useMutation({
+    mutationFn: (input: { id: number; role: string }) =>
+      api.patch<Allocation>(`/api/servers/${uuid}/allocations/${input.id}/role`, {
+        role: input.role.trim() || null,
+      }),
+    onSuccess: () => {
+      setFailure(null);
+      refresh();
+    },
     onError: fail,
   });
 
@@ -135,8 +159,11 @@ export function ServerNetworkPage() {
               allocation={allocation}
               canUpdate={can('allocation.update')}
               canDelete={can('allocation.delete')}
-              busy={setPrimary.isPending || remove.isPending || setAlias.isPending}
+              busy={
+                setPrimary.isPending || remove.isPending || setAlias.isPending || setRole.isPending
+              }
               onAlias={(alias) => setAlias.mutate({ id: allocation.id, alias })}
+              onRole={(role) => setRole.mutate({ id: allocation.id, role })}
               onPrimary={() => setPrimary.mutate(allocation.id)}
               onRemove={() => remove.mutate(allocation.id)}
             />
@@ -145,6 +172,7 @@ export function ServerNetworkPage() {
       )}
 
       <p className="mt-4 text-xs text-content-muted">{t('network.nextBoot')}</p>
+      <p className="mt-2 text-xs text-content-muted">{t('network.roleHint')}</p>
     </>
   );
 }
@@ -155,6 +183,7 @@ function AllocationRow({
   canDelete,
   busy,
   onAlias,
+  onRole,
   onPrimary,
   onRemove,
 }: {
@@ -163,11 +192,13 @@ function AllocationRow({
   canDelete: boolean;
   busy: boolean;
   onAlias: (alias: string) => void;
+  onRole: (role: string) => void;
   onPrimary: () => void;
   onRemove: () => void;
 }) {
   const { t } = useTranslation();
   const [alias, setAlias] = useState(allocation.alias ?? '');
+  const [role, setRole] = useState(allocation.role ?? '');
 
   return (
     <Card>
@@ -205,6 +236,24 @@ function AllocationRow({
             }}
           />
         </div>
+
+        {/* The primary port gets no field: it is reached by being the primary,
+            and a second name for it would be a second way to mean one port. */}
+        {allocation.primary ? null : (
+          <div className="min-w-40">
+            <Input
+              value={role}
+              placeholder={t('network.rolePlaceholder')}
+              disabled={!canUpdate}
+              onChange={(event) => setRole(event.target.value)}
+              onBlur={() => {
+                if (role !== (allocation.role ?? '')) {
+                  onRole(role);
+                }
+              }}
+            />
+          </div>
+        )}
 
         <div className="flex flex-wrap items-center gap-2">
           {allocation.primary ? (

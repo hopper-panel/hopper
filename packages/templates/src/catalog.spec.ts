@@ -214,9 +214,12 @@ describe('catalogue de templates', () => {
        * What a node hands the builder for a Factorio server.
        *
        * The environment holds the template's own variables at their defaults
-       * and nothing else, which is what makes `missingVariables` below mean
-       * something: anything the command references that a real server would not
-       * have shows up there.
+       * and nothing else, which is what makes the refusal below mean something:
+       * anything the command references that a real server would not have stops
+       * the build rather than quietly disappearing from the argv.
+       *
+       * One port, unnamed, because that is what this template ships with — it
+       * declares no RCON, so it asks for no named port either.
        */
       const context = {
         environment: Object.fromEntries(
@@ -228,8 +231,7 @@ describe('catalogue de templates', () => {
         // Supplied to every server whether or not the game can use them. This
         // one cannot: there is no heap to size.
         memoryMib: 4096,
-        ip: '0.0.0.0',
-        port: 34197,
+        allocations: { default: { ip: '0.0.0.0', port: 34197 }, additional: [] },
       };
 
       it('becomes the argv the headless binary expects', () => {
@@ -248,9 +250,9 @@ describe('catalogue de templates', () => {
       });
 
       it('references no variable a running server would not have', () => {
-        const { missingVariables } = buildInvocation(factorio!.startup, context);
-
-        expect(missingVariables).toEqual([]);
+        // A build that succeeds is the assertion: one unknown name and there
+        // would be no argv at all.
+        expect(() => buildInvocation(factorio!.startup, context)).not.toThrow();
       });
 
       it('gives every value-taking flag its value', () => {
@@ -270,22 +272,24 @@ describe('catalogue de templates', () => {
       });
 
       /**
-       * Why the three tests above are worth their lines.
+       * Why the three tests above are worth their lines — and the case they
+       * were written against, kept exactly as it was.
        *
-       * A variable that does not resolve is not an error: it substitutes to an
-       * empty string, the argument it was alone in is *dropped*, and the flag
-       * in front of it is left holding whatever comes next — or nothing. The
-       * server then starts under a command nobody wrote, and the only symptom
-       * is the game's own complaint several lines into a console.
+       * This used to assert the bug. A variable that did not resolve was not an
+       * error: it substituted to an empty string, the argument it was alone in
+       * was dropped, and `--port` was left holding whatever came next — here,
+       * nothing at all. The server started under a command nobody had written,
+       * and the only symptom was the game's own complaint several lines into a
+       * console.
+       *
+       * The typo is still one letter. What changed is that it now costs a start
+       * that says why, instead of a server listening on a port the template did
+       * not choose.
        */
-      it('would leave --port bare if its variable stopped resolving', () => {
-        const { argv, missingVariables } = buildInvocation(
-          factorio!.startup.replace('{{SERVER_PORT}}', '{{SERVER_PROT}}'),
-          context,
-        );
+      it('refuses the start if its port variable stops resolving', () => {
+        const typo = factorio!.startup.replace('{{SERVER_PORT}}', '{{SERVER_PROT}}');
 
-        expect(missingVariables).toEqual(['SERVER_PROT']);
-        expect(argv.at(-1)).toBe('--port');
+        expect(() => buildInvocation(typo, context)).toThrow(/SERVER_PROT/);
       });
     });
 

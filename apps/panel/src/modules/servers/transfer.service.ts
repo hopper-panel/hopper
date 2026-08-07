@@ -164,14 +164,22 @@ export class TransferService {
     // Only now. Everything above can fail without consequence; from here the
     // database says the server lives on the target, and it does.
     await this.prisma.$transaction(async (tx) => {
+      // The names go back with the ports. A role names a port *for one server*
+      // — a template resolves `rcon` against the server that holds it — so a
+      // name released into the source node's pool means nothing to anybody, and
+      // would be inherited by whichever server is handed that port next.
       await tx.allocation.updateMany({
         where: { serverId: server.id },
-        data: { serverId: null },
+        data: { serverId: null, role: null },
       });
 
+      // And the port taken on the target arrives unnamed, whatever it carried
+      // for its last owner. It becomes this server's primary below, and a
+      // primary carrying a name is a state `setRole` and `setPrimary` both
+      // refuse to create deliberately.
       await tx.allocation.update({
         where: { id: freeAllocation.id },
-        data: { serverId: server.id },
+        data: { serverId: server.id, role: null },
       });
 
       await tx.server.update({
