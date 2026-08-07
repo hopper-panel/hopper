@@ -267,6 +267,57 @@ describe('readiness deadlines', () => {
 });
 
 /**
+ * What a template says about surviving its own installation.
+ *
+ * Both fields are optional and both mean "this template did not say" when
+ * absent — the daemon owns the fallbacks, because the timer is armed there and
+ * only the node knows what is left on its own disk.
+ */
+describe('the install guards', () => {
+  const withInstall = (install: Record<string, unknown>) =>
+    serverConfigurationSchema.safeParse({
+      ...MINIMAL,
+      install: { containerImage: 'debian:bookworm-slim', script: 'set -e', ...install },
+    });
+
+  it('leaves an install that declares neither exactly as it was', () => {
+    // The whole bundled catalogue and every imported egg. No default is
+    // materialised here on purpose: a defaulted key would be written into the
+    // payload of every server on every installation, including the ones bound
+    // for a node whose daemon has never heard of the field.
+    const parsed = serverConfigurationSchema.parse({
+      ...MINIMAL,
+      install: { containerImage: 'debian:bookworm-slim', script: 'set -e' },
+    });
+
+    expect(JSON.stringify(parsed.install)).toBe(
+      '{"containerImage":"debian:bookworm-slim","entrypoint":"/bin/bash","script":"set -e"}',
+    );
+  });
+
+  it('carries an inactivity window and a download size', () => {
+    const parsed = withInstall({ inactivityTimeoutMs: 900_000, requiredDiskBytes: 40 * 1024 ** 3 });
+
+    expect(parsed.success && parsed.data.install?.inactivityTimeoutMs).toBe(900_000);
+    expect(parsed.success && parsed.data.install?.requiredDiskBytes).toBe(42_949_672_960);
+  });
+
+  it.each([0, -1, 1.5, 7 * 3_600_000])(
+    'refuses %s as an inactivity window',
+    (inactivityTimeoutMs) => {
+      // Zero and negatives are a deadline that has already expired. The ceiling
+      // is six hours: past that a deadline on doing *nothing* is not a deadline,
+      // and a template needing more is not slow, it is broken.
+      expect(withInstall({ inactivityTimeoutMs }).success).toBe(false);
+    },
+  );
+
+  it('refuses a negative download size', () => {
+    expect(withInstall({ requiredDiskBytes: -1 }).success).toBe(false);
+  });
+});
+
+/**
  * A port that has a name.
  *
  * `readiness.role` shipped in two releases meaning nothing: an allocation was

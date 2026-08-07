@@ -162,6 +162,35 @@ describe('TemplateSyncService.upsert', () => {
     expect(prisma.written[0]).toHaveProperty('stopTimeoutSeconds', null);
   });
 
+  it('writes the two install guards', async () => {
+    // Neither is a figure the panel can supply on a template's behalf: the
+    // inactivity window belongs to the workload, and the disk requirement is
+    // something only whoever wrote the download knows.
+    const prisma = new RecordingPrisma();
+
+    await new TemplateSyncService(prisma.asService()).upsert(
+      definition({ installInactivityTimeoutMs: 900_000, installRequiredDiskBytes: 40 * 1024 ** 3 }),
+    );
+
+    expect(prisma.written[0]).toMatchObject({
+      installInactivityTimeoutMs: 900_000,
+      installRequiredDiskBytes: 42_949_672_960,
+    });
+  });
+
+  it('forgets install guards a definition has dropped', async () => {
+    // `undefined` means "leave the column alone" to Prisma, so without the
+    // explicit null a template whose author decided its install is allowed to
+    // take longer would go on being stopped by the window they removed.
+    const prisma = new RecordingPrisma();
+    prisma.existing = { id: 7, modifiedByAdmin: false };
+
+    await new TemplateSyncService(prisma.asService()).upsert(definition());
+
+    expect(prisma.written[0]).toHaveProperty('installInactivityTimeoutMs', null);
+    expect(prisma.written[0]).toHaveProperty('installRequiredDiskBytes', null);
+  });
+
   it('leaves an administrator-edited template untouched', async () => {
     const prisma = new RecordingPrisma();
     prisma.existing = { id: 7, modifiedByAdmin: true };
@@ -205,5 +234,17 @@ describe('the seed copy of the mapping', () => {
     expect(mapping?.[1]).toMatch(/^\s*stopTimeoutSeconds:/m);
     // The string the structured field falls back to, still beside it.
     expect(mapping?.[1]).toMatch(/^\s*stopCommand:/m);
+  });
+
+  it('writes the two install guards too', () => {
+    // Quieter again than the stop transport, which at least fails the first
+    // time somebody presses Stop. A seeded instance missing these installs with
+    // the daemon's default window and no declared disk requirement, and the
+    // difference only shows the day an install stalls or fills a node.
+    const seed = readFileSync(join(process.cwd(), 'prisma', 'seed.ts'), 'utf8');
+    const mapping = /const data = \{(.*?)\n {4}\};/s.exec(seed);
+
+    expect(mapping?.[1]).toMatch(/^\s*installInactivityTimeoutMs:/m);
+    expect(mapping?.[1]).toMatch(/^\s*installRequiredDiskBytes:/m);
   });
 });

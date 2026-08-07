@@ -132,6 +132,15 @@ export class TemplateSyncService {
       installContainer: definition.installContainer,
       installEntrypoint: definition.installEntrypoint,
       installScript: definition.installScript,
+      // The two install guards, and plain nulls for the same reason as
+      // `stopTimeoutSeconds` above: ordinary nullable columns, on which null
+      // says "this template names no figure" and the daemon supplies its own.
+      // Written on every sync rather than left undefined so that a template
+      // which *drops* a figure has the row forget it too — a stale inactivity
+      // window would go on stopping installations its author has decided are
+      // allowed to take longer.
+      installInactivityTimeoutMs: definition.installInactivityTimeoutMs ?? null,
+      installRequiredDiskBytes: definition.installRequiredDiskBytes ?? null,
       importedFromEgg: definition.importedFromEgg ?? null,
     };
   }

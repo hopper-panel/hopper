@@ -1,0 +1,49 @@
+-- What a template says about its own installation, so a node can survive it.
+--
+-- Both columns are nullable with no default and neither is backfilled, for the
+-- same reason as `stopTimeoutSeconds` before them: NULL has to keep meaning
+-- "this template did not say". A stored figure would be indistinguishable from
+-- a template author's own decision, and the day either default is reconsidered
+-- every row would be holding an opinion nobody expressed.
+
+-- How long the installation may do nothing at all before the daemon stops it.
+--
+-- A deadline on inactivity, not on duration. `waitForExit` in the daemon was an
+-- unbounded `container.wait()`, so an install that stalled on a dead mirror left
+-- its server in `installing` for ever with nothing anywhere giving up. A cap on
+-- total duration cannot replace this: set high enough for a forty-gigabyte Steam
+-- depot it never fires, set low enough to be useful it kills working installs.
+--
+-- Nor is it a deadline on *output*, which was this column's first name and was
+-- wrong: `curl -sSL` — the idiom in every bundled script and in most imported
+-- eggs — prints nothing whatsoever while it transfers, so a window on silence
+-- would have been a total-duration cap on the one step that legitimately takes
+-- hours. What the daemon watches is what the container *does*: the CPU the
+-- kernel charges it and the blocks it reads and writes, both counted against its
+-- own cgroup, as well as anything it prints. Its network counters are
+-- deliberately not among them — those count frames an interface accepted,
+-- including the ARP a Linux bridge floods to every port on it, so a stalled
+-- install looked busy on exactly the crowded nodes where one that never ends
+-- costs the most.
+--
+-- NULL leaves the daemon's own generous window, which is what every template
+-- and every imported Pterodactyl egg keeps.
+ALTER TABLE "templates" ADD COLUMN     "installInactivityTimeoutMs" INTEGER;
+
+-- How much free disk the installation needs, when the template knows.
+--
+-- Checked before the install container is created, and a shortfall is refused:
+-- a depot larger than the node's free space fills the host disk, and that takes
+-- down every server on the machine. What the volume already holds counts towards
+-- the figure, not against it — a reinstall writes over those files, and
+-- demanding the whole requirement as *free* space would mean a 40 GiB server
+-- could never be reinstalled on the node it already occupies.
+--
+-- BIGINT, not INTEGER. A Steam depot goes past the 2 147 483 647 an INTEGER
+-- stops at, and the symptom would be an insert rejected somewhere inside a
+-- template import rather than anything an operator could act on.
+--
+-- NULL is the ordinary case and is not a hole: a Minecraft server's size is
+-- whatever modpack its variables point at, so most templates cannot answer, and
+-- the daemon requires a floor of free space from every installation regardless.
+ALTER TABLE "templates" ADD COLUMN     "installRequiredDiskBytes" BIGINT;

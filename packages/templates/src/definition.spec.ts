@@ -188,3 +188,49 @@ describe('templateDefinitionSchema stop', () => {
     expect(() => templateDefinitionSchema.parse({ ...MINIMAL, stopTimeoutSeconds: 601 })).toThrow();
   });
 });
+
+/**
+ * What a template is allowed to say about its own installation.
+ *
+ * The same additive rule as the two above, and it matters more here than
+ * anywhere: an installation is the one operation a server cannot retry
+ * automatically, so a field that changes what a silent template means would
+ * turn working installs into failed ones on a catalogue nobody edited.
+ */
+describe('templateDefinitionSchema install guards', () => {
+  it('leaves a template that declares neither exactly as it was', () => {
+    const parsed = templateDefinitionSchema.parse(MINIMAL);
+
+    // Undefined, not a figure: "this template did not say", which the daemon
+    // answers with its own generous window and its own floor of free space.
+    expect(parsed.installInactivityTimeoutMs).toBeUndefined();
+    expect(parsed.installRequiredDiskBytes).toBeUndefined();
+  });
+
+  it('keeps the figures a template chooses', () => {
+    const parsed = templateDefinitionSchema.parse({
+      ...MINIMAL,
+      installInactivityTimeoutMs: 900_000,
+      installRequiredDiskBytes: 40 * 1024 ** 3,
+    });
+
+    expect(parsed.installInactivityTimeoutMs).toBe(900_000);
+    expect(parsed.installRequiredDiskBytes).toBe(42_949_672_960);
+  });
+
+  it('refuses figures the contract would not accept', () => {
+    // The same bounds as the contract's own fields, checked here so the mistake
+    // fails on the template that made it rather than on a node months later —
+    // where the symptom is an installation that stops itself for no reason a
+    // console line can explain.
+    expect(() =>
+      templateDefinitionSchema.parse({ ...MINIMAL, installInactivityTimeoutMs: 0 }),
+    ).toThrow();
+    expect(() =>
+      templateDefinitionSchema.parse({ ...MINIMAL, installInactivityTimeoutMs: 7 * 3_600_000 }),
+    ).toThrow();
+    expect(() =>
+      templateDefinitionSchema.parse({ ...MINIMAL, installRequiredDiskBytes: -1 }),
+    ).toThrow();
+  });
+});

@@ -121,6 +121,65 @@ export const templateDefinitionSchema = z.object({
   installEntrypoint: z.string().default('/bin/bash'),
   installScript: z.string().min(1),
 
+  /**
+   * How long this template's installation may **do nothing at all** before the
+   * daemon stops it.
+   *
+   * On inactivity, not on total duration, and a template author has to hold that
+   * distinction to pick a figure: an anonymous Steam depot takes an hour to
+   * download and is healthy throughout, so what is being sized here is the
+   * longest pause in the work, not the length of the install.
+   *
+   * Not on output either, which is the trap this field was nearly built into.
+   * The scripts in this very catalogue download with `curl -sSL`, and `-s`
+   * suppresses the progress meter: a two-gigabyte transfer prints nothing from
+   * beginning to end. So the daemon watches the CPU and the block I/O the kernel
+   * charges the container as well as its output — its network counters
+   * deliberately not, since those count frames the interface accepted rather
+   * than work it did — and a template author sizing this figure should be
+   * thinking about how long the work could plausibly stand completely still, not
+   * how long it could stay quiet.
+   *
+   * Optional, and a template that says nothing gets the daemon's own figure —
+   * a quarter of an hour, chosen to be ignored by anything that works. Raise it
+   * for a script that genuinely idles: a wait on an external job, a licence
+   * check that blocks on a slow endpoint. Lower it for a download that should
+   * never pause at all, and get told sooner.
+   *
+   * A node running a daemon that predates the field ignores it and waits for
+   * ever, which is what every node did until now. Nothing is refused over it.
+   */
+  installInactivityTimeoutMs: z
+    .number()
+    .int()
+    .positive()
+    .max(6 * 3_600_000)
+    .optional(),
+
+  /**
+   * How much free disk this template's installation needs, in bytes.
+   *
+   * The daemon checks it against the volume's filesystem before the install
+   * container is created, and **refuses** a shortfall — filling a node's disk
+   * takes down every server on the machine, not only this one. What the volume
+   * already holds counts towards the figure rather than against it, because a
+   * reinstall writes over those files; otherwise no large server could ever be
+   * reinstalled on the node it is already installed on.
+   *
+   * Declare it when the figure is knowable and large: a Steam depot has a size
+   * the store page states, and it is the whole reason this field exists. Leave
+   * it out when it is not — a Minecraft server's size is whatever modpack the
+   * operator's variables point at, and a guess here refuses installations that
+   * would have worked. A template that says nothing still cannot install onto a
+   * node with nothing left: the daemon requires a floor of headroom from
+   * everything.
+   *
+   * Not the server's disk limit, which is a different question the panel has
+   * already answered against the node's declared capacity. This is what the
+   * installation writes, and it is the template that knows.
+   */
+  installRequiredDiskBytes: z.number().int().nonnegative().optional(),
+
   variables: z.array(templateVariableDefinitionSchema).default([]),
 
   /** UUID of the original Pterodactyl egg, to avoid double imports. */

@@ -122,6 +122,13 @@ async function seedTemplates(): Promise<void> {
       installContainer: definition.installContainer,
       installEntrypoint: definition.installEntrypoint,
       installScript: definition.installScript,
+      // And the two install guards, kept in step by hand like the pair above.
+      // Missing one here is quieter still: a seeded instance would install with
+      // the daemon's default inactivity window and no declared disk requirement,
+      // and the difference only shows the day a template's own install stalls
+      // or fills a node.
+      installInactivityTimeoutMs: definition.installInactivityTimeoutMs ?? null,
+      installRequiredDiskBytes: definition.installRequiredDiskBytes ?? null,
     };
 
     const variables = definition.variables.map((variable) => ({

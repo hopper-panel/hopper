@@ -295,6 +295,83 @@ export const installConfigurationSchema = z.object({
   containerImage: z.string().min(1),
   entrypoint: z.string().min(1).default('/bin/bash'),
   script: z.string(),
+
+  /**
+   * How long the installation may **do nothing at all** before the daemon gives
+   * up on it.
+   *
+   * A deadline on inactivity, not on duration, and the distinction is the whole
+   * field. A forty-gigabyte Steam depot that is pulling bytes down a wire is
+   * alive — taking them off the socket is work, and work is CPU time charged to
+   * its cgroup; one whose container has burned no CPU, touched no disk and
+   * printed nothing for a quarter of an hour is not. A cap on total duration
+   * cannot tell those apart: set high enough to let a real depot finish it never
+   * fires on anything, and set low enough to be useful it kills the installs it
+   * was meant to protect.
+   *
+   * Inactivity and not silence, which is the correction worth recording because
+   * the mistake was made here first. Nearly every install script in existence
+   * downloads with `curl -sSL`, and `-s` suppresses the progress meter: the
+   * transfer emits not one byte of output from start to finish. A deadline on
+   * *output* would therefore have been a total-duration cap applied to precisely
+   * the step that legitimately takes hours — a 2 GiB modpack on a slow uplink is
+   * a working install it would have killed. What the daemon watches is what the
+   * container does; see `INSTALL_INACTIVITY_DEFAULT_MS` there.
+   *
+   * Optional, and deliberately without a default *here*. The daemon supplies one
+   * because that is where the timer is armed, and because a default materialised
+   * in this schema would be written into every configuration payload the panel
+   * sends, including the ones bound for a node whose daemon has never heard of
+   * the field. Absent therefore means "this template did not say", and the node
+   * running the install decides what that is worth.
+   *
+   * An older daemon strips the field, as Zod discards what it does not know, and
+   * goes on waiting for ever — which is exactly what it does today. That is a
+   * guard not applied, not a configuration misread, so nothing gates on it: no
+   * capability, no refusal, no server that cannot be placed on an older node
+   * over a timeout it would have been given.
+   */
+  inactivityTimeoutMs: z
+    .number()
+    .int()
+    .positive()
+    .max(6 * 3_600_000)
+    .optional(),
+
+  /**
+   * What this installation is expected to write, in bytes, when the template
+   * knows.
+   *
+   * Checked before the install container is created, and a shortfall is
+   * **refused**. Filling a node's disk is not one server's failure:
+   * `/var/lib/docker` and every other server's volume are on that filesystem,
+   * and the whole machine goes down with it.
+   *
+   * Checked against the free space on the volume's filesystem *plus what the
+   * volume already holds*, because nothing wipes it first: a reinstall writes
+   * over the files that are there, so their space counts towards the figure and
+   * not against it. Demanding the whole of it as free would mean a 40 GiB
+   * Palworld server could never be reinstalled on the node it is already
+   * installed on.
+   *
+   * Only a template can answer this, and only for some games. A Steam depot has
+   * a knowable size; a Minecraft server's is whatever modpack the operator's
+   * variables point at, so most templates say nothing and the daemon falls back
+   * to requiring a floor of headroom rather than inventing a figure.
+   *
+   * Deliberately **not** `build.diskBytes`. That number is a policy ceiling the
+   * operator sells, not a prediction: a 50 GiB Minecraft server that will use
+   * 900 MiB would start refusing to install on a node with 20 GiB free, and the
+   * panel has already weighed it once at creation, against the node's declared
+   * capacity and the overallocation percentage the operator chose. Reading it
+   * again here would overrule that decision from the far end of the wire.
+   *
+   * An older daemon strips this too and installs with no preflight at all,
+   * which is what every daemon did until now. Ungated for the same reason as
+   * the field above: a node that cannot honour a new guard is a node without
+   * the guard, not a node that misreads the configuration.
+   */
+  requiredDiskBytes: z.number().int().nonnegative().optional(),
 });
 
 export const serverConfigurationSchema = z.object({

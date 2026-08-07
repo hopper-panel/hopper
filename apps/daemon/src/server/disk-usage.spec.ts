@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { directorySize } from './disk-usage.js';
+import { directorySize, formatBytes, freeSpaceBytes, usableSpace } from './disk-usage.js';
 
 /**
  * Synchronous probe at module level: `it.runIf` is evaluated when the tests are
@@ -79,4 +79,88 @@ describe('directorySize', () => {
       expect(await directorySize(volume)).toBe(64);
     },
   );
+});
+
+/**
+ * What the install preflight reads before it lets a download begin.
+ *
+ * The measurement has to be of the filesystem the volume is really on, which is
+ * why it takes a path rather than assuming the daemon's root: `dataDirectory`
+ * can sit on a different disk, and an operator who gave a server its own mount
+ * deserves that mount checked.
+ */
+describe('freeSpaceBytes', () => {
+  let sandbox: string;
+
+  beforeEach(async () => {
+    sandbox = await mkdtemp(join(tmpdir(), 'hopper-free-'));
+  });
+
+  afterEach(async () => {
+    await rm(sandbox, { recursive: true, force: true });
+  });
+
+  it('reads the free space of the filesystem a path is on', async () => {
+    const free = await freeSpaceBytes(sandbox);
+
+    expect(free).not.toBeNull();
+    // Any machine that can check out this repository has a megabyte spare; the
+    // figure itself is the host's business, not this test's.
+    expect(free).toBeGreaterThan(1024 * 1024);
+  });
+
+  // Not knowing must not be a refusal: an exotic filesystem `statfs` cannot
+  // describe would otherwise make every installation on that node impossible.
+  it('answers null rather than throwing when the question cannot be answered', async () => {
+    expect(await freeSpaceBytes(join(sandbox, 'never-created', 'deeper'))).toBeNull();
+  });
+});
+
+/**
+ * Which of the two free-block figures `statfs` offers is the one that gets
+ * spent.
+ *
+ * Asked of the answer rather than of a path, because no real filesystem can be
+ * made to demonstrate the difference on demand: on a machine that can check out
+ * this repository `bavail` and `bfree` are both simply large, so a test against
+ * a real directory passes whichever field the code reads.
+ */
+describe('usableSpace', () => {
+  /**
+   * `bfree` is every free block; `bavail` is every free block an unprivileged
+   * process may have. The difference is what the filesystem holds back for root
+   * — five percent of an ext4 by default, which on a 2 TB volume is a hundred
+   * gigabytes — and hopperd runs as root, so `bfree` really is space it can
+   * write into. Those blocks are the margin that keeps a full machine
+   * repairable, and spending them on a game server's install is how a full disk
+   * becomes an unrecoverable one.
+   */
+  it('leaves the blocks a filesystem reserves for root out of the figure', () => {
+    expect(usableSpace({ bsize: 4096, bavail: 1_000, bfree: 1_250 })).toBe(4_096_000);
+  });
+
+  /**
+   * An answer arithmetic cannot use reads as not knowing rather than as a
+   * quantity. Handed to the preflight as free space, either of these would let
+   * an installation start on a node with nothing left.
+   */
+  it.each([
+    ['a product too large to be a number', { bsize: Number.MAX_VALUE, bavail: Number.MAX_VALUE }],
+    ['a negative count', { bsize: 4096, bavail: -1 }],
+  ])('answers null for %s', (_name, answer) => {
+    expect(usableSpace({ ...answer, bfree: answer.bavail })).toBeNull();
+  });
+});
+
+describe('formatBytes', () => {
+  it('scales to the unit an operator would use', () => {
+    expect(formatBytes(512)).toBe('512 B');
+    expect(formatBytes(1024 ** 2)).toBe('1 MiB');
+    expect(formatBytes(8 * 1024 ** 3)).toBe('8 GiB');
+    expect(formatBytes(1024 ** 5)).toBe('1 PiB');
+  });
+
+  it('keeps one decimal for a figure that is not round', () => {
+    expect(formatBytes(1536 * 1024 * 1024)).toBe('1.5 GiB');
+  });
 });

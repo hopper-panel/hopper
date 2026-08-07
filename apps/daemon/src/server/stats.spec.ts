@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
+  activityCounters,
   calculateCpuPercent,
   calculateMemoryBytes,
   calculateNetwork,
+  countersMoved,
   emptyUsage,
   type DockerStats,
 } from './stats.js';
@@ -174,5 +176,100 @@ describe('emptyUsage', () => {
     expect(usage.cpuPercent).toBe(0);
     expect(usage.memoryBytes).toBe(0);
     expect(usage.uptime).toBe(0);
+  });
+});
+
+/**
+ * The two counters the install deadline is built on.
+ *
+ * They are read from the same samples the panel's resource graphs are drawn
+ * from, deliberately: the daemon already streams `docker stats`, and a second
+ * mechanism for asking the same question would be a second thing to keep true.
+ *
+ * Only the two, and the interfaces' byte counters are the ones left out. Those
+ * count frames an interface *accepted* inside the container's netns — broadcast
+ * ARP flooded across the bridge every server on the node shares, TCP keepalives
+ * on a socket to a mirror that stopped answering — rather than work this
+ * container did, so on a busy node they climb for a container that is doing
+ * nothing at all. A deadline pushed back by them never fires, which is the
+ * original bug wearing a hat.
+ */
+describe('activityCounters', () => {
+  it('adds every block operation together and counts the CPU time', () => {
+    const stats: DockerStats = {
+      cpu_stats: { cpu_usage: { total_usage: 1_500 } },
+      blkio_stats: {
+        io_service_bytes_recursive: [
+          { op: 'read', value: 4_096 },
+          { op: 'write', value: 8_192 },
+        ],
+      },
+    };
+
+    expect(activityCounters(stats)).toEqual({ cpuNanos: 1_500, blockIoBytes: 12_288 });
+  });
+
+  // The counter this deliberately cannot see. A container whose interface is
+  // taking the bridge's broadcast traffic and nothing else has done no work, and
+  // must read exactly as still as one with no interface at all.
+  it('takes no notice of what the interfaces received', () => {
+    // Interface traffic and nothing else reads as a host that accounts for
+    // neither counter, which is `null` — not as a container standing still.
+    expect(
+      activityCounters({ networks: { eth0: { rx_bytes: 4_000_000, tx_bytes: 12_000 } } }),
+    ).toBeNull();
+  });
+
+  it('reads a host that keeps only one of the two', () => {
+    // Common on cgroup v2 without `io` accounting. Either counter alone is
+    // enough, and CPU alone carries every real installation.
+    expect(activityCounters({ cpu_stats: { cpu_usage: { total_usage: 42 } } })).toEqual({
+      cpuNanos: 42,
+      blockIoBytes: 0,
+    });
+  });
+
+  /**
+   * Docker really does send these empty, and on some cgroup v2 hosts sends
+   * `io_service_bytes_recursive` as `null` while its siblings are arrays. A
+   * throw here would be an exception inside a timer with nobody to catch it, and
+   * the deadline it feeds would stop being reset.
+   */
+  it('survives a host that accounts for none of it', () => {
+    // `null` rather than a pair of zeroes, and the difference decides whether
+    // installations run on such a host at all. Folded to zero, every sample
+    // equals the last one for ever, the deadline reads perpetual stillness, and
+    // it kills every installation on the node however hard each is working.
+    expect(activityCounters({})).toBeNull();
+    expect(activityCounters({ blkio_stats: { io_service_bytes_recursive: null } })).toBeNull();
+  });
+});
+
+describe('countersMoved', () => {
+  const still = { cpuNanos: 10, blockIoBytes: 30 };
+
+  it('sees nothing in two identical samples', () => {
+    expect(countersMoved(still, { ...still })).toBe(false);
+  });
+
+  // Each covers a way of being busy the other misses: a download whose writes
+  // are still in the page cache has touched no disk — under cgroup v1 the
+  // writeback is never charged to it at all — while a large copy waiting on a
+  // slow disk spends very little of its time on a CPU.
+  it.each([
+    ['CPU', { cpuNanos: 11 }],
+    ['block I/O', { blockIoBytes: 31 }],
+  ])('sees movement in %s alone', (_name, moved) => {
+    expect(countersMoved(still, { ...still, ...moved })).toBe(true);
+  });
+
+  /**
+   * These counters only grow, so in practice "changed" and "increased" are the
+   * same test — but a counter that somehow went backwards would read as *no*
+   * activity under a `>` comparison, and the price of that mistake is a working
+   * installation killed. Any change at all is movement.
+   */
+  it('counts a counter that went backwards as movement', () => {
+    expect(countersMoved(still, { ...still, blockIoBytes: 1 })).toBe(true);
   });
 });

@@ -833,6 +833,11 @@ export class ServerInstance extends EventEmitter {
     // Hand-rolled attach rather than dockerode's `container.attach()`: see the
     // comment on `DockerClient.attachToContainer`, which explains why the
     // library's version injects its own options into stdin.
+    //
+    // The handshake is bounded and the stream that comes out of it is not, which
+    // is the distinction that matters here: this daemon adopts running servers
+    // when it starts, and a quiet server prints nothing for hours. See
+    // `boundEveryRequest` for why no deadline anywhere reaches an open stream.
     const stream = await this.options.docker.attachToContainer(containerNameFor(this.uuid));
 
     stream.on('data', (chunk: Buffer) => this.handleOutput(chunk));
@@ -958,6 +963,10 @@ export class ServerInstance extends EventEmitter {
       return;
     }
 
+    // Bounded up to the response and not past it, like the console stream above:
+    // Docker sends a sample a second while the container runs and stops sending
+    // the moment it does not, and a deadline over the stream itself would take
+    // the statistics of every idle server offline on a timer.
     const stream = await this.container().stats({ stream: true });
     const assembler = new LineAssembler();
 
