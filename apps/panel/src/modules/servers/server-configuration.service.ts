@@ -1,6 +1,8 @@
 import {
+  readinessSchema,
   serverConfigurationSchema,
   type ConfigFile,
+  type Readiness,
   type ServerConfiguration,
   type StopConfiguration,
 } from '@hopper/shared';
@@ -83,6 +85,11 @@ export class ServerConfigurationService {
 
       stop: parseStopCommand(server.template.stopCommand),
       startupDetection: server.template.startupDetection ?? undefined,
+      // Both are sent, and the daemon prefers `readiness` when it is there.
+      // `startupDetection` keeps travelling regardless: it is what the entire
+      // shipped catalogue declares, and a node still running an older daemon
+      // reads nothing else.
+      readiness: parseReadiness(server.template.readiness, server.uuid, this.logger),
       configFiles: parseConfigFiles(server.template.configFiles, server.uuid, this.logger),
       fileDenylist: server.template.fileDenylist,
 
@@ -143,6 +150,55 @@ export function parseStopCommand(raw: string): StopConfiguration {
   }
 
   return { type: 'signal', value: 'SIGTERM' };
+}
+
+/**
+ * Decodes a template's readiness strategy.
+ *
+ * Stored as free-form JSON, because no column can hold a discriminated union,
+ * so nothing guarantees the shape until it is read back. It is validated here
+ * rather than left to the `serverConfigurationSchema.parse` that closes
+ * `build`: that one rejects the whole object, and an unreadable strategy would
+ * then make a server impossible to start that started perfectly well the day
+ * before anything was written to this column.
+ *
+ * A value that does not parse is dropped and reported at error level — louder
+ * than its neighbour below, because the consequence is worse than one ignored
+ * configuration file. The daemon falls back to `startupDetection`, and a
+ * template that chose a strategy in the first place did so because no console
+ * line announces it, so there is nothing to fall back to: the server is called
+ * running the moment its container is up. That is exactly the silent guess
+ * this column exists to replace, and this log line is all an operator gets to
+ * tell it apart from a server that really did start.
+ */
+export function parseReadiness(
+  raw: unknown,
+  serverUuid: string,
+  logger: Logger,
+): Readiness | undefined {
+  // Declaring nothing is the ordinary case, not a failure: the whole bundled
+  // catalogue still announces itself through `startupDetection` alone.
+  if (raw === null || raw === undefined) {
+    return undefined;
+  }
+
+  const result = readinessSchema.safeParse(raw);
+
+  if (!result.success) {
+    const issues = result.error.issues
+      .map((issue) => `${issue.path.join('.') || '(root)'}: ${issue.message}`)
+      .join('; ');
+
+    logger.error(
+      `Readiness strategy ignored for server ${serverUuid} (${issues}). ` +
+        'The daemon falls back to startupDetection, and to calling the server ' +
+        'running as soon as its container is up if there is none.',
+    );
+
+    return undefined;
+  }
+
+  return result.data;
 }
 
 /**

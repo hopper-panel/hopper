@@ -38,6 +38,31 @@ export const stopConfigurationSchema = z.discriminatedUnion('type', [
 ]);
 
 /**
+ * How long the daemon waits for a strategy to answer before it gives up.
+ *
+ * Optional, and deliberately without a default: **declaring a deadline is how
+ * a template opts into a start that can fail.** Expiry is not a console line
+ * any more — it stops the server and reports the stop as one nobody asked for
+ * — and that is a verdict only whoever wrote the template is in a position to
+ * pass. The right figure is a property of the workload: a modded pack loading
+ * three hundred mods needs minutes, a dedicated server binding a port needs
+ * seconds, and one number covering both either cuts the first short or leaves
+ * the second hanging for ten minutes over a start that failed in two seconds.
+ *
+ * Saying nothing keeps the open-ended wait every server had before this field
+ * existed: the daemon goes on believing the start until something else ends
+ * it. A default here would not be a default at all — it would be a stop,
+ * handed to every shipped template and every already-imported Pterodactyl egg,
+ * none of whose authors chose one.
+ *
+ * Bounded at an hour when it is declared. Past that a deadline stops being
+ * one, and the server is back to sitting in `starting` while somebody waits
+ * for a spinner to mean something. `immediate` carries none for the same
+ * reason it has no wait.
+ */
+const readinessTimeoutSchema = z.number().int().positive().max(3_600_000).optional();
+
+/**
  * When a started server becomes a running one.
  *
  * Exported before the configuration that uses it, because the daemon resolves
@@ -48,20 +73,33 @@ export const readinessSchema = z.discriminatedUnion('type', [
     type: z.literal('log'),
     /** Any one of them matching is enough; they are alternatives, not steps. */
     patterns: z.array(z.string().min(1)).min(1),
+    timeoutMs: readinessTimeoutSchema,
   }),
   z.object({
     type: z.literal('port'),
     /** Which of the server's ports to knock on. The primary one by default. */
     role: z.string().min(1).optional(),
+    /**
+     * `udp` is accepted here and not probed by the daemon, on purpose. The
+     * field describes the server, not what this node can do about it, and a
+     * template author naming the protocol their game actually speaks deserves
+     * to be told so rather than silently knocked on over TCP.
+     *
+     * Told, and then got on with: the daemon says on the console that it
+     * cannot run the check and calls the server running as soon as its
+     * container is up. See `readiness` below for why that beats refusing.
+     */
     protocol: z.enum(['tcp', 'udp']).default('tcp'),
     /** Time to leave the process before knocking at all. */
     delayMs: z.number().int().nonnegative().max(600_000).default(0),
+    timeoutMs: readinessTimeoutSchema,
   }),
   z.object({
     type: z.literal('rcon'),
     role: z.string().min(1).optional(),
     /** Template variable holding the password. Never the password itself. */
     secretVariable: z.string().min(1),
+    timeoutMs: readinessTimeoutSchema,
   }),
   z.object({ type: z.literal('immediate') }),
 ]);
@@ -157,7 +195,13 @@ export const serverConfigurationSchema = z.object({
    * Pterodactyl egg carries this shape and nothing else, and an import that
    * stopped working the day the field moved would be a migration imposed on
    * people who never asked for one. The daemon reads it when `readiness` is
-   * absent, and treats it as a single-pattern `log`.
+   * absent, and treats it as a single-pattern `log` **with no deadline**: it
+   * was written when the daemon waited for ever, and a pack that takes a
+   * quarter of an hour to load its world must not be stopped mid-start by a
+   * timeout its author never chose. There is no way to attach one here either:
+   * a deadline is opted into by declaring a `readiness` that names a
+   * `timeoutMs`, and a `readiness` that names none waits just as openly as
+   * this field does.
    */
   startupDetection: z.string().optional(),
 
@@ -175,14 +219,26 @@ export const serverConfigurationSchema = z.object({
    *   announce themselves differently, and the importer had to throw all but
    *   one away.
    * - `port` waits for something to accept a connection. Crude, and the only
-   *   thing available for a server that logs nothing useful.
+   *   thing available for a server that logs nothing useful. TCP only: a
+   *   connectionless socket cannot tell a closed port from a silent one
+   *   without reading ICMP through a raw socket the daemon has no capability
+   *   for, so a `udp` probe is not run at all. The daemon says so on the
+   *   console, in the daemon log, and calls the server running once its
+   *   container is up. Loudly wrong beats a server parked in `starting` for
+   *   ever while it quietly takes players — the operator can see the first
+   *   and act on it, and cannot tell the second from a server that died.
    * - `rcon` authenticates, which is the cheapest true readiness probe there
-   *   is — the server answers only once it is serving. **Declared and not yet
-   *   implemented**: there is no RCON client in the daemon, and a template
-   *   asking for it is refused rather than silently downgraded.
+   *   is — the server answers only once it is serving.
    * - `immediate` is today's silent default, made explicit. A container that
    *   is up is called running, which is right for a workload with no notion
    *   of "ready" and wrong for every other one — so it has to be chosen.
+   *
+   * The three that wait accept a `timeoutMs`, and declaring one is how a
+   * template opts into a start that can fail: the deadline expiring stops the
+   * server and tells the panel the stop was nobody's idea. Declaring nothing
+   * leaves the wait open-ended, which is what every server did before
+   * deadlines existed and what a configuration carrying only
+   * `startupDetection` still does.
    *
    * Deliberately no game-specific query protocol. A2S_INFO would answer the
    * same question as `rcon` for Source alone, and put a per-game UDP parser

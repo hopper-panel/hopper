@@ -351,6 +351,16 @@ model Template {
   /// Regex signalling that the server is ready.
   startupDetection String?
 
+  /// How the server announces it is ready (Readiness shape from the contract).
+  ///
+  /// Nullable, and every existing row keeps a NULL: the daemon then falls back
+  /// to `startupDetection` above, which is what the whole catalogue and every
+  /// imported egg still declare. A default of any kind would have been a
+  /// choice made on behalf of templates whose author never expressed one — and
+  /// the only honest default, `immediate`, is precisely the silent "it is up,
+  /// call it running" this column exists to make explicit.
+  readiness Json?
+
   /// Files rewritten before every start (ConfigFile shape from the contract).
   configFiles  Json     @default("[]")
   /// Glob patterns the user can neither read nor modify.

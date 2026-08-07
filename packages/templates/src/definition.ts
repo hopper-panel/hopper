@@ -1,4 +1,4 @@
-import { configFileSchema } from '@hopper/shared';
+import { configFileSchema, readinessSchema } from '@hopper/shared';
 import { z } from 'zod';
 
 /**
@@ -54,6 +54,23 @@ export const templateDefinitionSchema = z.object({
   /** Regular expression signalling that the server accepts connections. */
   startupDetection: z.string().optional(),
 
+  /**
+   * How a server built from this template announces it is ready.
+   *
+   * The same union the daemon resolves, declared here so a template can pick
+   * something other than a console regex. A single pattern over stdout was the
+   * only answer while Minecraft was the only workload, and it is no answer at
+   * all for a game that prints nothing recognisable — the operator had no way
+   * to say so, because there was no field to say it in.
+   *
+   * Optional, and it must stay optional. `startupDetection` above is what
+   * every shipped template and every imported Pterodactyl egg carries, and the
+   * daemon still reads it whenever this is absent. Making this required would
+   * invalidate the whole existing catalogue to express something none of those
+   * templates needed.
+   */
+  readiness: readinessSchema.optional(),
+
   configFiles: z.array(configFileSchema).default([]),
   fileDenylist: z.array(z.string()).default([]),
 
@@ -71,11 +88,30 @@ export type TemplateDefinition = z.infer<typeof templateDefinitionSchema>;
 export type TemplateVariableDefinition = z.infer<typeof templateVariableDefinitionSchema>;
 export type DockerImageOption = z.infer<typeof dockerImageOptionSchema>;
 
-/** Template groups shipped with Hopper. */
+/**
+ * Template groups shipped with Hopper.
+ *
+ * These strings are not labels: each one is stored as `TemplateGroup.name` and
+ * that column is the upsert key, so renaming a group does not rename anything
+ * — it creates a second group and leaves every existing template pointing at
+ * the first. They are also rendered exactly as written in the create-server
+ * dropdown, untranslated. Both facts mean the wording has to be chosen once
+ * and then stay chosen.
+ */
 export const TEMPLATE_GROUPS = {
   JAVA: 'Minecraft: Java Edition',
   BEDROCK: 'Minecraft: Bedrock Edition',
   PROXY: 'Proxies',
+  /**
+   * Everything that is not Minecraft.
+   *
+   * Named for the category rather than for the game, so that the second and
+   * the tenth non-Minecraft template can join it without a rename this schema
+   * cannot perform. A group per game would read better in a list of one and
+   * turn the dropdown into a catalogue of one-entry sections as the list
+   * grows; the three groups above are families too.
+   */
+  OTHER_GAMES: 'Other games',
 } as const;
 
 /**

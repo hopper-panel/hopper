@@ -68,3 +68,84 @@ describe('serverConfigurationSchema', () => {
     );
   });
 });
+
+/**
+ * How long the daemon believes a start that never announced itself.
+ *
+ * The daemon hardcoded ten minutes and gave up in a console line, leaving the
+ * server in `starting` for ever. The figure moved into the template because it
+ * is a property of the workload — a modded pack loading three hundred mods
+ * needs minutes, a dedicated server binding a port needs seconds — and it has
+ * no default at all, because giving up now *stops the server*. Declaring a
+ * deadline is how a template opts into a start that can fail; declaring none
+ * keeps the open-ended wait every server had before this field existed.
+ */
+describe('readiness deadlines', () => {
+  const withReadiness = (readiness: unknown) =>
+    serverConfigurationSchema.parse({ ...MINIMAL, readiness }).readiness;
+
+  it.each([
+    ['log', { type: 'log', patterns: ['Done \\('] }],
+    ['port', { type: 'port' }],
+    ['rcon', { type: 'rcon', secretVariable: 'RCON_PASSWORD' }],
+  ])('leaves a %s strategy that asked for no deadline without one', (_type, readiness) => {
+    // A default here would not be a default: it would be a stop, applied to
+    // every template and every already-imported Pterodactyl egg whose author
+    // chose no such thing. The other fields still take theirs — a protocol or
+    // a delay left out changes nothing about whether the start can fail.
+    const parsed = withReadiness(readiness) as Record<string, unknown>;
+
+    expect(parsed.timeoutMs).toBeUndefined();
+  });
+
+  it('still fills in the defaults that are not deadlines', () => {
+    // Only the deadline lost its default. A protocol or a delay left unsaid
+    // changes nothing about whether the start can fail, so the daemon should
+    // not have to guess them from an absent key.
+    expect(withReadiness({ type: 'port' })).toEqual({
+      type: 'port',
+      protocol: 'tcp',
+      delayMs: 0,
+    });
+  });
+
+  it('keeps a deadline the template asked for', () => {
+    expect(withReadiness({ type: 'port', timeoutMs: 45_000 })).toMatchObject({ timeoutMs: 45_000 });
+  });
+
+  // Zero would fail every start on the spot, and a negative figure would mean
+  // a deadline already in the past before the container is even created.
+  it.each([0, -1, 1.5])('refuses a deadline of %s', (timeoutMs) => {
+    expect(
+      serverConfigurationSchema.safeParse({ ...MINIMAL, readiness: { type: 'port', timeoutMs } })
+        .success,
+    ).toBe(false);
+  });
+
+  it('refuses a deadline longer than an hour', () => {
+    // Past that it is not a deadline any more: the server is back to sitting
+    // in `starting` while somebody waits for a spinner to mean something.
+    expect(
+      serverConfigurationSchema.safeParse({
+        ...MINIMAL,
+        readiness: { type: 'port', timeoutMs: 3_600_001 },
+      }).success,
+    ).toBe(false);
+  });
+
+  it('asks nothing of an immediate strategy, which waits for nothing', () => {
+    expect(withReadiness({ type: 'immediate' })).toEqual({ type: 'immediate' });
+  });
+
+  it('still accepts a configuration carrying only the deprecated field', () => {
+    // Every shipped template and every imported egg declares this and nothing
+    // else. The daemon reads it as a `log` with no deadline.
+    const parsed = serverConfigurationSchema.parse({
+      ...MINIMAL,
+      startupDetection: '\\)! For help, type "help"',
+    });
+
+    expect(parsed.startupDetection).toBe('\\)! For help, type "help"');
+    expect(parsed.readiness).toBeUndefined();
+  });
+});

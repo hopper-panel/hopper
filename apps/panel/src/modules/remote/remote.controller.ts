@@ -255,12 +255,37 @@ export class RemoteController {
     // The cause when the daemon knows it: "killed for lack of memory" explains
     // on its own a stop nobody understands.
     this.webhooks.dispatch(server.id, WEBHOOK_EVENTS.SERVER_CRASHED, {
-      Cause: body.oomKilled
-        ? 'killed by the kernel, out of memory'
-        : 'the process stopped on its own',
-      ...(body.exitCode === undefined ? {} : { 'Code de sortie': body.exitCode }),
+      Cause: describeStop(body),
+      // Suppressed for a stop Hopper ordered: the code is the one the server
+      // returned for the SIGTERM the daemon sent it, so printing it next to
+      // the cause invites a hunt through a crash log for a crash that never
+      // happened. Every other unexpected stop keeps it — there it is the
+      // server's own last word.
+      ...(body.exitCode === undefined || body.cause === 'readiness_failed'
+        ? {}
+        : { 'Code de sortie': body.exitCode }),
     });
   }
+}
+
+/**
+ * What the recipient is told about a stop nobody asked for.
+ *
+ * Ordered by how much the daemon knows. `cause` is the newest and narrowest
+ * signal, and it is optional on purpose: a node running a daemon that predates
+ * the field sends nothing, and the fallback is the sentence this panel has
+ * always used — a stop reported with less precision, never one refused.
+ */
+export function describeStop(report: StatusReport): string {
+  if (report.oomKilled) {
+    return 'killed by the kernel, out of memory';
+  }
+
+  if (report.cause === 'readiness_failed') {
+    return 'stopped by Hopper: it never became ready, see the server console';
+  }
+
+  return 'the process stopped on its own';
 }
 
 /** Readable size, for the message sent to the recipient. */

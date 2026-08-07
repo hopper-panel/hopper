@@ -1,3 +1,4 @@
+import { readinessSchema, type Readiness } from '@hopper/shared';
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service.js';
 
@@ -26,6 +27,25 @@ function parseImageOptions(raw: unknown): DockerImageOption[] {
   return [];
 }
 
+/**
+ * Normalises a template's readiness strategy.
+ *
+ * The column is free-form JSON, so a value that does not match the contract is
+ * possible and reads here as "nothing declared". The view does not try to tell
+ * the two apart: the place that has to shout about an unreadable strategy is
+ * `ServerConfigurationService`, where it actually changes what the daemon
+ * waits for. This is a display of what the template says, not a diagnosis.
+ */
+function parseReadiness(raw: unknown): Readiness | null {
+  if (raw === null || raw === undefined) {
+    return null;
+  }
+
+  const result = readinessSchema.safeParse(raw);
+
+  return result.success ? result.data : null;
+}
+
 export interface TemplateVariableView {
   name: string;
   description: string;
@@ -50,6 +70,17 @@ export interface TemplateView {
   /** Ordered: the first is the default. */
   dockerImages: DockerImageOption[];
   startup: string;
+  /**
+   * How a server built from this template announces it is ready, or `null`
+   * when the template declares nothing and the daemon falls back to the
+   * console pattern.
+   *
+   * Read-only, and exposed for one reason: a server that never leaves
+   * `starting` is waiting for something, and until this was visible there was
+   * no way to find out what — the strategy lived in a JSON column the
+   * interface never showed.
+   */
+  readiness: Readiness | null;
   variables: TemplateVariableView[];
 }
 
@@ -123,6 +154,7 @@ export class TemplatesService {
     author: string;
     startup: string;
     dockerImages: unknown;
+    readiness: unknown;
     group: { uuid: string; name: string };
     variables: {
       name: string;
@@ -142,6 +174,7 @@ export class TemplatesService {
       group: { uuid: template.group.uuid, name: template.group.name },
       dockerImages: parseImageOptions(template.dockerImages),
       startup: template.startup,
+      readiness: parseReadiness(template.readiness),
       // A non-viewable variable is an implementation detail of the template
       // (internal path, build flag): exposing it would invite editing it.
       variables: template.variables
