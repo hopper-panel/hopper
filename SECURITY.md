@@ -57,8 +57,11 @@ therefore not negotiable:
    and refuses anything leaving the server's volume, symlinks included.
 2. **Container hardening.** Never `--privileged`, capabilities dropped, `no-new-privileges`, a PID
    limit, and the Docker socket is never mounted into a server container.
-3. **Two-part tokens.** Node tokens and API keys are stored hashed; only the public identifier is in
-   the clear, and they are revocable.
+3. **Two-part tokens.** API keys are stored hashed; only the public identifier is in the clear.
+   Node tokens are two-part and revocable in the same way, but **encrypted rather than hashed** —
+   they are a shared secret the panel presents to the daemon as well as one the daemon presents to
+   the panel, and a hash cannot be presented. The key that encrypts them is in `.env`, never in the
+   database. See [docs/security.md](./docs/security.md).
 4. **Short-lived console JWTs**, carrying the permissions, verified by the daemon on every
    connection.
 5. **No shell.** Startup commands are templates with validated variables, never a concatenation of

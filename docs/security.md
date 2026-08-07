@@ -79,8 +79,14 @@ You have nothing to set for the following — it is the default behaviour:
   `--privileged`, and the Docker socket is never mounted into a server container.
 - **A path jail** on every file operation and on SFTP: the path resolved through `realpath`,
   symlinks leaving the volume refused, zip-slip protection on extraction.
-- **Two-part node tokens**: public identifier, secret hashed in the database, rotation through
-  `hopper node:token`.
+- **Two-part node tokens**: public identifier, secret encrypted in the database with `APP_SECRET`,
+  rotation through `hopper node:token`. Encrypted rather than hashed, and the difference is worth
+  knowing: a node token is not a password the panel only ever checks, it is a **shared secret used
+  in both directions** — the daemon presents it to the panel on `/api/remote/*`, and the panel
+  presents it right back to command the daemon. A hash cannot be presented, so the panel has to be
+  able to read the value. It is protected by a key that lives in `.env` and never in the database,
+  so a dump of the database on its own yields nothing usable. A dump that comes with `APP_SECRET`
+  yields control of every node, which is why that file's permissions are the ones to guard.
 - **Short-lived console JWTs**, carrying the bearer's permissions, verified by the daemon — which
   also checks the origin of the WebSocket connection.
 - **Startup commands as templates**, never a concatenation handed to a shell.

@@ -37,28 +37,6 @@ services:
       timeout: 5s
       retries: 5
 
-  # Local S3 bucket, to exercise the backup driver without an external account.
-  # Web console at http://localhost:9001 (hopperadmin / hopperadmin).
-  minio:
-    image: minio/minio:latest
-    container_name: hopper-dev-minio
-    restart: unless-stopped
-    command: ['server', '/data', '--console-address', ':9001']
-    environment:
-      MINIO_ROOT_USER: hopperadmin
-      MINIO_ROOT_PASSWORD: hopperadmin
-    ports:
-      - '127.0.0.1:9000:9000'
-      - '127.0.0.1:9001:9001'
-    volumes:
-      - minio-data:/data
-    healthcheck:
-      test: ['CMD', 'mc', 'ready', 'local']
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
 volumes:
   postgres-data:
   redis-data:
-  minio-data:
