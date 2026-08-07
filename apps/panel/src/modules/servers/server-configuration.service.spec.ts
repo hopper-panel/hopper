@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import type { PrismaService } from '../../prisma/prisma.service.js';
 import {
   ServerConfigurationService,
+  installGuards,
   parseReadiness,
   parseStop,
   parseStopCommand,
@@ -210,6 +211,8 @@ function serverRow(template: Record<string, unknown>, allocations?: Record<strin
       installContainer: 'debian:bookworm-slim',
       installEntrypoint: '/bin/bash',
       installScript: 'set -e',
+      installInactivityTimeoutMs: null,
+      installRequiredDiskBytes: null,
       ...template,
     },
   };
@@ -315,6 +318,82 @@ describe('ServerConfigurationService.build stop', () => {
     // server; the daemon reports a server it has that the panel did not
     // describe and never deletes one, so nothing is destroyed by the refusal.
     await expect(serviceFor({ stop: { type: 'rcon' } }).build(UUID)).rejects.toThrow(/stop/);
+  });
+});
+
+/**
+ * What the daemon is told about surviving the installation itself.
+ *
+ * Both guards are new columns, and the case that has to be exactly right is the
+ * one every existing template is in: declaring neither, and producing the
+ * payload it has always produced.
+ */
+describe('ServerConfigurationService.build install', () => {
+  const UUID = '1b32d12d-7b10-443e-a259-6a31d67e28e6';
+
+  it('sends the install object unchanged for a template that declares neither guard', async () => {
+    const configuration = await serviceFor({}).build(UUID);
+
+    // The keys are asserted rather than the value, because neither `toEqual`
+    // nor `JSON.stringify` can tell an absent key from one holding `undefined`
+    // — and "absent" is what the whole existing catalogue has to keep sending.
+    expect(Object.keys(configuration.install!)).toEqual(['containerImage', 'entrypoint', 'script']);
+  });
+
+  it('carries the inactivity window a template names', async () => {
+    const configuration = await serviceFor({ installInactivityTimeoutMs: 900_000 }).build(UUID);
+
+    expect(configuration.install?.inactivityTimeoutMs).toBe(900_000);
+  });
+
+  it('carries a declared download size across the BigInt column', async () => {
+    // Forty gigabytes is past what an INTEGER column holds, which is why the
+    // column is a BigInt — and past what a JSON payload can carry as one, which
+    // is why it is converted here.
+    const configuration = await serviceFor({
+      installRequiredDiskBytes: BigInt(40) * BigInt(1024) ** BigInt(3),
+    }).build(UUID);
+
+    expect(configuration.install?.requiredDiskBytes).toBe(42_949_672_960);
+  });
+});
+
+/**
+ * The keys are asserted, never the value.
+ *
+ * `toEqual({})` passes on `{ inactivityTimeoutMs: undefined }`, which is the one
+ * shape this function exists to avoid producing — so a version of it written
+ * with `inactivityTimeoutMs: template.installInactivityTimeoutMs ?? undefined`,
+ * emitting both keys always, would leave a `toEqual({})` test green while
+ * sending every existing template a payload it has never sent. `Object.keys` is
+ * what tells those apart, as it does for the allocation roles below.
+ */
+describe('installGuards', () => {
+  it('says nothing at all when the template declares nothing', () => {
+    expect(
+      Object.keys(
+        installGuards({ installInactivityTimeoutMs: null, installRequiredDiskBytes: null }),
+      ),
+    ).toEqual([]);
+  });
+
+  // A row read back without the columns — an older dump, a `select` written
+  // before they existed — must behave like a template that declared nothing,
+  // not emit a key holding `undefined`.
+  it('says nothing for columns that are not there at all', () => {
+    expect(Object.keys(installGuards({} as never))).toEqual([]);
+  });
+
+  // And the other half of the same rule: a template that *does* declare one
+  // guard sends that key and only that key.
+  it('sends only the guard the template named', () => {
+    const guards = installGuards({
+      installInactivityTimeoutMs: 900_000,
+      installRequiredDiskBytes: null,
+    });
+
+    expect(Object.keys(guards)).toEqual(['inactivityTimeoutMs']);
+    expect(guards.inactivityTimeoutMs).toBe(900_000);
   });
 });
 

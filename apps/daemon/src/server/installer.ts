@@ -3,10 +3,18 @@ import { join } from 'node:path';
 import type { Duplex } from 'node:stream';
 import type { ServerConfiguration } from '@hopper/shared';
 import type Dockerode from 'dockerode';
+import { DOCKER_ANSWER_TIMEOUT_MS, DockerUnansweredError } from '../docker/client.js';
 import type { DockerClient } from '../docker/client.js';
 import { CPU_PERIOD_US, cpuQuotaFor, memorySwapFor } from '../docker/container-config.js';
 import { LineAssembler } from './console-buffer.js';
+import { directorySize, formatBytes, freeSpaceBytes } from './disk-usage.js';
 import { buildEnvironment } from './invocation.js';
+import {
+  activityCounters,
+  countersMoved,
+  type ActivityCounters,
+  type DockerStats,
+} from './stats.js';
 
 /**
  * Running a server's install script.
@@ -211,22 +219,6 @@ function installCpuPercent(build: ServerConfiguration['build']): number {
 }
 
 /**
- * Host configuration of the install container.
- *
- * Two deliberate departures from the server container's hardening, both because
- * the container is a different animal:
- *
- *  - **no `User`**: the whole point of this container is to run as root. Pinning
- *    it to the server's unprivileged uid would leave every `apt-get` and every
- *    write into a root-owned directory failing.
- *  - **no tmpfs on `/tmp`**: the server gets 128 MiB of RAM-backed `/tmp` so it
- *    cannot fill the host's disk. Applying that here would break the many eggs
- *    that stage a download in `/tmp` before moving it into the volume — a modpack
- *    is routinely larger than the whole tmpfs. The container's own layer is
- *    thrown away seconds later, and `nosuid` on a throwaway filesystem gains
- *    nothing against a process that is already root.
- */
-/**
  * Everything `createContainer` is given for the installation.
  *
  * Split out for the same reason as {@link reclaimCreateOptions}: `User` belongs
@@ -313,16 +305,691 @@ export function installHostConfig(options: {
     // in particular, a setuid binary it drops in the volume stays inert.
     SecurityOpt: ['no-new-privileges'],
 
+    // **No `Tmpfs` for `/tmp`, deliberately.** A 512 MiB RAM disk was mounted
+    // here for one release, on the argument that an install script reads its
+    // download URL out of a variable the server's own user edits and so could
+    // point an unbounded write at `/var/lib/docker`. The argument does not
+    // survive reading the rest of this function: `WorkingDir` is `/mnt/server`,
+    // a bind mount of the volume, and nothing enforces a quota on it —
+    // `build.diskBytes` is this daemon's own accounting, applied to the file
+    // manager and to SFTP, never to the kernel. The same script can `curl` two
+    // hundred gigabytes straight into the volume and fill the node exactly as
+    // before, so the tmpfs closed nothing.
+    //
+    // What it did close was the commonest egg shape there is —
+    // `curl -o /tmp/pack.zip … && unzip /tmp/pack.zip -d /mnt/server` — which
+    // worked on the container layer and then met a ceiling no template could
+    // declare and no operator could raise short of editing the install script.
+    // And because tmpfs pages are charged to the cgroup that dirties them, on a
+    // small plan it competed with the installer's own heap in the same `Memory`
+    // limit set above: a working install turned into an unexplained code 137.
+    //
+    // A real ceiling is a node-provisioning job — an XFS project quota, or a
+    // loopback image per volume — and it does not exist yet. `StorageOpt` is not
+    // it either: Docker refuses it on overlay2 unless the backing filesystem is
+    // XFS mounted with `pquota`, so on the ext4 root most nodes run it turns
+    // every installation on the node into a container that cannot be created.
+    // The free-space preflight `runInstallation` performs before creating this
+    // container is a check, not an enforcement, and is documented as one.
+
     RestartPolicy: { Name: 'no' },
     LogConfig: { Type: 'json-file', Config: { 'max-size': '5m', 'max-file': '1' } },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// The inactivity deadline
+// ---------------------------------------------------------------------------
+
+/**
+ * How long an installation may do nothing at all before this daemon gives up on
+ * it, when its template names no figure of its own.
+ *
+ * A quarter of an hour, and the number is chosen to be *ignored* by anything
+ * that works rather than to be tight. What it exists for is a mirror that
+ * accepts the connection and then stops answering, which until now left the
+ * server in `installing` for ever because `container.wait()` was waited on with
+ * no bound at all.
+ *
+ * The figure is what it is because of what is being measured, and the two were
+ * settled together. This deadline was first written on **silence**, with half an
+ * hour behind it on the argument that no real install prints nothing for that
+ * long. The argument is false for this repository's own catalogue: every
+ * bundled script downloads with `curl -sSL` — see `packages/templates`, and the
+ * same idiom in the overwhelming majority of Pterodactyl eggs — and `-s`
+ * suppresses the progress meter, so the transfer emits not one byte from start
+ * to finish. A window on silence would therefore have been a *total-duration*
+ * cap, the very thing the design rejected, applied to the one step that
+ * legitimately takes hours: a 2 GiB modpack on a slow uplink is a working
+ * install it would have killed.
+ *
+ * So what is watched is what the container **does** — its output, but also the
+ * CPU the kernel charges it and the blocks it reads and writes, both counted
+ * against its own cgroup and nobody else's. A container pulling a depot down a
+ * wire is alive whether or not it says so: taking those bytes off the socket and
+ * putting them on a disk is work, and work is CPU time. One doing none of those
+ * three things is not slow, it is finished. Fifteen minutes of that is a very
+ * long time; the old thirty were padding for a silent-but-working download that
+ * now proves itself by the work it is doing.
+ *
+ * What is *not* watched is the container's network counters, and
+ * {@link ActivityCounters} records why at length: they count frames an interface
+ * accepted rather than work this container did, so on a node whose bridge floods
+ * ARP to every port they climb for a container that has stopped dead — which
+ * would leave this deadline never firing on exactly the busy nodes where an
+ * install that never ends does the most damage.
+ *
+ * A template that knows better says so — see `install.inactivityTimeoutMs`.
+ * This is the figure for the entire existing catalogue, every imported
+ * Pterodactyl egg, and everything else that has never had a deadline and must
+ * not start failing because one now exists.
+ *
+ * The deadline lives in this process and dies with it, deliberately. An
+ * installation the daemon was restarted out of is settled by
+ * `resolveOrphanedInstall` on the way back up — reported as failed, with its
+ * container removed — and is not resumed or re-adopted: nothing here could adopt
+ * the output stream of a container started by a process that no longer exists,
+ * so a "resumed" install would be one nobody is watching, which is the state
+ * this whole file exists to make impossible.
+ */
+export const INSTALL_INACTIVITY_DEFAULT_MS = 15 * 60_000;
+
+/** How long the container is given to go down once the deadline has fired. */
+const INSTALL_ABANDON_GRACE_SECONDS = 10;
+
+export interface StallReport {
+  /** How long the container had done nothing when the deadline fired. */
+  idleMs: number;
+  /** How long the installation had been running by then. */
+  elapsedMs: number;
+  /** False when the installation never did anything at all, from the start. */
+  sawActivity: boolean;
+  /**
+   * Whether the container's counters could be read at all during the window
+   * that expired.
+   *
+   * The difference between "it did nothing" and "nobody could see whether it
+   * did anything", and the verdicts say which. False means every sample in the
+   * window failed — a Docker that stopped answering about this container — and
+   * a deadline that fires on that has no evidence the container was idle. It
+   * gives up all the same, because a container nobody can watch cannot be
+   * allowed to hold a server's operation queue for ever, but it names this
+   * node's Docker rather than accusing a script that may have been working
+   * perfectly.
+   */
+  observed: boolean;
+}
+
+/**
+ * A deadline on **inactivity**.
+ *
+ * Armed when the install container is about to run and pushed back by every sign
+ * of life it gives, so that an installation which is working is never killed
+ * however long it takes, and one that has stopped is given up on however little
+ * it has done.
+ *
+ * Two things push it back, and the second is the one that matters. Output is the
+ * obvious signal, and it is taken from the raw stream rather than from assembled
+ * console lines: SteamCMD renders its progress by rewriting one line with
+ * carriage returns, and {@link LineAssembler} emits nothing at all until a
+ * newline arrives, so a deadline counting lines would see a download printing
+ * `progress: 41.62 (…)` twice a second as perfectly silent. But most install
+ * scripts do not print during a transfer at all — `curl -sSL` is the universal
+ * idiom and `-s` means exactly that — so the second signal is the container's
+ * own counters, fed in by {@link ContainerActivityProbe}.
+ *
+ * The clock is injectable for the tests, which need to prove both directions —
+ * an install that is doing something is not killed, one that has stopped is —
+ * and cannot do that in real time against a window measured in minutes.
+ */
+export class ActivityWatchdog {
+  private timer: NodeJS.Timeout | null = null;
+  private startedAt = 0;
+  private lastActiveAt = 0;
+  private sawActivity = false;
+  /** Whether a counter sample has succeeded since the current window began. */
+  private observed = false;
+  private report: StallReport | null = null;
+
+  constructor(
+    private readonly windowMs: number,
+    private readonly onExpiry: (report: StallReport) => void,
+    private readonly now: () => number = Date.now,
+  ) {}
+
+  /** What the deadline saw when it fired, or `null` while it has not. */
+  get expiry(): StallReport | null {
+    return this.report;
+  }
+
+  arm(): void {
+    this.startedAt = this.now();
+    this.lastActiveAt = this.startedAt;
+    this.schedule();
+  }
+
+  /**
+   * Called for every byte the installation produces and every counter of its
+   * container that has moved.
+   */
+  noteActivity(): void {
+    // Nothing to push back once the verdict has been passed: the container is
+    // already being torn down, and the dying words and last few cycles of its
+    // own teardown must not look like a reprieve.
+    //
+    // Two conditions keep it down and either alone would do it — this one, and
+    // the null timer the re-arm below is conditional on. The overlap is kept on
+    // purpose because the two are guarding different things: this one answers
+    // "has the verdict been passed", and the timer answers "is anybody still
+    // watching", which is also false for a deadline that merely stood down. The
+    // installation's own stands down while the ownership reclaim runs, and
+    // output keeps arriving across that line.
+    if (this.report !== null) {
+      return;
+    }
+
+    this.sawActivity = true;
+    this.lastActiveAt = this.now();
+
+    if (this.timer !== null) {
+      this.schedule();
+    }
+  }
+
+  /**
+   * Called for every counter sample that came back, whether or not it moved.
+   *
+   * Deliberately **not** a sign of life: a container whose counters read exactly
+   * as they did fifteen seconds ago is standing still, and pushing the deadline
+   * back for having successfully looked at it would switch the deadline off. All
+   * this records is that the deadline has a witness — that when it fires, it is
+   * firing on stillness it saw rather than on a Docker it could not ask.
+   */
+  noteObservation(): void {
+    if (this.report !== null) {
+      return;
+    }
+
+    this.observed = true;
+  }
+
+  disarm(): void {
+    if (this.timer !== null) {
+      clearTimeout(this.timer);
+      this.timer = null;
+    }
+  }
+
+  /**
+   * A timeout re-armed on every sign of life, rather than an interval that polls
+   * a timestamp: the deadline then means exactly what it says instead of the
+   * window plus up to one polling period, and an installation that is doing
+   * nothing is not woken up for.
+   */
+  private schedule(): void {
+    this.disarm();
+
+    // A fresh window has seen nothing yet. Evidence does not carry over: what
+    // the verdict has to be able to say is whether *this* window — the one that
+    // ended in silence — was one anybody could see into.
+    this.observed = false;
+
+    this.timer = setTimeout(() => this.expire(), this.windowMs);
+    // This timer must never be the reason hopperd stays alive. A daemon being
+    // shut down mid-install has already stopped caring about the deadline.
+    this.timer.unref();
+  }
+
+  private expire(): void {
+    // The other half of the pair described in `noteActivity`: a fired timer is
+    // no longer a timer, and leaving the handle here would let a sign of life
+    // arriving during the teardown re-arm a deadline that has already spoken.
+    this.timer = null;
+
+    const at = this.now();
+
+    this.report = {
+      idleMs: at - this.lastActiveAt,
+      elapsedMs: at - this.startedAt,
+      sawActivity: this.sawActivity,
+      observed: this.observed,
+    };
+
+    this.onExpiry(this.report);
+  }
+}
+
+/**
+ * How often the install container's counters are read, at most.
+ *
+ * Fifteen seconds, and the reason it can be this lazy without ever mistaking a
+ * working container for a dead one is that {@link ActivityCounters} are
+ * cumulative. They only grow, so a difference between two samples is work that
+ * happened *somewhere* between them, whenever they were taken: a poll cannot
+ * miss activity, only learn of it late. Sampling rarely therefore costs
+ * promptness, never correctness — which is what makes the cost side worth
+ * minimising. Each sample is one round trip to the Docker socket, and this
+ * daemon may be running several installations at once on a node that is also
+ * running every server on it.
+ *
+ * Fifteen seconds is two orders of magnitude below the default window, so a live
+ * container gets some sixty chances to prove itself before the deadline. A
+ * container that is genuinely wedged trips it at the window exactly: a poll that
+ * hangs or fails resets nothing, so nothing about the sampling can *delay* the
+ * verdict.
+ *
+ * The one case the period could get wrong is a window short enough to be
+ * comparable to it — a template naming thirty seconds would otherwise be a coin
+ * toss on whether a sample landed inside it. So the period is also capped at a
+ * quarter of the window, which gives a container three chances to show movement
+ * inside one — the first sample is a baseline and can never show any — for every
+ * window of {@link ACTIVITY_SAMPLE_FLOOR_MS} × {@link ACTIVITY_SAMPLES_PER_WINDOW}
+ * or more.
+ *
+ * **Below four seconds the floor wins, and the guarantee does not hold.** That
+ * is the deliberate answer rather than an oversight, and the two sentences used
+ * to be written here as though both were true at once. A window of two seconds
+ * would need a poll every half-second — one round trip to the Docker socket
+ * twice a second, per installation, on a node that may be running one for every
+ * server on it — to measure something no install can be judged on anyway: a
+ * container that pauses for two seconds is a container between two syscalls, and
+ * a deadline that fires on that will fire on healthy work whatever the sampling
+ * rate. So the floor is kept and the window is the thing that is wrong. A
+ * template naming one this short is asking for a guard that cannot be built; the
+ * schema permits it because a positive integer is what the field is, and the
+ * daemon polls at its floor and lets the deadline mean what it can.
+ */
+const ACTIVITY_SAMPLE_PERIOD_MS = 15_000;
+const ACTIVITY_SAMPLES_PER_WINDOW = 4;
+const ACTIVITY_SAMPLE_FLOOR_MS = 1_000;
+
+export function activitySamplePeriod(windowMs: number): number {
+  return Math.max(
+    ACTIVITY_SAMPLE_FLOOR_MS,
+    Math.min(ACTIVITY_SAMPLE_PERIOD_MS, Math.floor(windowMs / ACTIVITY_SAMPLES_PER_WINDOW)),
+  );
+}
+
+/**
+ * Reads a container's counters on a period and reports when any of them moved.
+ *
+ * This is the half of the deadline that makes it a deadline on *work* rather
+ * than on chatter, and it is the half without which the whole guard would kill
+ * the installations it exists to protect — see
+ * {@link INSTALL_INACTIVITY_DEFAULT_MS} for why silence proves nothing here.
+ *
+ * The first sample establishes a baseline and can never report movement: these
+ * counters are cumulative over the container's whole life, so a non-zero first
+ * reading says only that something happened at some point, possibly before
+ * anybody was watching.
+ *
+ * **A sample that fails is neither activity nor stillness, and the callback says
+ * which it was.** Docker refusing says nothing about what the container is
+ * doing, and treating it as a sign of life would hand a wedged Docker the power
+ * to keep an install alive for ever — the failure mode this file exists to
+ * close, arrived at from the other side. But it is not evidence of idleness
+ * either, and reporting it as such is how a deadline whose only witness is this
+ * probe — the ownership reclaim has no output stream — comes to give up on a
+ * `chown` that was working perfectly. So `onSample` is called only for a sample
+ * that came back, and it is told whether the counters moved; a failure is
+ * reported by saying nothing at all, which the deadline reads as having been
+ * unable to look.
+ *
+ * A failure is otherwise swallowed rather than surfaced: it is not the install's
+ * fault and not the operator's problem, and the sampling carries straight on.
+ * That carrying-on is worth its own sentence, because it used not to: a `stats`
+ * request Docker never answered left this loop awaiting a promise that never
+ * settled, so nothing was ever rescheduled and one hiccup blinded the deadline
+ * for the rest of the installation. Every request `DockerClient` makes is now
+ * bounded, so a hung sample comes back as a rejection and the next one goes out
+ * a period later.
+ *
+ * The **sampling** is what that tolerance covers, and nothing else. What the
+ * callback then does is not this class's business and is deliberately outside
+ * the `catch` — see `poll` below.
+ *
+ * Each poll is scheduled only once the previous one has come back, so a slow
+ * Docker cannot queue up requests behind itself; the period is a gap between
+ * polls, not a rate.
+ */
+export class ContainerActivityProbe {
+  private timer: NodeJS.Timeout | null = null;
+  private previous: ActivityCounters | null = null;
+  private running = false;
+
+  constructor(
+    private readonly sample: () => Promise<DockerStats>,
+    private readonly onSample: (moved: boolean) => void,
+    private readonly periodMs: number,
+  ) {}
+
+  start(): void {
+    if (this.running) {
+      return;
+    }
+
+    this.running = true;
+    // The baseline is taken straight away rather than one period in, so the
+    // first sample that *could* show movement is one period away and not two.
+    void this.poll();
+  }
+
+  stop(): void {
+    this.running = false;
+
+    if (this.timer !== null) {
+      clearTimeout(this.timer);
+      this.timer = null;
+    }
+  }
+
+  private async poll(): Promise<void> {
+    this.timer = null;
+
+    /** `null` for a sample that never came back, so nothing is reported. */
+    let moved: boolean | null = null;
+
+    try {
+      const counters = activityCounters(await this.sample());
+      const previous = this.previous;
+
+      // A sample whose counters the host does not keep leaves `previous` alone
+      // and reports nothing — the same answer as a sample that never came back,
+      // because it carries the same amount of information. Overwriting
+      // `previous` with it would also discard the last reading that did mean
+      // something.
+      if (counters !== null) {
+        this.previous = counters;
+        moved = previous !== null && countersMoved(previous, counters);
+      }
+    } catch {
+      // See above: not knowing is neither a sign of life nor a sign of death,
+      // and the deadline is told nothing rather than told something false.
+    }
+
+    try {
+      // Reported from **outside** the `catch` above, and the placement is the
+      // point rather than tidiness. A sample Docker would not give us and a
+      // callback that threw are different events with different owners — the
+      // first is this node's Docker and is deliberately tolerated, the second is
+      // a bug in this daemon — and one `catch` around both hid the second
+      // completely. It hid it in the tests too: the two that prove this probe
+      // reports *nothing* passed an `expect.unreachable()` as the callback, so
+      // they could not fail however wrong the code became.
+      //
+      // Nothing catches it here either. The callback feeds the deadline, which
+      // cannot throw; one that could would have a defect worth crashing on
+      // rather than a condition worth surviving.
+      if (moved !== null) {
+        this.onSample(moved);
+      }
+    } finally {
+      // Rescheduled from a `finally`, so that a callback which threw takes this
+      // daemon down loudly rather than stopping the sampling quietly. A probe
+      // that simply gave up here would leave the deadline with nothing left to
+      // push it back, and it would kill a working installation one window later
+      // for a reason nobody could see.
+      if (this.running) {
+        this.timer = setTimeout(() => void this.poll(), this.periodMs);
+        // Like the deadline's own timer, never a reason for hopperd to stay up.
+        this.timer.unref();
+      }
+    }
+  }
+}
+
+/**
+ * A duration as an operator reads it.
+ *
+ * "1800000ms" in a console line is a number nobody converts in their head
+ * before deciding whether it was long enough to be worth believing.
+ */
+export function describeDuration(milliseconds: number): string {
+  const total = Math.max(0, Math.round(milliseconds / 1000));
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  const seconds = total % 60;
+
+  if (hours > 0) {
+    return `${hours}h ${minutes}m`;
+  }
+
+  return minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
+}
+
+/**
+ * What the console is told when the deadline fires.
+ *
+ * The three things are listed by name, every time, because the operator reading
+ * this has to be able to disbelieve it. "Timed out" invites the reply "it was
+ * downloading, your timeout is too short"; "no output, no CPU, no disk I/O" does
+ * not, and it also tells anybody sizing `installInactivityTimeoutMs` what the
+ * figure is actually measuring.
+ *
+ * Unless there was nothing to name, which is the branch below. A window in which
+ * not one counter sample came back is a window in which this daemon could not
+ * see the container at all, and "no CPU, no disk I/O" would then be a claim
+ * about figures nobody read. The installation is still stopped — a container
+ * nobody can watch cannot be left holding a server's operation queue — but the
+ * lines say so, and they point at this node's Docker rather than at a script
+ * that may have been working perfectly. The distinction is worth the branch
+ * because it decides where the operator looks next.
+ */
+export function describeStall(report: StallReport, windowMs: number): string[] {
+  if (!report.observed) {
+    return [
+      `[Hopper] This node's Docker has not reported the install container's counters once in the ` +
+        `last ${describeDuration(report.idleMs)}, and the container has printed nothing either: ` +
+        'there is no way to tell from here whether this installation is working.',
+      '[Hopper] Giving up on it: the install container is being stopped and removed.',
+      "[Hopper] This is this node's Docker rather than the installation — the script may well " +
+        'have been running perfectly. Check that the Docker daemon on this node is healthy ' +
+        'before reinstalling, because the same thing will happen again.',
+    ];
+  }
+
+  const idle = report.sawActivity
+    ? `This installation has done nothing for ${describeDuration(report.idleMs)} — no output, no ` +
+      `CPU, no disk I/O — having run for ${describeDuration(report.elapsedMs)}.`
+    : `This installation has done nothing at all in the ${describeDuration(report.elapsedMs)} ` +
+      'since it started: no output, no CPU, no disk I/O.';
+
+  return [
+    `[Hopper] ${idle}`,
+    '[Hopper] Giving up on it: the install container is being stopped and removed.',
+    '[Hopper] A download that is still running burns CPU on every packet it takes off the socket, ' +
+      'even when it prints nothing, so this one is not running. If this installation genuinely ' +
+      `stands still for longer than ${describeDuration(windowMs)} — a script that sleeps while it ` +
+      'waits on something — its template has to say so through installInactivityTimeoutMs.',
+  ];
+}
+
+// ---------------------------------------------------------------------------
+// The disk preflight
+// ---------------------------------------------------------------------------
+
+/**
+ * Free space no installation may start below, whatever it is installing.
+ *
+ * The floor exists because the interesting figure — how much this particular
+ * install is about to write — is knowable for a Steam depot and unknowable for a
+ * Minecraft server whose modpack URL is a variable. A template that knows
+ * declares `install.requiredDiskBytes`; everything else gets this, and this has
+ * one job: stop an installation from finishing off a node that is already nearly
+ * full. A gigabyte is far too little for a modpack and far more than a Paper jar
+ * needs, which is exactly the point — it refuses only where the *next* write of
+ * any size is the one that takes the machine down, and it cannot refuse a
+ * template that installs happily today on a node with room on it.
+ */
+export const INSTALL_FREE_SPACE_FLOOR_BYTES = 1024 ** 3;
+
+/** What is refused, and why, in the two forms each is needed in. */
+export interface DiskRefusal {
+  /** What the console is told, at length. */
+  lines: string[];
+  /** The one line the {@link InstallationError} carries. */
+  reason: string;
+}
+
+/**
+ * Which filesystem the figures came off, and — the useful half — which one they
+ * did not.
+ *
+ * `statfs` answers for the filesystem the path it was given lives on, and names
+ * nothing else. That is one filesystem out of the two an installation writes to:
+ * the volume is bind-mounted from here, but a script that stages its download in
+ * `/tmp` — `curl -o /tmp/pack.zip … && unzip`, the commonest egg shape there is —
+ * writes to the container's own layer, which lives under Docker's data root on
+ * whatever filesystem *that* is. On most nodes they are the same filesystem and
+ * this sentence costs a line; on a node where an operator deliberately gave the
+ * volumes a disk of their own, it is the difference between freeing space on the
+ * right disk and freeing it on the wrong one.
+ *
+ * Docker's data root is deliberately not measured alongside. It is configurable
+ * — `data-root` in `daemon.json` — and this daemon is not told where it is, so
+ * checking it would mean guessing at `/var/lib/docker` and reporting a figure for
+ * a filesystem that may have nothing to do with the one Docker uses. A refusal
+ * naming a number that is wrong is worse than one naming a number that is
+ * missing.
+ */
+function measuredOn(path: string): string {
+  return (
+    `[Hopper] The only filesystem measured is the one holding ${path}. An install script that ` +
+    "stages its download in /tmp writes to the container's own layer instead, on whatever " +
+    "filesystem carries Docker's storage — where those are separate mounts on this node, that " +
+    'one has not been checked.'
+  );
+}
+
+/**
+ * Whether there is room, and what to say when there is not.
+ *
+ * Pure, so the refusal's wording is testable without a full filesystem. A
+ * shortfall is refused rather than warned about: filling a node's disk is not
+ * this server's failure to have — `/var/lib/docker`, the other servers' volumes
+ * and the daemon's own logs are on that filesystem, and every server on the
+ * machine goes down together. The numbers are named because "not enough disk
+ * space" leaves an operator to guess whether they need to free a gigabyte or
+ * forty.
+ *
+ * **Two questions, answered against two different quantities**, and a refusal
+ * has to say which of them it failed. They were one question with one number
+ * once — the declared figure raised to the floor — and that was wrong twice
+ * over, so both halves are spelled out here.
+ *
+ * The **floor** is measured against free space alone. A node that is nearly full
+ * is nearly full whatever this one volume happens to hold, and the bytes an
+ * install is going to overwrite are not available in advance: they are released
+ * as the new ones are written, file by file, so there is no moment at which the
+ * machine has them spare. Crediting them here would let an installation start on
+ * a node with nothing left.
+ *
+ * The **declared figure** is measured against free space *plus what the volume
+ * already holds*, because nothing wipes that volume first — a reinstall writes
+ * over what is there. Demanding the whole requirement as free space is how a
+ * 40 GiB Palworld server becomes impossible to reinstall on the node it is
+ * already installed on, which is a certain failure traded away for a possible
+ * one. The trade is not free and is worth naming: a script that wrote 40 GiB
+ * *beside* the 40 GiB already there, rather than over it, would be let through
+ * and would fill the node. Install scripts replace what they installed — that is
+ * what an install script is — which is what makes the assumption the right way
+ * round rather than merely the convenient one.
+ *
+ * `build.diskBytes` is in neither, and its absence is the other decision worth
+ * recording. It is the obvious candidate — the server's own disk limit, sitting
+ * right there in the configuration — and it answers a different question: what
+ * the operator is willing to *sell* this server, not what its installation is
+ * about to write. A 50 GiB Minecraft plan that will use 900 MiB would refuse to
+ * install on a node with 20 GiB free, which is every deliberately oversubscribed
+ * node in existence; and the panel has already weighed that number once, at
+ * creation, against the node's declared capacity and the overallocation
+ * percentage the operator chose. Re-deciding it here would overrule an operator
+ * on their own machine, in the one code path they cannot see. It would not even
+ * bound what gets written — nothing enforces `diskBytes` during an installation,
+ * the quota being this daemon's own accounting over the file manager and SFTP —
+ * and `diskBytes` 0 means unlimited, which as a *requirement* reads either as
+ * "needs everything" or "needs nothing".
+ *
+ * Both questions are asked of **one** filesystem — the one the volume lives on —
+ * and every refusal says so out loud rather than leaving it to be inferred from a
+ * path. See {@link measuredOn} for what that leaves unmeasured and why it stays
+ * unmeasured.
+ */
+export function diskRefusal(options: {
+  freeBytes: number;
+  /** What the volume already holds, and a reinstall therefore writes over. */
+  reclaimableBytes: number;
+  /** What the template says it downloads, or `undefined` if it did not say. */
+  declaredBytes: number | undefined;
+  path: string;
+}): DiskRefusal | null {
+  const { freeBytes, reclaimableBytes, declaredBytes, path } = options;
+
+  const tail =
+    '[Hopper] Nothing has been started and nothing has been changed. Free space on this node, ' +
+    'or create the server on another one.';
+
+  if (freeBytes < INSTALL_FREE_SPACE_FLOOR_BYTES) {
+    return {
+      lines: [
+        `[Hopper] Not enough disk space to install: ${formatBytes(freeBytes)} free on the ` +
+          `filesystem holding ${path}, ${formatBytes(INSTALL_FREE_SPACE_FLOOR_BYTES)} needed.`,
+        `[Hopper] Hopper refuses any installation with less than ` +
+          `${formatBytes(INSTALL_FREE_SPACE_FLOOR_BYTES)} free, whatever it is installing and ` +
+          'whatever this volume already holds: an install that fills a node takes down every ' +
+          'server on it, not just this one.',
+        measuredOn(path),
+        tail,
+      ],
+      reason:
+        `Not enough disk space on this node: ${formatBytes(freeBytes)} free, ` +
+        `${formatBytes(INSTALL_FREE_SPACE_FLOOR_BYTES)} needed.`,
+    };
+  }
+
+  if (declaredBytes === undefined || freeBytes + reclaimableBytes >= declaredBytes) {
+    return null;
+  }
+
+  // Named separately from the total, because "37 GiB available" on a node with
+  // 5 GiB free is a figure nobody would believe without being told where the
+  // rest of it comes from.
+  const held =
+    reclaimableBytes > 0
+      ? `${formatBytes(freeBytes)} free on the filesystem holding ${path}, plus ` +
+        `${formatBytes(reclaimableBytes)} this server's volume already holds and the ` +
+        'installation writes over'
+      : `${formatBytes(freeBytes)} free on the filesystem holding ${path}`;
+
+  return {
+    lines: [
+      `[Hopper] Not enough disk space to install: ${held}, ${formatBytes(declaredBytes)} needed.`,
+      '[Hopper] The figure comes from the template, which knows what it downloads.',
+      measuredOn(path),
+      tail,
+    ],
+    reason:
+      `Not enough disk space on this node: ${formatBytes(freeBytes + reclaimableBytes)} ` +
+      `available, ${formatBytes(declaredBytes)} needed.`,
   };
 }
 
 /**
  * Starts the installation and waits for it to finish.
  *
- * @throws {InstallationError} if the template describes no installation, or if
- *   Docker refuses to create the container.
+ * @throws {InstallationError} if the template describes no installation, if the
+ *   node has not the disk space for it, if the installation stands still for
+ *   longer than its deadline, or if Docker will not take the container down
+ *   afterwards.
+ * @throws {DockerUnansweredError} if Docker takes any of the requests this makes
+ *   — creating the install container, attaching to its output, starting it,
+ *   removing it — and does not answer within its own window. Thrown by
+ *   `DockerClient` rather than by anything here, which is the point: see
+ *   `boundEveryRequest`.
+ *
+ * Deliberately neither for a failed ownership reclaim, which is reported and
+ * never fatal — see {@link reclaimOwnership}, and `docs/security.md` for the
+ * other two failures that are reported without failing an installation.
  */
 export async function runInstallation(
   docker: DockerClient,
@@ -337,8 +1004,18 @@ export async function runInstallation(
 
   const scriptDirectory = join(tmpPath, `install-${configuration.uuid}`);
 
-  await mkdir(scriptDirectory, { recursive: true });
   await mkdir(volumePath, { recursive: true });
+
+  // Before the image is pulled and long before anything runs: a preflight that
+  // refuses after downloading a container image has already spent the disk it
+  // was checking for. The volume itself is the path measured, not the daemon's
+  // root — `system.dataDirectory` can sit on a different disk from
+  // `system.rootDirectory`, and an operator who gave one server its own mount
+  // deserves to have that mount checked rather than the one Hopper happens to
+  // be installed on. It exists by now, which is why the mkdir above moved up.
+  await assertDiskSpace({ install, volumePath, onOutput });
+
+  await mkdir(scriptDirectory, { recursive: true });
 
   // Template scripts are written on Linux; a CRLF slipped in by a Windows
   // editor would produce `/bin/bash^M: bad interpreter`, a message nobody ever
@@ -356,51 +1033,319 @@ export async function runInstallation(
     allocations: configuration.allocations,
   });
 
-  const container = await docker.api.createContainer(
-    installCreateOptions({
-      configuration,
-      install,
-      environment,
-      volumePath,
-      scriptDirectory,
-      networkName,
-    }),
+  /**
+   * Puts a Docker that has stopped answering where whoever asked for this
+   * installation is already looking.
+   *
+   * **It reports; it does not bound.** Every request `DockerClient` makes is
+   * bounded at the client — see `boundEveryRequest` there for why the rule lives
+   * in one place rather than at each of these call sites, which is what it used
+   * to do — so by the time anything arrives here the deadline has already been
+   * kept. What is left is a question of audience: the throw becomes a single
+   * `Installation failed:` line after the fact, while `onOutput` goes onto the
+   * install log the panel is streaming, among the lines that stopped arriving.
+   *
+   * Only a Docker that went quiet, deliberately. Every other way these calls can
+   * fail — an image that will not pull, a name already taken — already reaches
+   * the operator through the failure the installation reports, and echoing those
+   * here would print them twice.
+   */
+  const announcing = async <T>(work: Promise<T>): Promise<T> => {
+    try {
+      return await work;
+    } catch (error: unknown) {
+      if (error instanceof DockerUnansweredError) {
+        onOutput(`[Hopper] ${error.message}`);
+      }
+
+      throw error;
+    }
+  };
+
+  let container: Dockerode.Container;
+  let stream: Duplex;
+
+  try {
+    container = await announcing(
+      docker.api.createContainer(
+        installCreateOptions({
+          configuration,
+          install,
+          environment,
+          volumePath,
+          scriptDirectory,
+          networkName,
+        }),
+      ),
+    );
+
+    stream = (await announcing(
+      container.attach({ stream: true, stdout: true, stderr: true }),
+    )) as unknown as Duplex;
+  } catch (error: unknown) {
+    // The script directory is removed by the `finally` at the bottom of this
+    // function, and neither of these two failures has entered its `try` yet.
+    // Without this, every installation a wedged Docker refused would leave a
+    // directory in the daemon's tmp that nothing ever comes back for.
+    await rm(scriptDirectory, { recursive: true, force: true });
+    throw error;
+  }
+
+  const windowMs = install.inactivityTimeoutMs ?? INSTALL_INACTIVITY_DEFAULT_MS;
+  const teardown = dockerDeadline(
+    DOCKER_ANSWER_TIMEOUT_MS,
+    `Docker did not take the install container down within ` +
+      `${describeDuration(DOCKER_ANSWER_TIMEOUT_MS)}. This node's Docker is not answering; the ` +
+      'container may still be running on it.',
   );
 
-  const stream = (await container.attach({
-    stream: true,
-    stdout: true,
-    stderr: true,
-  })) as unknown as Duplex;
+  /**
+   * The teardown `abandonContainer` is carrying out, once the deadline has asked
+   * for one.
+   *
+   * Held on to for one reason: the removal near the bottom of this function has
+   * to be able to wait for a removal that is already under way rather than start
+   * a second one. Both used to run — that one the moment the wait came back,
+   * this one from a timer — so on **every** stall the install container was sent
+   * two concurrent `DELETE`s, and Docker refuses the loser with 409 "removal
+   * already in progress". {@link failureOf} does not excuse a 409, and should
+   * not: 409 is also how Docker refuses a removal for reasons worth printing. So
+   * what the console said, on every stall, was that the container was still on
+   * the node — in the same breath as Docker was removing it. A line reporting a
+   * failure that did not happen is precisely what teaches an operator to stop
+   * reading the lines that did.
+   *
+   * It starts as a promise that has already settled so that this is one variable
+   * rather than a promise beside a flag. Nothing ever awaits that first value:
+   * the only path that awaits this is the one where the deadline fired, and the
+   * deadline firing is the only thing that assigns it.
+   */
+  let abandoning: Promise<void> = Promise.resolve();
+
+  const watchdog = new ActivityWatchdog(windowMs, (report) => {
+    describeStall(report, windowMs).forEach(onOutput);
+    // Armed before the teardown is asked for, not after: the wait below is the
+    // thing this bounds, and it is blocked from this instant on a container that
+    // may never end. `stop` and `remove` need nothing from here — every request
+    // `DockerClient` makes carries its own deadline.
+    teardown.arm();
+    // Not awaited *here*, because this runs from a timer and there is nobody to
+    // await it. What the teardown produces is the thing the wait below is
+    // blocked on — the container ending — and every way it can fail is reported
+    // from inside.
+    abandoning = abandonContainer(container, onOutput, 'install container');
+  });
+
+  // A second signal, and the one that does the work. See
+  // `INSTALL_INACTIVITY_DEFAULT_MS`: the scripts in this repository download
+  // with `curl -sSL`, which prints nothing at all for the duration of a
+  // transfer, so a deadline fed only by the stream below would give a 2 GiB
+  // modpack the whole window to finish in.
+  //
+  // `one-shot` because this wants the counters as they stand, not a rate: with
+  // `stream: false` alone Docker holds the request open for a collection cycle
+  // to fill in `precpu_stats`, which is a field nothing here reads.
+  const probe = new ContainerActivityProbe(
+    () => container.stats({ stream: false, 'one-shot': true }),
+    (moved) => {
+      // Every sample that came back is a witness, whether or not it moved: the
+      // verdict has to be able to distinguish a container that stood still from
+      // one nobody could look at. Only movement pushes the deadline back.
+      watchdog.noteObservation();
+
+      if (moved) {
+        watchdog.noteActivity();
+      }
+    },
+    activitySamplePeriod(windowMs),
+  );
 
   const assembler = new LineAssembler();
   stream.on('data', (chunk: Buffer) => {
-    assembler.push(chunk.toString('utf8')).forEach(onOutput);
+    // Before the assembly, and this ordering is the feature. A progress bar
+    // rewriting one line with carriage returns — which is how SteamCMD reports a
+    // forty-gigabyte download — produces chunks here and no completed line at
+    // all, so a deadline pushed back by lines would kill the very install it was
+    // written for while it was working perfectly.
+    watchdog.noteActivity();
+
+    for (const line of assembler.push(chunk.toString('utf8'))) {
+      onOutput(line);
+    }
   });
 
-  await container.start();
+  // Armed before the start rather than after it, and the ordering is the whole
+  // of what this line buys: a container is covered from the moment it was told
+  // to run, which includes the stretch while Docker is still thinking about the
+  // request. Armed after, a `start` that took ten minutes to be acknowledged
+  // would hand the container that comes out of it a fresh window it has done
+  // nothing to earn. How long Docker itself may take over that request is a
+  // different question with a different figure, asked one line below. The probe
+  // goes the other way round: there are no counters to read from a container
+  // that has not been started.
+  watchdog.arm();
 
-  const exitCode = await waitForExit(container);
-  assembler.flush().forEach(onOutput);
+  /**
+   * Closes the wait below when anything but the wait ends the race.
+   *
+   * Losing that race abandons a `container.wait()` that is still outstanding,
+   * and `wait` is the one request `boundEveryRequest` deliberately does not
+   * bound — so without this, nothing in the process would ever close it. One
+   * socket to the Docker daemon per stalled installation, held until hopperd is
+   * restarted, on precisely the node that is already in trouble.
+   */
+  const abandonedWait = new AbortController();
 
-  await container.remove({ force: true }).catch(() => undefined);
-  await rm(scriptDirectory, { recursive: true, force: true });
+  try {
+    await announcing(container.start());
+    probe.start();
 
-  if (exitCode === 0) {
-    // The script ran as root: without taking ownership back, the server —
-    // which runs as UID 988 — could not write into any of the files just
-    // installed, and would fail on its first start with an incomprehensible
-    // permission error.
-    await reclaimOwnership(docker, {
-      image: install.containerImage,
-      volumePath,
-      ownership,
-      build: configuration.build,
-      onOutput,
-    });
+    let exitCode: number;
+
+    try {
+      // Unbounded on the left, and that is the design: an installation proving
+      // itself alive may take hours. Bounded on the right from the moment the
+      // deadline fires, because `stop`, `remove` and `wait` all fail together on
+      // a wedged overlay mount, and waiting for that one out is the daemon
+      // hanging in the code written to stop it hanging.
+      exitCode = await Promise.race([
+        waitForExit(container, abandonedWait.signal),
+        teardown.reached,
+      ]);
+    } catch (error: unknown) {
+      // A Docker that will not answer at all is this node's failure and is
+      // reported as one. Folding it into an exit code would describe a container
+      // that is very possibly still running as an installation that merely
+      // failed, and the operator would never go looking for it.
+      //
+      // Said on the install console as well as thrown, because the two land in
+      // different places: the throw becomes one `Installation failed:` line
+      // after the fact, while this appears where the operator is already
+      // watching, among the lines that stopped arriving.
+      if (error instanceof InstallationError || error instanceof DockerUnansweredError) {
+        onOutput(`[Hopper] ${error.message}`);
+        throw error;
+      }
+
+      // A wait that failed because the deadline tore its container down is not a
+      // Docker fault, and reporting it as one would bury the reason under
+      // "no such container".
+      if (watchdog.expiry === null) {
+        throw error;
+      }
+
+      exitCode = -1;
+    } finally {
+      // In the `finally` so that a container's last words reach the console even
+      // when this is on its way out through a throw: they are usually the reason.
+      assembler.flush().forEach(onOutput);
+      // Whichever side won, nothing here reads the wait's answer any more. On
+      // the side where the wait lost it is still open against a container that
+      // may never end, and this is the only thing left that could close it; on
+      // the side where it won there is no request to abort and this costs a
+      // function call.
+      abandonedWait.abort();
+    }
+
+    // Stood down **here**, the moment the container has finished, rather than
+    // left to the `finally` at the bottom. What follows this line is the
+    // ownership reclaim, which runs a second container for as long as a
+    // `chown -R` over a full volume takes — and across it nothing could push
+    // this deadline back: the install container is about to be removed, so its
+    // `stats` call answers 404 and the probe contributes nothing, and its attach
+    // stream is closed, so no output arrives either. Left armed, it fired in the
+    // middle of a **successful** installation, printed "Giving up on it: the
+    // install container is being stopped and removed" over a container that had
+    // already exited 0, and then returned `{ successful: true }`. The reclaim
+    // brings a deadline of its own; see {@link reclaimOwnership}.
+    watchdog.disarm();
+    probe.stop();
+
+    // **Removed once, whichever path got here.** A deadline that fired means
+    // `abandonContainer` is already removing this container, so this waits for
+    // that removal instead of sending a second `DELETE` after it — see
+    // `abandoning` above for what the second one used to print. Waited on rather
+    // than merely skipped, because the removal that is happening reports its own
+    // failure, and that report belongs on the console before this installation
+    // is over rather than after it.
+    //
+    // On every other path the removal is this line, bounded by the client like
+    // every other question put to Docker and no longer raced here: a `remove`
+    // that never returns wedges the server's operation queue exactly as
+    // thoroughly after an installation that worked as after one that hung.
+    if (watchdog.expiry !== null) {
+      await abandoning;
+    } else {
+      const leftBehind = await failureOf(container.remove({ force: true }));
+
+      if (leftBehind !== null) {
+        // Said rather than swallowed, which it used to be. The container holds a
+        // name this server's next installation will ask for, and the layer of a
+        // modpack it just unpacked; nobody comes back for it, and the operator
+        // finds out at the next reinstall if they are told nothing now.
+        onOutput(
+          `[Hopper] Docker would not remove the install container: ${leftBehind}. It is still on ` +
+            'this node — `docker ps -a` on the node will say, and it is safe to remove by hand.',
+        );
+      }
+    }
+
+    const expiry = watchdog.expiry;
+
+    if (expiry !== null) {
+      // Thrown rather than returned as a failed exit code, so the console says
+      // what happened instead of `Installation failed (code 137)` — a code the
+      // deadline produced itself, from a kill nobody but this daemon asked for.
+      // The state the server lands in is the same either way: `install_failed`,
+      // reported to the panel, with a Reinstall to retry from.
+      //
+      // What the reason names is not the same, and the operator acts on it. A
+      // deadline that fired without a single counter sample coming back saw
+      // nothing at all: saying the installation did nothing would send somebody
+      // looking at their install script when the thing to look at is the Docker
+      // daemon that stopped reporting on the container.
+      throw new InstallationError(
+        expiry.observed
+          ? `The installation did nothing for ${describeDuration(expiry.idleMs)} and was stopped.`
+          : `This installation could not be watched at all — this node's Docker reported no ` +
+              'counters for its container and the container printed nothing — so it was stopped ' +
+              `after ${describeDuration(expiry.idleMs)}.`,
+      );
+    }
+
+    if (exitCode === 0) {
+      // The script ran as root: without taking ownership back, the server —
+      // which runs as UID 988 — could not write into any of the files just
+      // installed, and would fail on its first start with an incomprehensible
+      // permission error.
+      await reclaimOwnership(docker, {
+        image: install.containerImage,
+        volumePath,
+        ownership,
+        build: configuration.build,
+        onOutput,
+        windowMs,
+      });
+    }
+
+    return { successful: exitCode === 0, exitCode };
+  } finally {
+    // Everything armed above is unwound here on the paths that do not reach the
+    // lines that unwind it themselves — a `container.start()` that throws used to
+    // leave the deadline armed on a container that never ran, producing an
+    // `abandonInstall` and three console lines a quarter of an hour after the
+    // failure, and the script directory behind it in the daemon's tmp with
+    // nothing that would ever come back for it. All three of these are
+    // idempotent, so the ordinary path standing them down early costs nothing
+    // here.
+    watchdog.disarm();
+    probe.stop();
+    teardown.disarm();
+    // Docker keeps this socket open as long as anybody holds it, and on the
+    // paths where the container is never removed nobody else would close it.
+    stream.destroy();
+    await rm(scriptDirectory, { recursive: true, force: true });
   }
-
-  return { successful: exitCode === 0, exitCode };
 }
 
 /**
@@ -409,10 +1354,301 @@ export async function runInstallation(
  * `Container.wait()` is typed `any` by dockerode: the typing is closed back
  * here rather than letting that value circulate. A missing code becomes -1,
  * which will be treated as a failure — the right default when in doubt.
+ *
+ * **The signal is required rather than optional, and that is the point of it.**
+ * Both callers race this against a deadline, and both used to abandon the loser
+ * without cancelling it. `wait` is the one request `boundEveryRequest` leaves
+ * unbounded — it answers when the container ends, which for a *server* is its
+ * whole life — so an abandoned one is a socket to the Docker daemon that nothing
+ * in this process will ever close again. Making the parameter mandatory is what
+ * stops a third caller being written that quietly leaks another.
+ *
+ * `docker-modem` forwards `abortSignal` to `http.request` as `signal`, and
+ * strips it back out of the query string, so this reaches the socket without
+ * reaching the URL.
  */
-async function waitForExit(container: { wait: () => Promise<unknown> }): Promise<number> {
-  const result = (await container.wait()) as { StatusCode?: unknown };
+async function waitForExit(
+  container: { wait: (options: { abortSignal: AbortSignal }) => Promise<unknown> },
+  abandoned: AbortSignal,
+): Promise<number> {
+  const result = (await container.wait({ abortSignal: abandoned })) as { StatusCode?: unknown };
   return typeof result?.StatusCode === 'number' ? result.StatusCode : -1;
+}
+
+/**
+ * Takes down a container the deadline has given up on.
+ *
+ * The stopping is the point. A deadline that gave up on *waiting* while leaving
+ * the container downloading would be worse than no deadline at all: the server
+ * would sit in `install_failed` — a state the panel refuses every action in —
+ * while the thing it was installing carried on writing into its volume and
+ * pulling on the node's network, with nothing left watching it and nothing left
+ * that would ever remove it.
+ *
+ * `stop` first, so a script that traps SIGTERM gets to unlink its half-written
+ * archive, and so `wait` returns an exit code rather than a rejection. Then a
+ * forced removal regardless of how that went: `stop` fails on a Docker that has
+ * stopped answering, and that is precisely the case where leaving the container
+ * behind matters most.
+ *
+ * Both calls come back either way. Neither is raced here, because both are
+ * requests to Docker and `DockerClient` bounds every one of those — a `stop` that
+ * would once have hung this function for the life of the daemon now rejects after
+ * a minute and is reported on the line below it. The grace period is added to
+ * that minute rather than eaten out of it, so the SIGTERM really does get its
+ * {@link INSTALL_ABANDON_GRACE_SECONDS}.
+ *
+ * Both failures are *said*, which they were not. Swallowing them silently is
+ * defensible for the control flow — there is nothing this function could do
+ * differently — and indefensible for the operator, because the outcome it hides
+ * is a container still running on their node, writing into a volume whose server
+ * now reads `install_failed`. A wedged overlay mount produces exactly that, and
+ * it produces it in the same breath as the hang {@link runInstallation} bounds
+ * separately: these two lines are how anyone finds out which of the two happened.
+ *
+ * **This is the only removal on the path it runs on, and both callers keep the
+ * promise it returns so that it stays that way.** They each have an ordinary
+ * teardown of their own that removes the container once the wait has come back,
+ * and for a while both fired: two concurrent `DELETE`s for one container, of
+ * which Docker refuses the second with 409 "removal already in progress" — a
+ * code {@link failureOf} does not excuse, and rightly, because 409 is also how
+ * Docker refuses removals for reasons worth printing. So the duplicate request
+ * is gone rather than the complaint about it, and what the console says about
+ * the removal is now what happened to the one removal there was.
+ *
+ * `subject` names the container in both lines because there are two of them now
+ * — the installation's and the ownership reclaim's — and "the container may
+ * still be running" is a sentence an operator has to be able to act on.
+ */
+async function abandonContainer(
+  container: Dockerode.Container,
+  onOutput: (line: string) => void,
+  subject: string,
+): Promise<void> {
+  const stopFailure = await failureOf(container.stop({ t: INSTALL_ABANDON_GRACE_SECONDS }));
+
+  if (stopFailure !== null) {
+    onOutput(`[Hopper] Docker would not stop the ${subject}: ${stopFailure}`);
+  }
+
+  const removeFailure = await failureOf(container.remove({ force: true }));
+
+  if (removeFailure !== null) {
+    onOutput(
+      `[Hopper] Docker would not remove the ${subject} either: ${removeFailure}. It may ` +
+        'still be running on this node — `docker ps` on the node will say, and it is safe to ' +
+        'remove by hand.',
+    );
+  }
+}
+
+/**
+ * How a teardown failed, or `null` if it did not — including the two ways of not
+ * failing that Docker spells as errors.
+ *
+ * 304 is "already stopped" and 404 is "already gone", and both are races this
+ * function will genuinely lose: the container can exit of its own accord in the
+ * moment between the deadline firing and the `stop` reaching the socket. Neither
+ * is worth a line on somebody's console, and printing one would teach an
+ * operator to ignore the two lines above that do matter.
+ */
+async function failureOf(work: Promise<unknown>): Promise<string | null> {
+  try {
+    await work;
+    return null;
+  } catch (error: unknown) {
+    const status = (error as { statusCode?: unknown } | null)?.statusCode;
+
+    if (status === 304 || status === 404) {
+      return null;
+    }
+
+    return error instanceof Error ? error.message : String(error);
+  }
+}
+
+export interface DockerDeadline {
+  /**
+   * Rejects once {@link arm} has been called and the timeout has passed.
+   *
+   * **Read afresh for every race, never held across one.** A deadline that has
+   * fired is spent, and the next {@link arm} puts a new promise here; a caller
+   * holding the old one is holding a promise that has already rejected, which
+   * would settle its race the instant it started whatever Docker did.
+   */
+  readonly reached: Promise<never>;
+  arm(): void;
+  disarm(): void;
+}
+
+/** One arming's promise, and the handle that rejects it. */
+interface DeadlineAttempt {
+  promise: Promise<never>;
+  fail: (error: Error) => void;
+  /** True once {@link fail} has been called: this attempt cannot be reused. */
+  spent: boolean;
+}
+
+/**
+ * A deadline for the one call `DockerClient` deliberately leaves unbounded.
+ *
+ * **There is exactly one thing this is still for**, and the shrinking is the
+ * point. Every request to Docker is now bounded once, at the client — see
+ * `boundEveryRequest` — so create, attach, start, stop, remove and the rest need
+ * nothing here and no longer have it. What the client cannot bound is
+ * `container.wait()`: it answers when the container ends, which for an
+ * installation may be hours and for a server is its whole life, and a timeout on
+ * it would report every long-running server as a crash.
+ *
+ * That leaves one gap, which is this: the moment this daemon has *decided* to
+ * kill a container, the wait stops being a wait for work and becomes a wait for
+ * a teardown. A wedged overlay mount makes `stop` fail, `remove` fail and `wait`
+ * never return, all at once — so without this the daemon hangs in precisely the
+ * code written to stop it hanging. Both callers therefore arm this only from
+ * the instant their activity deadline has given up.
+ *
+ * `message` is given in full by the caller because it is read by an operator on
+ * a console: it has to name which container and which question, and only the
+ * caller knows.
+ *
+ * **Reusable, and it was not.** One deadline object still bounds two waits in a
+ * row on the reclaim's path, and the first version of this built one rejected
+ * promise for the whole of its life. A rejected promise stays rejected: once the
+ * deadline had fired once, `arm` hung a fresh timer over a promise that had
+ * already settled, and every later `Promise.race` against `reached` lost
+ * immediately, on a Docker that was answering perfectly. So a single wedge
+ * anywhere in an installation poisoned every bounded call that came after it,
+ * and the failure it invented was a Docker fault reported against a healthy
+ * node. Each arming therefore gets an attempt of its own, and a spent one is
+ * replaced rather than re-used.
+ *
+ * `arm` restarts the clock even when a timer is already pending, for the same
+ * reason: what it promises is *this* call the whole window, not whatever an
+ * earlier arming happened to leave of it.
+ */
+export function dockerDeadline(timeoutMs: number, message: string): DockerDeadline {
+  let timer: NodeJS.Timeout | null = null;
+  let attempt: DeadlineAttempt | null = null;
+
+  /** The deadline as it stands, replaced once it has rejected. */
+  const live = (): DeadlineAttempt => {
+    if (attempt !== null && !attempt.spent) {
+      return attempt;
+    }
+
+    let fail: (error: Error) => void = () => undefined;
+    const promise = new Promise<never>((_, reject) => {
+      fail = reject;
+    });
+
+    // Handled the moment it exists, and only then raced. Nothing may reach this
+    // promise before a caller starts racing it, and a rejection with no handler
+    // attached is a process Node takes down — turning a bounded teardown into a
+    // daemon that dies, which is worse than the hang it replaces.
+    promise.catch(() => undefined);
+
+    attempt = { promise, fail, spent: false };
+    return attempt;
+  };
+
+  return {
+    get reached(): Promise<never> {
+      return live().promise;
+    },
+    arm(): void {
+      const current = live();
+
+      if (timer !== null) {
+        clearTimeout(timer);
+      }
+
+      timer = setTimeout(() => {
+        timer = null;
+        // Marked before it rejects, so that the next read of `reached` — which
+        // may well come from the very handler this rejection is about to run —
+        // gets an attempt that can still be lost rather than one already lost.
+        current.spent = true;
+        current.fail(new InstallationError(message));
+      }, timeoutMs);
+      timer.unref();
+    },
+    disarm(): void {
+      if (timer !== null) {
+        clearTimeout(timer);
+        timer = null;
+      }
+    },
+  };
+}
+
+/** An error as the console lines below want it. */
+function messageOf(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+/**
+ * Refuses an installation the node has not got the room for.
+ *
+ * The check is the daemon's and not the panel's because only the node knows what
+ * is left on its own disk: the panel accounts for what it has *promised*, which
+ * is a different number and deliberately allowed to exceed the machine.
+ *
+ * Not knowing is not a refusal. `statfs` can fail on a filesystem Node cannot
+ * describe, and refusing every installation on such a node would be a far larger
+ * failure than the one being guarded against — so it says so on the console and
+ * carries on, which leaves an operator something to search for if the disk does
+ * fill.
+ *
+ * The volume is measured only when the measurement can change the answer, and
+ * that is a deliberate piece of miserliness rather than a micro-optimisation.
+ * {@link directorySize} walks every file under the mount: on the modpack this
+ * guard exists for that is tens of thousands of `lstat` calls and takes seconds,
+ * paid before the operator sees a single line of their install. It is only ever
+ * the difference between refusing and allowing when free space alone is already
+ * short of what the template declared — so a first install onto an empty volume,
+ * and every install with room to spare, never pays it at all.
+ */
+async function assertDiskSpace(options: {
+  install: { requiredDiskBytes?: number };
+  volumePath: string;
+  onOutput: (line: string) => void;
+}): Promise<void> {
+  const { install, volumePath, onOutput } = options;
+
+  const freeBytes = await freeSpaceBytes(volumePath);
+
+  if (freeBytes === null) {
+    onOutput(
+      `[Hopper] Could not read the free space on the filesystem holding ${volumePath}: ` +
+        'installing anyway, without the usual check that this node has room for it.',
+    );
+    return;
+  }
+
+  const declaredBytes = install.requiredDiskBytes;
+  const shortOfDeclared = declaredBytes !== undefined && freeBytes < declaredBytes;
+  const reclaimableBytes = shortOfDeclared ? await directorySize(volumePath) : 0;
+
+  const refusal = diskRefusal({ freeBytes, reclaimableBytes, declaredBytes, path: volumePath });
+
+  if (refusal === null) {
+    // An installation allowed through on space that is not free yet is a
+    // surprising thing to have happened silently, and the day it turns out to
+    // have been the wrong call this line is the only record of the decision.
+    if (shortOfDeclared) {
+      onOutput(
+        `[Hopper] Only ${formatBytes(freeBytes)} free on the filesystem holding ${volumePath}, ` +
+          `but this server's volume already holds ${formatBytes(reclaimableBytes)} that this ` +
+          'installation writes over. Carrying on.',
+      );
+    }
+
+    return;
+  }
+
+  refusal.lines.forEach(onOutput);
+
+  throw new InstallationError(refusal.reason);
 }
 
 /**
@@ -521,6 +1757,85 @@ export function reclaimHostConfig(options: {
   };
 }
 
+/** How the reclaim container is named on the console, in both its failures. */
+const RECLAIM_SUBJECT = 'ownership reclaim container';
+
+/**
+ * Hands the installed files back to the server's uid, under a deadline.
+ *
+ * **Bounded in every direction, which it was not.** This is the statement
+ * immediately after the one the whole inactivity deadline exists to guard, and
+ * until now it was the identical construct being eliminated: `createContainer`,
+ * `start()`, a bare `waitForExit(container)` and `remove()`, not one of them with
+ * a deadline of any kind. It matters more here than almost anywhere, because
+ * `install()` is enqueued on the server's operation queue — so a `chown -R` that
+ * never returns takes that queue with it **for ever**: no start, no stop, no
+ * reinstall for that server until hopperd is restarted, and nothing in the panel
+ * to say why.
+ *
+ * Three of those four are now bounded by nothing written here at all: they are
+ * requests to Docker, and `DockerClient` bounds every request it makes. What is
+ * left for this function to arrange is the fourth — the wait for the `chown` to
+ * finish — and a `chown -R` is exactly the shape the activity deadline suits. It
+ * is slow over a modpack — hundreds of thousands of entries — but it is never
+ * *still*: it walks the tree with a syscall per entry, which is CPU time on every
+ * one of them and block I/O on every directory that has to come off the disk. So
+ * it proves itself alive the same way an installation does, and a total-duration
+ * cap would have to be sized for the largest volume on the node, which is the
+ * mistake {@link INSTALL_INACTIVITY_DEFAULT_MS} was written to avoid.
+ *
+ * It is given the installation's own window. A template that says its install may
+ * stand still for an hour is describing this node's disks as much as its mirrors,
+ * and one figure an operator can reason about beats a second one they never knew
+ * they had.
+ *
+ * **The counters are this deadline's only witness, and that is why a failed
+ * sample is not stillness.** There is no attach stream on this container — a
+ * `chown -R` prints nothing until it fails, and a verbose one would print a
+ * million lines — so unlike the installation's, this deadline has no second
+ * signal to fall back on. A `stats` request that Docker will not answer therefore
+ * used to look exactly like a `chown` that had stopped, and gave up on a healthy
+ * one. Two things changed. A sample that *hangs* no longer blinds the probe for
+ * good, because the client bounds it and the next one goes out a period later, so
+ * a hiccup now costs nothing at all. And a window in which no sample at all came
+ * back is reported as what it is — see {@link StallReport.observed}.
+ *
+ * The container is still given up on in that case, and the argument for it is the
+ * asymmetry rather than any evidence: a reclaim nobody can watch would otherwise
+ * hold this server's operation queue for ever, while giving up on one costs a
+ * console line and files that may still belong to root, over an installation that
+ * succeeds either way. What changes is that the operator is told this node's
+ * Docker went quiet rather than told a `chown` stood still, because only one of
+ * those two sends them to the right place.
+ *
+ * **A reclaim that fails does not fail the installation, however it failed.**
+ * That is this function's contract and not a property of how it happens to be
+ * written: it returns nothing and cannot throw, which is why the work sits in
+ * {@link attemptReclaim} — a function whose failures are a return value.
+ *
+ * It was already so for a `chown` that exited non-zero and for one that stood
+ * still. It now holds for the third case too, which used to throw and take a
+ * finished installation down with it: a Docker that will not create the
+ * container, will not start it, or stops answering in the middle of it. The
+ * inconsistency was worth removing on its own — the same node-level fault failed
+ * the installation if it landed on `createContainer` and did not if it landed on
+ * the wait — but the direction it was resolved in is the deliberate part.
+ *
+ * By the time this runs the install script has exited 0: the files are on the
+ * disk, the download that took an hour is spent, and the only thing missing from
+ * them is an owner. Failing the installation over that puts the server in
+ * `install_failed`, a state the panel refuses every action in, and the only way
+ * out of it is a Reinstall that downloads the lot again — against a Docker that
+ * is, by hypothesis, not answering and will refuse that too. Nothing is
+ * recovered and an hour is thrown away. Reporting it instead costs one console
+ * line and leaves the files where they are, ready for the same repair to be run
+ * again when the node is healthy.
+ *
+ * What that trades away is worth naming: a server marked installed whose volume
+ * may still belong to root, which surfaces later as a process unable to write
+ * its own configuration. The line at the end is the only warning of it, which is
+ * why it names that consequence rather than the Docker call that produced it.
+ */
 async function reclaimOwnership(
   docker: DockerClient,
   options: {
@@ -529,21 +1844,219 @@ async function reclaimOwnership(
     ownership: { uid: number; gid: number };
     build: ServerConfiguration['build'];
     onOutput: (line: string) => void;
+    /** The window the installation itself was given. */
+    windowMs: number;
   },
 ): Promise<void> {
-  const container = await docker.api.createContainer(reclaimCreateOptions(options));
+  const failure = await attemptReclaim(docker, options);
 
-  await container.start();
-  const exitCode = await waitForExit(container);
-  await container.remove({ force: true }).catch(() => undefined);
-
-  if (exitCode !== 0) {
+  if (failure !== null) {
     options.onOutput(
-      `[Hopper] Taking ownership of the files failed (code ${exitCode}). The server may not be able to write into its volume.`,
+      `[Hopper] Taking ownership of the files failed (${failure}). The server may not be able to ` +
+        'write into its volume.',
     );
   }
 }
 
+/**
+ * The reclaim itself, reporting how it failed instead of throwing.
+ *
+ * `Promise<string | null>` rather than `Promise<void>` is the whole point: the
+ * verdict {@link reclaimOwnership} documents is enforced by the signature, so a
+ * later hand adding a fourth Docker call here cannot fail an installation whose
+ * files are already in place without first changing this return type.
+ */
+async function attemptReclaim(
+  docker: DockerClient,
+  options: {
+    image: string;
+    volumePath: string;
+    ownership: { uid: number; gid: number };
+    build: ServerConfiguration['build'];
+    onOutput: (line: string) => void;
+    /** The window the installation itself was given. */
+    windowMs: number;
+  },
+): Promise<string | null> {
+  const { onOutput, windowMs } = options;
+
+  // The one call in here the client cannot bound: `container.wait()` answers when
+  // the chown ends, and this is armed only once the activity deadline has decided
+  // it never will. See {@link dockerDeadline}.
+  const deadline = dockerDeadline(
+    DOCKER_ANSWER_TIMEOUT_MS,
+    `Docker did not answer about the ${RECLAIM_SUBJECT} within ` +
+      `${describeDuration(DOCKER_ANSWER_TIMEOUT_MS)}. This node's Docker is not answering.`,
+  );
+
+  /** What went wrong, in the shape the one message above wants. */
+  let failure: string | null = null;
+  let created: Dockerode.Container | null = null;
+
+  try {
+    // Nothing raced here any more. Both are requests to Docker, and every request
+    // `DockerClient` makes carries its own deadline — a Docker that takes the
+    // create and goes quiet rejects on its own after a minute, with a message
+    // that names the endpoint.
+    created = await docker.api.createContainer(reclaimCreateOptions(options));
+
+    await created.start();
+  } catch (error: unknown) {
+    failure = messageOf(error);
+  }
+
+  // A `const` because the closures below capture it, and because it is the one
+  // question that decides what is left to do: nothing was created, so there is
+  // nothing to watch, nothing to wait on and nothing to remove.
+  const container = created;
+
+  if (container === null) {
+    return failure;
+  }
+
+  if (failure !== null) {
+    // Created but never started. The chown has not run and cannot, so the wait
+    // below would block on a container that will never exit — but the container
+    // is on the node and is removed like any other.
+    return await removeReclaimContainer(container, onOutput, failure);
+  }
+
+  /** The teardown the deadline asked for; see {@link runInstallation} for why. */
+  let abandoning: Promise<void> = Promise.resolve();
+
+  const watchdog = new ActivityWatchdog(windowMs, (report) => {
+    onOutput(
+      report.observed
+        ? `[Hopper] Taking ownership of the files has done nothing for ` +
+            `${describeDuration(report.idleMs)} — no CPU, no disk I/O. Giving up on it: the ` +
+            `${RECLAIM_SUBJECT} is being stopped and removed.`
+        : `[Hopper] This node's Docker has not reported the ${RECLAIM_SUBJECT}'s counters once ` +
+            `in the last ${describeDuration(report.idleMs)}, so there is no way to tell whether ` +
+            'taking ownership of the files is working. Giving up on it: the container is being ' +
+            'stopped and removed, because one nobody can watch cannot be left holding this ' +
+            "server's every later action.",
+    );
+    deadline.arm();
+    abandoning = abandonContainer(container, onOutput, RECLAIM_SUBJECT);
+  });
+
+  const probe = new ContainerActivityProbe(
+    () => container.stats({ stream: false, 'one-shot': true }),
+    (moved) => {
+      // The only witness this deadline has: see the note on
+      // {@link reclaimOwnership} for why a sample that never came back must not
+      // be read as a `chown` standing still.
+      watchdog.noteObservation();
+
+      if (moved) {
+        watchdog.noteActivity();
+      }
+    },
+    activitySamplePeriod(windowMs),
+  );
+
+  watchdog.arm();
+  probe.start();
+
+  const stalled = (report: StallReport): string =>
+    report.observed
+      ? `it stood still for ${describeDuration(report.idleMs)} and was stopped`
+      : `its counters could not be read at all, so it was stopped after ` +
+        `${describeDuration(report.idleMs)} with no way to tell whether it was working`;
+
+  /** As in {@link runInstallation}: the wait that loses this race is closed. */
+  const abandonedWait = new AbortController();
+
+  try {
+    const exitCode = await Promise.race([
+      waitForExit(container, abandonedWait.signal),
+      deadline.reached,
+    ]);
+
+    // The deadline is read before the exit code, because on that path the code
+    // is one this daemon produced itself: the container was killed, and
+    // reporting 137 would describe the symptom rather than the decision.
+    if (watchdog.expiry !== null) {
+      failure = stalled(watchdog.expiry);
+    } else if (exitCode !== 0) {
+      failure = `code ${exitCode}`;
+    }
+  } catch (error: unknown) {
+    if (error instanceof InstallationError || error instanceof DockerUnansweredError) {
+      // A Docker that has stopped answering is named as such even when the
+      // deadline gave up first: "it stood still" describes the chown, and the
+      // operator's problem is one layer below that.
+      failure = error.message;
+    } else if (watchdog.expiry !== null) {
+      failure = stalled(watchdog.expiry);
+    } else {
+      failure = messageOf(error);
+    }
+  } finally {
+    watchdog.disarm();
+    probe.stop();
+    // The deadline is only ever armed by the watchdog above, and a `chown` that
+    // finished a second later leaves that arming outstanding. Harmless — its
+    // rejection is handled where it is created — but a timer nobody is waiting
+    // on is a thing to explain later rather than a thing to leave.
+    deadline.disarm();
+    abandonedWait.abort();
+  }
+
+  // Removed once, exactly as in {@link runInstallation}: where the deadline gave
+  // up, `abandonContainer` is already removing this container and this waits for
+  // that removal rather than racing a second one against it. The docstring on
+  // `removeReclaimContainer` used to claim Docker answered 404 on this path; it
+  // answers 409, so every stalled reclaim ended on a console line saying a
+  // container still had this server's volume mounted when it did not.
+  if (watchdog.expiry !== null) {
+    await abandoning;
+    return failure;
+  }
+
+  return await removeReclaimContainer(container, onOutput, failure);
+}
+
+/**
+ * Removes the reclaim container and passes the verdict through untouched.
+ *
+ * Bounded like every other request, by the client, so there is nothing to arm
+ * here. Never called on the path where the activity deadline gave up:
+ * `abandonContainer` owns the removal there, and its caller waits on that one
+ * rather than sending a second `DELETE` for Docker to refuse.
+ *
+ * A removal that fails does not become the reclaim's verdict: it is a second,
+ * separate thing to tell the operator — the container has the server's volume
+ * mounted — and overwriting `failure` with it would lose the reason the chown
+ * did not happen.
+ */
+async function removeReclaimContainer(
+  container: Dockerode.Container,
+  onOutput: (line: string) => void,
+  failure: string | null,
+): Promise<string | null> {
+  const leftBehind = await failureOf(container.remove({ force: true }));
+
+  if (leftBehind !== null) {
+    onOutput(
+      `[Hopper] Docker would not remove the ${RECLAIM_SUBJECT}: ${leftBehind}. It has the ` +
+        "server's volume mounted, so it is worth clearing by hand before the server starts.",
+    );
+  }
+
+  return failure;
+}
+
+/**
+ * Clears a container this server's previous installation left behind.
+ *
+ * The failure swallowed here is nearly always "no such container", which is the
+ * normal case and the reason there is a `catch` at all. A Docker that will not
+ * answer lands here too and is swallowed with it — deliberately, because there is
+ * nothing useful to say at this point that the `createContainer` two lines later
+ * will not say better and with the operator's attention. It is not lost either:
+ * `DockerClient` logs every request it abandons, on the node, with the endpoint.
+ */
 async function removeIfExists(docker: DockerClient, name: string): Promise<void> {
   try {
     await docker.api.getContainer(name).remove({ force: true });

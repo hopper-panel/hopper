@@ -360,6 +360,108 @@ Three rules learned from reading the existing scripts back:
    nothing.
 3. Check what was downloaded — non-zero size, a checksum when the API publishes one.
 
+#### Where a download goes, and what bounds it
+
+Nothing does. Neither `/tmp` nor `/mnt/server` carries a quota the kernel enforces: `/tmp` is the
+container's own layer, which lives under Docker's data root on the host — `/var/lib/docker` unless
+the operator moved it — and `/mnt/server` is a bind mount of the volume. The server's `diskBytes` limit is Hopper's accounting, applied to the file manager and to
+SFTP — the install script is running as root under neither. A script that downloads two hundred
+gigabytes writes two hundred gigabytes, and a full node takes every server on it down together.
+
+So the fourth rule is yours to keep: **download what you need and delete what you staged.** A modpack
+archive unpacked into `/mnt/server` and then left next to its own contents doubles the server's real
+footprint for no reason.
+
+Either directory works for staging, and `/tmp` is the tidier of the two: it goes away with the
+container, so a failed install leaves nothing behind in the volume for the next one to trip over. It
+is also the likelier of the two to run short — the container layer shares Docker's data root with
+every image and every other container on the node, while `/mnt/server` may have been given a disk of
+its own — so stage a very large download in `/mnt/server` and unpack it in place.
+
+A bounded `/tmp` was tried and removed. It could not close the hole, since the volume beside it has
+no ceiling either, and it broke the commonest shape there is — `curl -o /tmp/pack.zip … && unzip` —
+with a limit no template could declare.
+
+#### The inactivity deadline
+
+```ts
+installInactivityTimeoutMs: 900_000,   // optional — the daemon's own figure is 15 minutes
+```
+
+A deadline on **inactivity**, not on how long the installation takes. Nothing caps total duration: an
+anonymous Steam depot takes an hour and is perfectly healthy throughout, and a cap large enough to
+let it finish would never fire on anything, while one small enough to be useful would kill it.
+
+It is not a deadline on **output** either, and that distinction is the one to hold on to when sizing
+the figure. Every script in this catalogue downloads with `curl -sSL`, and `-s` suppresses the
+progress meter: a two-gigabyte transfer prints nothing at all from the first byte to the last. So
+what Hopper watches is what the container _does_ — the CPU it burns, the blocks it reads and writes,
+and its output. A container doing none of the three is not slow, it is finished.
+
+Those two counters are the kernel's own accounting for that container's cgroup, which is why a
+silent download is never mistaken for a dead one: taking bytes off a socket and putting them on a
+disk is work, and work is CPU time, however little of it a trickle costs. What is deliberately _not_
+watched is the container's network counters. They count frames its interface accepted rather than
+work it did, and a node's servers all share one bridge — a bridge floods broadcast ARP to every port
+on it — so a container that has stopped dead still shows traffic, and a deadline fed on that would
+never fire on a busy node.
+
+The window is pushed back by any of the three. Output is taken from the raw stream rather than from
+complete lines, so a progress bar rewriting one line with carriage returns counts too; the counters
+are read from `docker stats` every fifteen seconds at the slowest, and every quarter of the window
+wherever that is shorter — so a window under a minute is sampled more often than fifteen seconds,
+down to a floor of one second. Below a four-second window the floor wins and the quarter stops
+holding, which is a window too short to judge an installation on in any case. Reading the counters
+rarely cannot miss activity, whatever the period works out at, because they only ever grow.
+
+When the window expires the install container is stopped and removed and the server lands in
+`install_failed` with Reinstall available. What the console says depends on whether there was
+anything to see. With at least one counter sample back inside that window it names what stood still
+and for how long. With none at all it says that instead, and points at this node's Docker rather
+than at the script — which may have been running perfectly, and which a stall message would have
+sent its author combing through for nothing.
+
+Raise it for a script that genuinely idles — a wait on an external job, a licence check against a
+slow endpoint, anything with a long `sleep` in it, since a sleeping container is doing nothing by
+this definition and is meant to be. Lower it for a download that should never pause. Six hours is
+the ceiling, and a template asking for more fails validation rather than being quietly capped. A
+template that says nothing gets a quarter of an hour, which is chosen to be ignored by anything that
+works.
+
+An older daemon ignores the field and waits for ever, as every daemon did before this existed.
+Nothing is refused over it.
+
+#### How much disk the installation needs
+
+```ts
+installRequiredDiskBytes: 40 * 1024 ** 3,   // optional — only when the figure is knowable
+```
+
+Checked before the install container is created, and a shortfall is **refused** with both figures
+named. A depot larger than the node's free space fills the host disk, and that takes down every
+server on the machine.
+
+Checked against the free space on the volume's filesystem _plus what that volume already holds_,
+because a reinstall writes over what is there — nothing wipes the volume first. Demanding the whole
+requirement as free space would mean a 40 GiB server could never be reinstalled on the node it is
+already installed on. The floor below is the exception: that one is measured against free space
+alone, since a nearly full node is nearly full whatever a single volume holds.
+
+The volume's filesystem is the only one measured, and a refusal says so. A script that stages its
+download in `/tmp` writes to the container layer instead, under Docker's storage — the same
+filesystem on most nodes, a different one wherever an operator gave the volumes a disk of their own.
+Declare what you download, and stage large downloads in `/mnt/server` where the check applies.
+
+Declare it when the size is knowable and large — a Steam depot's is on the store page. Leave it out
+when it is not: a Minecraft server's size is whatever modpack the operator's variables point at, and
+a guess here refuses installations that would have worked. Templates that say nothing still cannot
+install onto a node with nothing left, because Hopper requires a floor of free space from every
+installation.
+
+It is not the server's disk limit. That number is what the operator sells, weighed once already at
+creation against the node's declared capacity and its overallocation setting; a 50 GiB plan that
+will use 900 MiB has no business refusing to install on a node with 20 GiB free.
+
 ## Configuration files
 
 `configFiles` describes the files Hopper patches at startup, so the server really listens on the

@@ -90,8 +90,107 @@ You have nothing to set for the following — it is the default behaviour:
 - **Short-lived console JWTs**, carrying the bearer's permissions, verified by the daemon — which
   also checks the origin of the WebSocket connection.
 - **Startup commands as templates**, never a concatenation handed to a shell.
+- **A bounded install container**: the server's own memory limit, at least a whole core of CPU (its
+  own entitlement where that is more), a pids limit of its own — 512, rather than the server's,
+  since an operator who trimmed a small server's fork budget did not mean to forbid an unpacking
+  that runs `xargs -P` — never privileged, and `no-new-privileges` so nothing it drops in the
+  volume can gain more later. Docker's default capability set is dropped, and **seven are then
+  handed back**: `CHOWN`, `DAC_OVERRIDE`, `FOWNER`, `FSETID`, `KILL`, `SETUID` and `SETGID`. So
+  this container is deliberately **not** held as tightly as a server container, which keeps none of
+  the fourteen and does not run as root; an install script is a package manager unpacking as root
+  over a tree owned by the server's uid, which is precisely the work capabilities gate. What it
+  does not get is the part that matters: `MKNOD`, `NET_RAW`, `SETFCAP` and `AUDIT_WRITE` are gone,
+  so it cannot plant a device node in the volume, capture or forge frames on the bridge it shares
+  with every other server, write file capabilities onto a binary it leaves behind, or reach the
+  host's audit log. It is also the one container here whose environment a server's own user edits,
+  which is why that list is worth reading twice.
+- **Installations that end**: the node's free space is checked before one starts and a shortfall
+  refused with both figures named — and with the filesystem they were read off named too, that
+  being the one the volume lives on rather than, necessarily, the one carrying Docker's storage. An
+  installation that stops making progress is torn down instead of holding a server in "installing"
+  for ever. Progress means what the container _does_ — the CPU the kernel charges it and the blocks
+  it reads and writes, both counted against its own cgroup, plus anything it prints — not whether
+  it is talking, because `curl -sSL` prints nothing at all while it downloads. Its network counters
+  are deliberately **not** watched: those count frames the interface accepted, including the
+  broadcast traffic a Linux bridge floods to every port on it, so watching them would make a
+  stalled install look busy on exactly the crowded nodes where one that never ends costs the most.
+- **A Docker that stops answering fails loudly**, everywhere and by default. The daemon puts a
+  deadline on every request it makes to the Docker socket — one rule at the client rather than a
+  timer per call site, so a call added tomorrow is bounded without its author having to arrange it —
+  and abandons a request nothing has answered, closing the socket behind it. This matters most in
+  the install path, where `install` holds a server's operation queue: one unbounded round trip there
+  costs that server every later start, stop and reinstall until the daemon is restarted, with
+  nothing in the panel to say why.
+
+  **Three things are deliberately outside it, and they are the same three every time.** The wait for
+  a container to _end_, taken up below. The streams — a server's console, its statistics, a pull's
+  progress — which are bounded up to the moment Docker hands them over and not one instant further,
+  because a quiet Minecraft server sends nothing down its console for hours by construction. And the
+  attach handshake, which is issued by hand rather than through the Docker library and so carries a
+  clock of its own. A pull's progress stream has a second guard instead: it
+  is abandoned when the registry stops sending, which is a bound on inactivity rather than duration,
+  since Docker reports progress per chunk of every layer.
+
+  **The wait is the one to be exact about**, being the single exemption to a rule whose whole value
+  is that it has no others. The daemon asks it of two containers, both throwaway: the one that runs
+  the install script, and the one that hands the installed files back to the server's user. Nothing
+  waits that way on a **server** — a server's exit arrives as the end of its console stream, and its
+  cause from an `inspect` after the fact — so the call a clock would bound is an installation's, and
+  an install container still going after two hours is a Steam depot doing exactly what it was asked.
+  A cap on total duration is the one thing the install deadline above was built not to be. Nor is
+  the wait left unwatched for that: both call sites race it against that same deadline on activity,
+  so a container that stops doing anything is torn down and the wait abandoned with it. It is
+  bounded by progress rather than by the clock. The exemption itself is written against the
+  endpoint, which names no container, so it would cover a wait on a server too if anything here ever
+  asked for one — and that is the right way round, since bounding _that_ one really would report
+  every long-running server as a crash.
+
+  **Four failures are reported without failing an installation**, and it is worth knowing which.
+  A failed ownership `chown`, because the files are already on the disk by then and the server may
+  simply need a reinstall before it can write into its own volume — and that holds however it
+  failed, a Docker that would not create or start the container it runs in included. A failed
+  _removal_ of the install container, for the same reason arrived at from the other end — the
+  installation worked, and what is left is a container on the node the console names so somebody
+  can clear it. A failed removal of the container the `chown` ran in, which is that same fault one
+  step later and is said as a line of its own rather than folded into the reclaim's verdict:
+  overwriting that verdict would lose the reason the ownership was never taken, and this container
+  is the one worth clearing first, since it still has the server's volume mounted. And a free-space
+  check that could not be made at all: a `statfs` the node cannot answer says so and installs
+  anyway, because refusing every installation on such a node would be a larger failure than the one
+  being guarded against. Read the disk check as a check: see below for what it is not.
+
 - **An audit log** of every sensitive action, readable per server.
 - **Rate limiting** on authentication, on 2FA and on SFTP.
+
+## What Hopper does not protect: the disk an installation writes
+
+**An install script can fill the node's disk, and nothing here stops it.** It runs as root with
+`/mnt/server` bind-mounted from the host, and a bind mount carries no quota: `diskBytes` — the
+server's disk limit — is the daemon's own accounting, applied to the file manager and to SFTP, and
+the kernel knows nothing about it. A script that downloads two hundred gigabytes into `/mnt/server`
+writes two hundred gigabytes, and a full node takes down every server on it, not only that one.
+
+This matters more than it looks, because install scripts routinely download from a URL held in a
+**template variable** — and template variables are what a server's own user edits from the startup
+page, under the `startup.update` permission alone. So the reach is not "an operator wrote a careless
+egg"; it is "anyone with a server on the node".
+
+The free-space check that runs before an installation is a **preflight, not an enforcement**. It
+refuses to start when the node is already short — which is the common accident, and worth refusing —
+and then the script writes whatever it writes. There is deliberately no ceiling on `/tmp` either: one
+was tried, and since the volume next to it has no ceiling it moved the problem rather than closing
+it, while breaking every egg that stages a download in `/tmp`.
+
+A real quota is a **node-provisioning feature, and it does not exist yet** — an XFS project quota
+per volume, or a loopback image per server, both decided when the node's storage is laid out rather
+than by the panel. Until it does, an operator who wants a bound has one: put `system.dataDirectory`
+on a filesystem of its own, so a runaway install fills that filesystem and not the one carrying
+Docker's data root, the database and the daemon's logs. Watch its free space like any other.
+
+That bounds the common shape and not every shape, which is worth knowing before relying on it: a
+script that stages its download in `/tmp` writes to the container's own layer, under Docker's data
+root, and so lands on the filesystem the split was meant to protect. It is also the filesystem the
+preflight above does **not** measure — that one reads the volume's, and says so when it refuses.
 
 ## After an incident
 

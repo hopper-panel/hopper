@@ -22,6 +22,18 @@ export interface DockerStats {
     stats?: { cache?: number; inactive_file?: number };
   };
   networks?: Record<string, { rx_bytes?: number; tx_bytes?: number }>;
+  /**
+   * Bytes the container's cgroup has read from and written to block devices.
+   *
+   * Read only by {@link activityCounters}, and declared with `null` in the union
+   * because Docker really does send it: the field is empty rather than absent on
+   * a host whose cgroup driver cannot account for I/O, and on some cgroup v2
+   * configurations `io_service_bytes_recursive` is `null` while its siblings are
+   * arrays. Anything that reads it has to survive that.
+   */
+  blkio_stats?: {
+    io_service_bytes_recursive?: { op?: string; value?: number }[] | null;
+  } | null;
 }
 
 /**
@@ -87,6 +99,117 @@ export function calculateNetwork(stats: DockerStats): { rx: number; tx: number }
     }),
     { rx: 0, tx: 0 },
   );
+}
+
+/**
+ * The two cumulative counters that say whether a container is doing any work.
+ *
+ * Cumulative and not rates, which is the property the whole thing rests on: each
+ * of these only ever grows, so *any* difference between two samples is work that
+ * happened in between, whenever the samples were taken. A reader can therefore
+ * poll as rarely as it likes without ever missing activity — only without
+ * learning about it promptly — which is what makes a cheap poll a sound basis
+ * for a deadline.
+ *
+ * **Both are cgroup counters, and that is the rule for what belongs here**: the
+ * kernel charges them to this container because this container caused them. A
+ * third used to sit beside them — `networks[*].rx_bytes` and `tx_bytes` summed —
+ * and it had to go, because it is not that kind of number. Those are link-layer
+ * counters on the interfaces inside the container's network namespace: they
+ * count every frame the interface *accepted*, whoever sent it and whether or not
+ * anything in the container ever read it. Every server on a node shares one
+ * bridge, a Linux bridge floods broadcast ARP to every port on it, and a `curl`
+ * still holding a socket to a mirror that stopped answering keeps sending TCP
+ * keepalives, which are on by default. So on a busy node those counters climb
+ * for a container that is doing nothing whatsoever, the deadline they feed is
+ * pushed back for ever, and the installation that never ends survives — on
+ * precisely the nodes where it costs the most. Watching the network did not
+ * widen the deadline's coverage, it quietly switched the deadline off.
+ *
+ * **Coverage does not suffer for it, and the walk is worth writing down** since
+ * the loss looks like a hole. A transfer that is moving is not a passive thing:
+ * every segment has to be copied off the socket by a `read` in the container and
+ * put somewhere by a `write`, and both are charged to this cgroup as CPU time,
+ * in nanoseconds — orders of magnitude finer than what a single packet costs, so
+ * even a few kilobytes a second separates two samples taken fifteen seconds
+ * apart. A transfer that has stalled is a process blocked in the kernel waiting
+ * on a socket that says nothing; a task that is not scheduled is charged no CPU
+ * and issues no I/O, so both counters stand still for exactly as long as the
+ * stall lasts. That is the discrimination the deadline needs, and CPU time alone
+ * already makes it.
+ *
+ * Two rather than one because they are not redundant, and the download nobody
+ * thinks of is the demonstration: one whose writes sit in the page cache moves
+ * **no** block I/O for as long as the kernel holds them there — up to
+ * `dirty_expire_centisecs`, half a minute by default — and under cgroup v1
+ * buffered writeback is never charged to the container at all, since the flusher
+ * thread does it. Block I/O alone would call that download dead. It earns its
+ * place the other way round, on the work that spends its time waiting on a disk
+ * rather than on a CPU: a large copy, an unpacking, the `chown -R` this daemon
+ * runs over a full volume after an install.
+ *
+ * The one shape neither counter sees is a script that is deliberately asleep — a
+ * `sleep 600` around a wait on some external job. That is not a gap: a container
+ * asleep is inactive by the definition this whole deadline is built on, and a
+ * template that knows its script idles says so through
+ * `install.inactivityTimeoutMs`.
+ *
+ * Absent fields read as 0 rather than as a break in the series, because 0 is
+ * what Docker means by them: no I/O accounted for on this host. That a whole
+ * counter reads 0 for the life of a container is fine — it simply never
+ * contributes a difference, and the other decides.
+ */
+export interface ActivityCounters {
+  /** Nanoseconds of CPU time the container's cgroup has been charged. */
+  cpuNanos: number;
+  /** Bytes its cgroup has read from and written to block devices. */
+  blockIoBytes: number;
+}
+
+export function activityCounters(stats: DockerStats): ActivityCounters | null {
+  const blockIo = stats.blkio_stats?.io_service_bytes_recursive ?? [];
+  const cpuNanos = stats.cpu_stats?.cpu_usage?.total_usage;
+
+  // `null`, not a pair of zeroes, when the host accounts for neither.
+  //
+  // Folding an absent counter to 0 makes "this host does not report CPU or
+  // block I/O" indistinguishable from "this container did nothing" — and the
+  // two are opposite answers. On such a host every sample would equal the last
+  // one for ever, `countersMoved` would report stillness for ever, and the
+  // deadline would kill every installation on the node however hard it was
+  // working. A sample the daemon cannot read is the same event as a sample it
+  // could not take: not knowing, which the watchdog is careful never to treat
+  // as knowing.
+  //
+  // Either one is enough. A host reporting only CPU is common on cgroup v2
+  // without `io` accounting, and CPU alone carries every real install.
+  if (cpuNanos === undefined && blockIo.length === 0) {
+    return null;
+  }
+
+  return {
+    cpuNanos: cpuNanos ?? 0,
+    // Every operation, not just Read and Write: `Sync`, `Async` and `Total` are
+    // the same bytes counted again on cgroup v1, and summing the lot double
+    // counts them. That is harmless here and deliberately not corrected for —
+    // this figure is never shown to anybody and never compared to a threshold,
+    // only to its own previous value, and a consistent over-count changes
+    // nothing about whether it moved.
+    blockIoBytes: blockIo.reduce((total, entry) => total + (entry?.value ?? 0), 0),
+  };
+}
+
+/**
+ * Whether anything happened between two samples.
+ *
+ * Inequality rather than "greater than". The counters only ever grow, so in
+ * practice the two are the same test — but a counter that somehow went backwards
+ * (a cgroup recreated under the container, a Docker bug) would read as *no*
+ * activity under `>`, and the cost of that mistake is a working installation
+ * killed. Any change at all is movement.
+ */
+export function countersMoved(before: ActivityCounters, after: ActivityCounters): boolean {
+  return before.cpuNanos !== after.cpuNanos || before.blockIoBytes !== after.blockIoBytes;
 }
 
 export function buildResourceUsage(

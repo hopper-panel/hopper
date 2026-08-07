@@ -414,6 +414,42 @@ model Template {
   installEntrypoint String @default("/bin/bash")
   installScript     String @default("")
 
+  /// Milliseconds the installation may do nothing at all before the daemon
+  /// stops it — no output, no CPU, no disk I/O.
+  ///
+  /// Nullable, meaning "this template did not say", and the daemon then applies
+  /// its own generous default. Not a total-duration cap: a Steam depot that
+  /// takes an hour of solid downloading is alive, and any duration large enough
+  /// to accommodate it would never fire on a stalled one. Not a cap on output
+  /// either — `curl -sSL` prints nothing at all while it transfers, which is how
+  /// nearly every install script downloads.
+  ///
+  /// The container's network counters are deliberately not among the three, and
+  /// this column used to say they were. They count frames an interface accepted
+  /// — including the ARP a Linux bridge floods to every port on it — rather than
+  /// work this container did, so watching them made a stalled install look busy
+  /// on exactly the crowded nodes where one that never ends costs the most.
+  installInactivityTimeoutMs Int?
+
+  /// Bytes this installation is expected to write, when the template knows.
+  ///
+  /// `BigInt` and not `Int`: a Steam depot passes the four-billion mark that a
+  /// 32-bit column stops at, and the failure would be an insert rejected at the
+  /// far end of a template import rather than anything legible.
+  ///
+  /// Nullable, and the vast majority of templates keep a NULL: a Minecraft
+  /// server's size is whatever modpack its variables point at. The daemon then
+  /// asks only for its own floor of free space, and refuses nothing else.
+  ///
+  /// That floor is **not** the behaviour installations had before this column
+  /// existed. There was no disk check of any kind: an installation started
+  /// whatever the node had left, and a modpack larger than the free space filled
+  /// the machine and took every server on it down. So a NULL here is the weaker
+  /// of the two guards rather than the absence of one, and a node with under a
+  /// gigabyte free now refuses an installation it would once have accepted —
+  /// which is the point.
+  installRequiredDiskBytes BigInt?
+
   /// UUID of the original Pterodactyl egg, to avoid double imports.
   importedFromEgg String?
 

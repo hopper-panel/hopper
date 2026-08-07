@@ -117,6 +117,12 @@ export class ServerConfigurationService {
         containerImage: server.template.installContainer,
         entrypoint: server.template.installEntrypoint,
         script: server.template.installScript,
+        // Spread rather than `?? undefined`, so a template that declares
+        // neither guard produces the object it has always produced, key for
+        // key. Every server on every installation has one of these, and a
+        // payload that changes shape for all of them the day this ships is a
+        // change nobody can tell from a real one when they go looking.
+        ...installGuards(server.template),
       },
     };
 
@@ -147,6 +153,40 @@ export class ServerConfigurationService {
 
     return configurations;
   }
+}
+
+/**
+ * What a template says about surviving its own installation.
+ *
+ * Two columns, both nullable, both meaning "this template did not say" when
+ * they are — and that is what has to reach the daemon, rather than a figure
+ * chosen here. The daemon owns the fallback for the inactivity window because
+ * the daemon is where the timer is armed and where the container's counters are
+ * read, and it owns the free-space floor because only the node knows what is
+ * left on its own disk.
+ *
+ * `installRequiredDiskBytes` is a `BigInt` column and the contract is a plain
+ * number: a depot measured in tens of gigabytes goes well past a 32-bit column
+ * and nowhere near the 9 petabytes a double counts exactly, so the conversion
+ * is safe in the direction it is made — and it is made here, once, rather than
+ * left for Zod to refuse at the end of a build nobody is watching.
+ */
+export function installGuards(template: {
+  installInactivityTimeoutMs: number | null;
+  installRequiredDiskBytes: bigint | null;
+}): { inactivityTimeoutMs?: number; requiredDiskBytes?: number } {
+  // Tested by type rather than against `null`, so that a row read back without
+  // these columns — an older dump, a `select` written before they existed —
+  // says nothing rather than emitting a key holding `undefined`, which is the
+  // one shape this function exists to avoid producing.
+  return {
+    ...(typeof template.installInactivityTimeoutMs === 'number'
+      ? { inactivityTimeoutMs: template.installInactivityTimeoutMs }
+      : {}),
+    ...(typeof template.installRequiredDiskBytes === 'bigint'
+      ? { requiredDiskBytes: Number(template.installRequiredDiskBytes) }
+      : {}),
+  };
 }
 
 /**

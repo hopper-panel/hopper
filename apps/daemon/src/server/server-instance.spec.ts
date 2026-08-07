@@ -4,7 +4,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { ServerConfiguration } from '@hopper/shared';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { DockerClient } from '../docker/client.js';
 import type { Logger } from '../logger.js';
 import { decodePackets, encodePacket } from './rcon.js';
@@ -69,6 +69,16 @@ interface Fake {
   logs: ReturnType<typeof vi.fn>;
   removed: ReturnType<typeof vi.fn>;
   killed: ReturnType<typeof vi.fn>;
+  /**
+   * Every `createContainer` Docker was asked for.
+   *
+   * The only witness a test has that something was **not** started. A refusal
+   * that is meant to stop an installation before it touches the machine leaves
+   * exactly the same console lines and the same final state whether it refuses
+   * or merely complains — so the assertion that tells those apart is this spy
+   * having no calls.
+   */
+  created: ReturnType<typeof vi.fn>;
   panel: { reportInstall: ReturnType<typeof vi.fn>; reportStatus: ReturnType<typeof vi.fn> };
   /** The console stream, so a test can play the container's death itself. */
   stream: EventEmitter;
@@ -90,6 +100,11 @@ function instanceWith(options: {
    * `/var/lib`.
    */
   volumesRoot?: string;
+  /**
+   * Where the install script would be written. Same reason as `volumesRoot`,
+   * for the one test that lets an installation get that far.
+   */
+  tmpPath?: string;
 }): Fake {
   const logs = vi.fn((_options: { tail?: number }) =>
     options.logsFails
@@ -129,11 +144,22 @@ function instanceWith(options: {
   // the stop — is decided when the container's stream ends.
   const stream = new EventEmitter();
 
+  // Rejects rather than returning a container, because no test here means to
+  // run one: what is worth recording is only *whether* it was asked for. The
+  // rejection lands where a real Docker refusal would, so a caller that reaches
+  // this point fails the way it would fail against a broken daemon.
+  const created = vi.fn(() => Promise.reject(new Error('this fake creates no containers')));
+
   const docker = {
     api: {
       getContainer: (name: string) =>
         name.startsWith('hopper-install-') ? installContainer : container,
+      createContainer: created,
     },
+    // Resolves silently: the pull is not what any of these tests is about, and
+    // leaving it undefined would abort every path that reaches Docker with a
+    // `TypeError` rather than at the step under test.
+    pullImage: vi.fn(() => Promise.resolve()),
     // Never emits on its own: the point here is the buffer's contents before a
     // single new byte arrives.
     attachToContainer: () => Promise.resolve(stream),
@@ -151,7 +177,7 @@ function instanceWith(options: {
     logger,
     dataPath: '/var/lib/hopper/volumes',
     volumesRoot: options.volumesRoot ?? '/var/lib/hopper/volumes',
-    tmpPath: '/tmp',
+    tmpPath: options.tmpPath ?? '/tmp',
     ownership: { uid: 988, gid: 988 },
     networkName: 'hopper0',
     panel,
@@ -162,6 +188,7 @@ function instanceWith(options: {
     logs,
     removed,
     killed,
+    created,
     panel,
     stream,
     tail: () => logs.mock.calls[0]?.[0]?.tail,
@@ -536,6 +563,86 @@ describe('an installation the daemon was restarted out of', () => {
 
     expect(panel.reportInstall).not.toHaveBeenCalled();
     expect(fake.instance.currentState).toBe('running');
+  });
+});
+
+/**
+ * An installation the node has not got the disk for.
+ *
+ * The refusal's wording lives in the installer and is tested there. What this
+ * proves is the half no pure function can: that **nothing ran**.
+ *
+ * It has to be asserted that way round, because every other observable is the
+ * same whether the shortfall is refused or merely complained about. The console
+ * lines are printed before the throw; the state lands at `install_failed`
+ * either way, since a Docker that will not create the container fails the
+ * installation just as thoroughly. An earlier version of this test asserted
+ * only those two, and downgrading the refusal to a warning — swapping the
+ * `throw` in the installer's preflight for a `return` — left it green while the
+ * install container went on to be created and to write into the volume the
+ * check had just said there was no room in.
+ *
+ * The state and the report are still worth asserting, for their own reason: a
+ * refusal that left the row at INSTALLING for ever is the failure this daemon
+ * has already been bitten by twice.
+ */
+describe('an installation refused for want of disk space', () => {
+  let volumes: string;
+  let scripts: string;
+
+  beforeEach(async () => {
+    volumes = await mkdtemp(join(tmpdir(), 'hopper-install-refusal-'));
+    // Given a real directory rather than `/tmp`, so that a regression which
+    // lets the installation past the preflight writes its install script here
+    // and is cleaned up, instead of into whatever `/tmp` resolves to on the
+    // machine running the suite.
+    scripts = await mkdtemp(join(tmpdir(), 'hopper-install-scripts-'));
+  });
+
+  afterEach(async () => {
+    await rm(volumes, { recursive: true, force: true });
+    await rm(scripts, { recursive: true, force: true });
+  });
+
+  it('creates no container at all, and says why on the console', async () => {
+    const panel = { reportInstall: vi.fn(() => Promise.resolve()) };
+
+    const fake = instanceWith({
+      running: false,
+      logs: '',
+      panel,
+      volumesRoot: volumes,
+      tmpPath: scripts,
+      configuration: {
+        ...startable(undefined),
+        // A petabyte: no node passes this, so the preflight refuses without any
+        // filesystem having to be faked.
+        install: {
+          containerImage: 'debian:bookworm-slim',
+          entrypoint: '/bin/bash',
+          script: 'echo installing',
+          requiredDiskBytes: 1024 ** 5,
+        },
+      },
+    });
+
+    await fake.instance.install(false);
+
+    // The assertion the whole refusal exists for. Nothing was created, so
+    // nothing ran as root over the volume and nothing wrote a byte onto the
+    // filesystem this check has just called too full.
+    expect(fake.created).not.toHaveBeenCalled();
+
+    // The same ending as any other failed install: a state the panel shows and
+    // a report that moves the row out of INSTALLING, so Reinstall is there to
+    // retry from once the space has been freed.
+    expect(fake.instance.currentState).toBe('install_failed');
+    expect(panel.reportInstall).toHaveBeenCalledWith(UUID, false);
+
+    // And the numbers, because "not enough disk space" leaves an operator to
+    // guess whether they need to free a gigabyte or a thousand.
+    expect(consoleText(fake.instance)).toContain('1 PiB needed');
+    expect(consoleText(fake.instance)).toContain('Free space on this node');
   });
 });
 
