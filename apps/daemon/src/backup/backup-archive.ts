@@ -1,13 +1,13 @@
 import { createHash } from 'node:crypto';
 import { createReadStream, createWriteStream } from 'node:fs';
-import { chown, lstat, mkdir, opendir, rm, utimes } from 'node:fs/promises';
+import { lchown, lstat, lutimes, mkdir, opendir, rm } from 'node:fs/promises';
 import { dirname, join, relative, sep } from 'node:path';
 import { Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import * as zlib from 'node:zlib';
 import { BACKUP_EXTENSIONS, type BackupCompression } from '@hopper/shared';
 import { extract, pack } from 'tar-stream';
-import type { JailedFilesystem } from '../fs/jailed-filesystem.js';
+import { JailedFilesystem } from '../fs/jailed-filesystem.js';
 import { ALWAYS_IGNORED, IgnoreList } from './ignore.js';
 
 /**
@@ -117,6 +117,14 @@ export async function createBackupArchive(
 
   await mkdir(dirname(options.archivePath), { recursive: true });
 
+  // Opened by name, unlike every write that lands in a volume. This archive
+  // goes to the node's own backup directory under a name the daemon composes
+  // itself — the backup's UUID and an extension — in a directory no container
+  // mounts and no jail covers. There is no name here for a server owner to
+  // plant a symlink on, so there is no descriptor for a jail to vet: routing it
+  // through one would need a jail invented for the occasion, whose root the
+  // servers cannot reach anyway.
+  //
   // The pipeline's rejection is attached **immediately**, before any `await`
   // that could fail. Destroying the packer on error rejects this promise with
   // `ERR_STREAM_PREMATURE_CLOSE`; if nobody is listening yet, Node treats it as
@@ -132,8 +140,20 @@ export async function createBackupArchive(
     writeError = error instanceof Error ? error : new BackupError('Archive write interrupted.');
   });
 
+  // A jail over the volume, for the reading side alone. The walk below runs as
+  // root inside a directory the server rewrites while the backup is running, and
+  // the file it opens is the file that ends up in an archive its owner can
+  // download. Without the jail, `ln -sfn /etc/shadow world/level.dat` slipped in
+  // between the walk seeing a regular file and the read opening it is enough to
+  // have the host's password file archived and handed back.
+  //
+  // No denylist: a backup is meant to capture the volume as it is, and dropping
+  // a file from it because the file manager hides it would make the restore
+  // quietly incomplete.
+  const jail = new JailedFilesystem({ root: options.volumePath });
+
   try {
-    fileCount = await packDirectory(packer, options.volumePath, ignore);
+    fileCount = await packDirectory(packer, options.volumePath, ignore, jail);
     packer.finalize();
     await written;
 
@@ -156,6 +176,7 @@ async function packDirectory(
   packer: ReturnType<typeof pack>,
   root: string,
   ignore: IgnoreList,
+  jail: JailedFilesystem,
 ): Promise<number> {
   let count = 0;
   const queue: string[] = [root];
@@ -214,7 +235,14 @@ async function packDirectory(
         mtime: stats.mtime,
       });
 
-      await pipeline(createReadStream(absolute), target);
+      // The `isFile` above describes the entry the directory listing produced;
+      // the jail's open is what says it is still a file, and still inside the
+      // volume, at the instant its bytes are read. A link appearing in that gap
+      // fails the open, which fails the backup — the same outcome a file deleted
+      // mid-walk already had, and far better than an archive of host files.
+      const source = await jail.createReadStream(absolute);
+
+      await pipeline(source, target);
       count += 1;
     }
   }
@@ -284,10 +312,32 @@ export async function restoreBackupArchive(options: RestoreBackupOptions): Promi
           stream.resume();
         } else if (header.type === 'file') {
           await mkdir(dirname(destination), { recursive: true });
-          await pipeline(stream, createWriteStream(destination, { mode: header.mode ?? 0o644 }));
+
+          // Opened by the jail rather than by name. `resolveArchiveEntry` says
+          // where the entry may land, not what is sitting on that name: a
+          // restore that does not truncate extracts over a volume the server
+          // has had every opportunity to fill with symlinks, and reopening the
+          // path would follow one straight out of the volume, as root.
+          //
+          // The archive's own mode is handed to the open, where `O_CREAT`
+          // applies it only when the file is *created* — an existing file keeps
+          // the mode it has on disk. That was already true of the
+          // `createWriteStream(path, { mode })` this replaces, and it is what a
+          // restore wants: the mode recorded in the archive describes the file
+          // as it was backed up, and it is not worth overriding a mode the
+          // operator has changed since on a file that survived.
+          const sink = await options.jail.createWriteStream(destination, header.mode ?? 0o644);
+          await pipeline(stream, sink);
 
           if (header.mtime) {
-            await utimes(destination, header.mtime, header.mtime);
+            // `lutimes`, for the same reason `applyOwnership` below uses
+            // `lchown`: a restore of a large world runs for minutes, and
+            // nothing stops the owner planting a link on a name the moment the
+            // write that created it has finished. `utimes` would follow it and
+            // stamp a host file with a date taken from the archive header —
+            // narrow, since no byte is read or written, but there is no reason
+            // to leave the last name-based call in the loop.
+            await lutimes(destination, header.mtime, header.mtime);
           }
 
           await applyOwnership(destination, options.ownership);
@@ -306,6 +356,12 @@ export async function restoreBackupArchive(options: RestoreBackupOptions): Promi
     })();
   });
 
+  // Read by name, as it was written: the archive sits in the node's own backup
+  // directory, under a name the daemon composed from the backup's UUID, in a
+  // tree no container mounts. Unlike the volume, there is no name here for a
+  // server owner to plant a link on, so there is no descriptor for a jail to
+  // vet — routing it through one would mean inventing a jail whose root the
+  // servers cannot reach in the first place.
   await pipeline(createReadStream(options.archivePath), decompressor(compression), extractor);
 
   return restored;
@@ -313,6 +369,16 @@ export async function restoreBackupArchive(options: RestoreBackupOptions): Promi
 
 /**
  * Hands the file over to the container user.
+ *
+ * `lchown`, not `chown`: the latter follows a symlink and would give the
+ * container user ownership of whatever it points at. The directory branch above
+ * is enough to reach that — `mkdir(path, { recursive: true })` succeeds without
+ * a word when the name is already a link to an existing directory, and the
+ * ownership change that follows lands on the link's target rather than on
+ * anything inside the volume. One `ln -s /etc /home/container/world` from the
+ * server's own console and the restore hands `/etc` to the container user.
+ * Changing the ownership of the link itself is meaningless on Linux and
+ * harmless, which is precisely what is wanted here.
  *
  * A failure does not interrupt the restore: on a filesystem with no notion of
  * owners, losing ownership beats losing the whole restore.
@@ -325,7 +391,7 @@ async function applyOwnership(
     return;
   }
 
-  await chown(path, ownership.uid, ownership.gid).catch(() => undefined);
+  await lchown(path, ownership.uid, ownership.gid).catch(() => undefined);
 }
 
 /** SHA-256 of a file, read as a stream. */

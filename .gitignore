@@ -16,6 +16,14 @@ out/
 .env.*
 !.env.example
 
+# Session credentials left behind by hand-testing the API.
+#
+# `curl -c` writes a cookie jar holding a live refresh token; one was committed
+# in the initial import and reached the public remote. The pattern is unanchored
+# so it catches the jar wherever the curl was run from.
+cookies.txt
+*.cookies
+
 # Local dev data
 #
 # `.hopper-dev` is the daemon root in development: it holds the server volumes,

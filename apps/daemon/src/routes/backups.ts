@@ -1,5 +1,5 @@
 import { createReadStream } from 'node:fs';
-import { readFile } from 'node:fs/promises';
+import type { FileHandle } from 'node:fs/promises';
 import {
   BACKUP_EXTENSIONS,
   createBackupRequestSchema,
@@ -33,16 +33,25 @@ const IGNORE_FILE = '.hopperignore';
  * The path is a constant resolved by the jail — no value from a request enters
  * here. A missing file is the normal case, not an error: most servers have
  * none.
+ *
+ * The name is constant but its contents are not: the server owns the volume and
+ * `.hopperignore` is theirs to replace with a link to anything at all. The jail
+ * opens it, so a link at that name is refused by the kernel rather than followed
+ * by a daemon running as root.
  */
 async function readIgnoreFile(jail: JailedFilesystem, request: FastifyRequest): Promise<string[]> {
+  let handle: FileHandle | undefined;
+
   try {
     const absolute = await jail.absolutePathFor(IGNORE_FILE);
-    const content = await readFile(absolute, 'utf8');
+    handle = await jail.openForRead(absolute);
 
-    return content.split(/\r?\n/);
+    return (await handle.readFile('utf8')).split(/\r?\n/);
   } catch {
     request.log.debug(`No readable ${IGNORE_FILE} for this server`);
     return [];
+  } finally {
+    await handle?.close().catch(() => undefined);
   }
 }
 

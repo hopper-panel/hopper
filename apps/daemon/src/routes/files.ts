@@ -1,5 +1,4 @@
 import { createHash } from 'node:crypto';
-import { createReadStream, createWriteStream } from 'node:fs';
 import { mkdir } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { Readable, Transform } from 'node:stream';
@@ -224,9 +223,19 @@ export function registerFileRoutes(
 
       // Streamed rather than loaded into memory: a 4 MiB file per concurrent
       // request would quickly exhaust the daemon's heap.
-      await reply
-        .header('content-type', 'application/octet-stream')
-        .send(createReadStream(absolute));
+      //
+      // The jail opens it and hands back a stream over that descriptor. A
+      // `createReadStream(absolute)` here would look the name up a second time,
+      // and the `stat` above says only what the name meant a moment ago: the
+      // server owner has a shell in their own container and can leave a genuine
+      // file there, let the checks pass, then swap a link in. The daemon — root
+      // — would open the link's target and answer with it, 200 and all.
+      const source = await jail.createReadStream(absolute);
+
+      // Fastify destroys the payload stream when the response closes early, and
+      // the stream closes the descriptor with it: a client that gives up
+      // mid-download leaks no file descriptor.
+      await reply.header('content-type', 'application/octet-stream').send(source);
 
       return reply;
     }),
@@ -327,11 +336,18 @@ export function registerFileRoutes(
       // headers into the response.
       const filename = entry.name.replace(/[^\w.\- ]+/g, '_');
 
+      // Opened by the jail, for the same reason as the read above: this is the
+      // route the racing symlink aims at, since it hands the bytes straight back
+      // to whoever asked. The open happens before the headers go out, so a
+      // refusal still reaches `fail` and becomes a 403 rather than a truncated
+      // 200.
+      const source = await jail.createReadStream(absolute);
+
       await reply
         .header('content-type', 'application/octet-stream')
         .header('content-length', String(entry.sizeBytes))
         .header('content-disposition', `attachment; filename="${filename}"`)
-        .send(createReadStream(absolute));
+        .send(source);
 
       return reply;
     }),
@@ -382,8 +398,18 @@ export function registerFileRoutes(
         },
       });
 
+      // Opened through the jail, and **outside** the `try` below. The jail
+      // refuses a symlink on the final component, which is the one thing the
+      // path resolution above cannot promise: the server's own process can drop
+      // a link on that name while the request is in flight, and reopening the
+      // name here would send the upload wherever it points, written by root. A
+      // refusal has to leave the volume untouched, hence its being raised
+      // before the cleanup that follows — an upload refused on a name that
+      // already held a legitimate file must not delete that file.
+      const sink = await jail.createWriteStream(absolute);
+
       try {
-        await pipeline(request.raw, counter, createWriteStream(absolute));
+        await pipeline(request.raw, counter, sink);
       } catch (error) {
         // A truncated file is worse than none: it would show in the listing
         // with a plausible size and break on the first load.
@@ -471,12 +497,15 @@ export function registerFileRoutes(
         },
       });
 
+      // Opened only now, once the remote host has answered: the jail truncates
+      // the file as it opens it, and doing that before the fetch would empty an
+      // existing file to replace it with a download that may never arrive. The
+      // stream comes from the jail for the same reason as the upload above —
+      // the name can have grown a symlink since it was resolved.
+      const sink = await jail.createWriteStream(absolute);
+
       try {
-        await pipeline(
-          Readable.fromWeb(response.body as never),
-          counter,
-          createWriteStream(absolute),
-        );
+        await pipeline(Readable.fromWeb(response.body as never), counter, sink);
 
         if (body.sha512 && digest.digest('hex') !== body.sha512) {
           throw new ArchiveError(

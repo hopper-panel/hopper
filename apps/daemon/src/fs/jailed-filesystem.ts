@@ -1,18 +1,44 @@
 import { constants as fsConstants } from 'node:fs';
 import {
-  access,
   chmod,
-  chown,
+  lchown,
   lstat,
   mkdir,
+  open,
   readdir,
+  readlink,
   realpath,
   rename,
   rm,
   stat,
-  writeFile,
+  unlink,
 } from 'node:fs/promises';
-import { dirname, isAbsolute, join, normalize, posix, relative, resolve, sep } from 'node:path';
+import type { FileHandle } from 'node:fs/promises';
+import {
+  basename,
+  dirname,
+  isAbsolute,
+  join,
+  normalize,
+  posix,
+  relative,
+  resolve,
+  sep,
+} from 'node:path';
+
+/**
+ * `O_NOFOLLOW` makes `open(2)` fail with `ELOOP` when the **final** component of
+ * the path is a symlink, whatever it points at.
+ *
+ * Windows has no such flag and no symlinks worth the name without elevation, so
+ * it is absent from `fs.constants` there. Zero is the neutral element of the
+ * flag OR, which degrades the development machine to the behaviour it already
+ * had while production — Linux — gets the guarantee.
+ */
+const O_NOFOLLOW: number = fsConstants.O_NOFOLLOW ?? 0;
+
+/** A symlink chain longer than this is a loop, whoever built it. */
+const MAX_LINK_HOPS = 32;
 
 /**
  * Access to a server's filesystem, confined to its volume.
@@ -22,7 +48,7 @@ import { dirname, isAbsolute, join, normalize, posix, relative, resolve, sep } f
  * that came from a request is enough to give the user of a Minecraft server
  * read access to `/etc/shadow` or write access to `/etc/cron.d`.
  *
- * Three mechanisms are stacked, because none is enough on its own:
+ * Four mechanisms are stacked, because none is enough on its own:
  *
  *  1. **Normalisation** — `../../etc/passwd` is reduced then compared to the
  *     root. Kills naive traversal.
@@ -30,7 +56,13 @@ import { dirname, isAbsolute, join, normalize, posix, relative, resolve, sep } f
  *     `ln -s / escape` then `escape/etc/passwd` would sail through
  *     normalisation, and the user can create that link themselves from their
  *     own console.
- *  3. **Denylist** — some files stay forbidden even inside the volume: a
+ *  3. **Refusal to follow at the last step** — the three above all describe the
+ *     filesystem as it was when they ran. The server's own process keeps
+ *     running, and rewriting a name after it has been vetted costs it one
+ *     `ln -s`. So the write itself is opened with `O_NOFOLLOW`, which moves the
+ *     decision into the `open(2)` call and leaves no window to aim at. Nothing
+ *     here re-opens a path by name after resolving it.
+ *  4. **Denylist** — some files stay forbidden even inside the volume: a
  *     proxy's forwarding secret, for instance, would allow impersonating any
  *     player.
  *
@@ -200,29 +232,85 @@ export class JailedFilesystem {
    * `realpath` fails on a non-existent path, yet we have to be able to write a
    * file that does not exist yet. So we walk up to the first existing ancestor,
    * resolve it, and reattach the rest.
+   *
+   * The walk probes with `lstat`, never with `access`. `access(2)` **follows**
+   * links, so it answers ENOENT for a link whose target does not exist — and
+   * the loop then files that name under "missing" and reattaches it unresolved.
+   * A dangling link is trivial to plant from inside the container:
+   *
+   *     ln -s /etc/cron.d/backdoor /home/container/notes.txt
+   *
+   * `notes.txt` is then reported as a free name, the jail hands back
+   * `<volume>/notes.txt` having checked nothing, and the write that follows
+   * walks the link and creates the target — as root, outside the volume. There
+   * is no race to win here: the escape is deterministic. `lstat` describes the
+   * link itself, so the name is seen for what it is.
    */
   private async realpathOfLongestExistingPrefix(candidate: string): Promise<string> {
     let existing = candidate;
     const missing: string[] = [];
 
     for (;;) {
-      try {
-        await access(existing, fsConstants.F_OK);
-        break;
-      } catch {
-        const parent = dirname(existing);
+      const stats = await lstat(existing).catch(() => null);
 
-        // System root reached: nothing left to walk up.
-        if (parent === existing) {
-          return candidate;
-        }
+      if (stats) {
+        // `realpath` throws ENOENT on a dangling link rather than telling us
+        // where it points, which is precisely what we need to know in order to
+        // reject it. Follow the chain by hand in that case.
+        const resolved = stats.isSymbolicLink()
+          ? await this.followLinkChain(existing)
+          : await realpath(existing);
 
-        missing.unshift(existing.slice(parent.length + 1));
-        existing = parent;
+        return join(resolved, ...missing);
+      }
+
+      const parent = dirname(existing);
+
+      // System root reached: nothing left to walk up.
+      if (parent === existing) {
+        return candidate;
+      }
+
+      missing.unshift(basename(existing));
+      existing = parent;
+    }
+  }
+
+  /**
+   * Where a link points, whether or not its target exists.
+   *
+   * Stops at the first name that is not a link and resolves that through
+   * `realpath`, so the directories along the way are resolved too. A chain
+   * longer than {@link MAX_LINK_HOPS} is a loop — the kernel calls it ELOOP; we
+   * return the last hop, which the containment check then rejects for being
+   * where it is rather than for how it was reached.
+   */
+  private async followLinkChain(linkPath: string): Promise<string> {
+    let current = linkPath;
+
+    for (let hop = 0; hop < MAX_LINK_HOPS; hop += 1) {
+      const target = await readlink(current).catch(() => null);
+
+      if (target === null) {
+        return realpath(current).catch(() => current);
+      }
+
+      current = resolve(dirname(current), target);
+
+      const stats = await lstat(current).catch(() => null);
+
+      if (!stats) {
+        // Dangling: the chain ends here, at a name that does not exist. Its
+        // *location* is what matters, and that is what we hand back.
+        return current;
+      }
+
+      if (!stats.isSymbolicLink()) {
+        return realpath(current).catch(() => current);
       }
     }
 
-    return join(await realpath(existing), ...missing);
+    return current;
   }
 
   /** Normalises a user path into a relative path that is safe to handle. */
@@ -259,6 +347,184 @@ export class JailedFilesystem {
   private async toUserPath(absolute: string): Promise<string> {
     const root = await this.root();
     return relative(root, absolute).split(sep).join('/');
+  }
+
+  // -------------------------------------------------------------------------
+  // Opening without following
+  // -------------------------------------------------------------------------
+
+  /**
+   * Opens a resolved path for writing, refusing a link at the last step.
+   *
+   * `resolvePath` decides what a name means; this decides what the kernel does
+   * with it. The two have to be separate, because between the deciding and the
+   * doing the server's own process keeps running and can rewrite the name:
+   *
+   *     while :; do ln -sf /etc/cron.d/backdoor /home/container/plugin.yml; done
+   *
+   * A check, however careful, describes the filesystem as it was. `O_NOFOLLOW`
+   * moves the decision into the `open(2)` call itself: the kernel refuses with
+   * `ELOOP` if the final component is a link at the instant it is opened. There
+   * is no window left to aim at.
+   *
+   * `O_TRUNC` is deliberately absent. Truncation is applied *after* the
+   * descriptor has been vetted — asking for it in the flags would empty a file
+   * we are about to reject, which turns a refused write into a successful
+   * deletion.
+   *
+   * The flag guards the final component only. The directories above it were
+   * resolved by `resolvePath`, and swapping one of *those* for a link
+   * afterwards is a race `O_NOFOLLOW` cannot see: Node exposes no `openat`, so
+   * there is no way to hold a parent by descriptor and walk down from it.
+   * {@link assertHandleInside} closes that one where the kernel lets us.
+   *
+   * The open happens in two steps rather than one `O_CREAT`, and the reason is
+   * the refusal path. A single `O_CREAT` creates the file *before* the check
+   * that rejects it, and closing the descriptor afterwards leaves it there —
+   * which hands the caller an "empty root-owned file at a path of my choosing"
+   * primitive. `/etc/nologin` denies every non-root login on the host and is
+   * zero bytes. So: open an existing file without `O_CREAT`, and only if that
+   * says ENOENT create it with `O_EXCL`. `O_EXCL` is what makes the cleanup
+   * sound — it guarantees the file did not exist a moment ago, so unlinking it
+   * on refusal removes something this call made and nothing else.
+   */
+  async openForWrite(absolutePath: string, mode = 0o644): Promise<FileHandle> {
+    const existing = await openWithoutFollowing(
+      absolutePath,
+      fsConstants.O_WRONLY | O_NOFOLLOW,
+    ).catch((error: NodeJS.ErrnoException) => {
+      if (error.code === 'ENOENT') {
+        return null;
+      }
+
+      throw error;
+    });
+
+    if (existing !== null) {
+      return this.vetHandle(existing, absolutePath, false);
+    }
+
+    const created = await openWithoutFollowing(
+      absolutePath,
+      fsConstants.O_WRONLY | fsConstants.O_CREAT | fsConstants.O_EXCL | O_NOFOLLOW,
+      mode,
+    );
+
+    return this.vetHandle(created, absolutePath, true);
+  }
+
+  /**
+   * Checks a freshly opened descriptor, and undoes the open if it fails.
+   *
+   * `weCreatedIt` decides how far the undo goes. A file that was already there
+   * is left exactly as found — it was never truncated, because truncation
+   * happens only after this returns. One this call brought into being is
+   * removed, so a refused write leaves no trace at the place it was refused.
+   */
+  private async vetHandle(
+    handle: FileHandle,
+    absolutePath: string,
+    weCreatedIt: boolean,
+  ): Promise<FileHandle> {
+    try {
+      await this.assertHandleInside(handle, absolutePath);
+      await handle.truncate(0);
+      return handle;
+    } catch (error) {
+      await handle.close().catch(() => undefined);
+
+      if (weCreatedIt) {
+        // `unlink`, not `rm`: it removes the name without following it, and the
+        // name is the only thing this call is responsible for.
+        await unlink(absolutePath).catch(() => undefined);
+      }
+
+      throw error;
+    }
+  }
+
+  /**
+   * A write stream onto a vetted descriptor.
+   *
+   * The streaming callers — an upload, an archive extraction, an SFTP transfer
+   * — used to build their own `createWriteStream(path)`, which reopens the name
+   * and follows whatever link is sitting on it by then. Handing them a stream
+   * over an already-opened descriptor removes the second lookup entirely.
+   */
+  async createWriteStream(
+    absolutePath: string,
+    mode = 0o644,
+  ): Promise<ReturnType<FileHandle['createWriteStream']>> {
+    const handle = await this.openForWrite(absolutePath, mode);
+    return handle.createWriteStream();
+  }
+
+  /**
+   * Opens a resolved path for reading, refusing a link at the last step.
+   *
+   * Reading needs this as much as writing does, for a reason that is easy to
+   * miss: the dangling-link variant does not apply — there is nothing to read
+   * through a link whose target does not exist — but the raced one does, and it
+   * is the more valuable of the two to an attacker. The owner leaves a genuine
+   * file at the name, so resolution passes cleanly, and swaps a link in
+   * afterwards:
+   *
+   *     while :; do ln -sfn /etc/shadow notes.txt; mv -T real notes.txt; done
+   *
+   * A download that lands in the window has the daemon — root — open the link's
+   * target and stream it back with a 200. `/etc/shadow`, the daemon's own node
+   * token, another server's volume: whatever the path names.
+   */
+  async openForRead(absolutePath: string): Promise<FileHandle> {
+    const handle = await openWithoutFollowing(absolutePath, fsConstants.O_RDONLY | O_NOFOLLOW);
+
+    try {
+      await this.assertHandleInside(handle, absolutePath);
+    } catch (error) {
+      await handle.close().catch(() => undefined);
+      throw error;
+    }
+
+    return handle;
+  }
+
+  /**
+   * A read stream over a vetted descriptor.
+   *
+   * `start` and `end` carry the byte range SFTP asks for; the HTTP routes read
+   * whole files and leave them out.
+   */
+  async createReadStream(
+    absolutePath: string,
+    range?: { start?: number; end?: number },
+  ): Promise<ReturnType<FileHandle['createReadStream']>> {
+    const handle = await this.openForRead(absolutePath);
+    return handle.createReadStream(range);
+  }
+
+  /**
+   * Checks that a descriptor really landed inside the volume.
+   *
+   * Linux publishes the true path of an open descriptor under `/proc/self/fd`.
+   * Reading it *after* the open answers the one question the pre-flight check
+   * cannot: not "where should this have gone" but "where did it actually go".
+   * It is what catches a parent directory swapped for a link between resolution
+   * and open, which `O_NOFOLLOW` is blind to.
+   *
+   * Silent where `/proc` is not mounted — Windows in development, a stripped
+   * container. There `O_NOFOLLOW` is the whole of the guarantee, which is what
+   * the daemon had before this and is still far more than the name check alone.
+   */
+  private async assertHandleInside(handle: FileHandle, requestedPath: string): Promise<void> {
+    const actual = await realpath(`/proc/self/fd/${handle.fd}`).catch(() => null);
+
+    if (actual === null) {
+      return;
+    }
+
+    if (!isInside(await this.root(), actual)) {
+      throw new PathEscapeError(requestedPath);
+    }
   }
 
   // -------------------------------------------------------------------------
@@ -385,13 +651,24 @@ export class JailedFilesystem {
     // The file being replaced already counts towards the usage, so only the
     // growth is charged. Editing one line of a configuration file on a server
     // sitting at its limit has to keep working.
-    const existing = await stat(absolute).catch(() => null);
+    //
+    // `lstat`, not `stat`: sizing a link would report the size of its target,
+    // and a link is refused by the open below in any case.
+    const existing = await lstat(absolute).catch(() => null);
     const size = typeof content === 'string' ? Buffer.byteLength(content) : content.length;
 
-    this.assertRoomFor(size - (existing?.size ?? 0));
+    this.assertRoomFor(size - (existing?.isFile() === true ? existing.size : 0));
 
     await mkdir(dirname(absolute), { recursive: true });
-    await writeFile(absolute, content);
+
+    const handle = await this.openForWrite(absolute);
+
+    try {
+      await handle.writeFile(content);
+    } finally {
+      await handle.close().catch(() => undefined);
+    }
+
     await this.applyOwnership(absolute);
   }
 
@@ -416,7 +693,11 @@ export class JailedFilesystem {
       return;
     }
 
-    await chown(absolutePath, ownership.uid, ownership.gid).catch(() => undefined);
+    // `lchown`, not `chown`: the latter follows a link and would hand the
+    // container user ownership of whatever it points at — `/etc/shadow` is one
+    // `ln -s` away. Changing the ownership of the link itself is meaningless on
+    // Linux and harmless, which is exactly what we want.
+    await lchown(absolutePath, ownership.uid, ownership.gid).catch(() => undefined);
   }
 
   /**
@@ -425,10 +706,38 @@ export class JailedFilesystem {
    * The `setuid`/`setgid` bits are out of reach: the contract schema only
    * accepts three octal digits. A setuid binary dropped in a volume would run
    * with its owner's rights and defeat the container boundary.
+   *
+   * Done through a descriptor rather than a name. `chmod(2)` follows links, and
+   * `lchmod(2)` — which would not — exists on BSD but not on Linux, so there is
+   * no name-based call that is safe here. Opening read-only with `O_NOFOLLOW`
+   * and calling `fchmod` on the result is: the mode lands on the inode that was
+   * opened, and a link at the last step never gets opened at all.
    */
   async chmod(userPath: string, mode: number): Promise<void> {
     const absolute = await this.resolvePath(userPath);
-    await chmod(absolute, mode & 0o777);
+
+    if (O_NOFOLLOW === 0) {
+      // Windows: no flag to pass, and opening a directory for `fchmod` fails
+      // outright. An `lstat` refusal is what is available, and development is
+      // the only place this branch runs.
+      const link = await lstat(absolute).catch(() => null);
+
+      if (link?.isSymbolicLink() === true) {
+        throw new PathEscapeError(userPath);
+      }
+
+      await chmod(absolute, mode & 0o777);
+      return;
+    }
+
+    const handle = await openWithoutFollowing(absolute, fsConstants.O_RDONLY | O_NOFOLLOW);
+
+    try {
+      await this.assertHandleInside(handle, userPath);
+      await handle.chmod(mode & 0o777);
+    } finally {
+      await handle.close().catch(() => undefined);
+    }
   }
 
   async delete(userPaths: string[]): Promise<void> {
@@ -515,11 +824,25 @@ export class JailedFilesystem {
     const destinationPath = await this.resolvePath(destination);
     const root = await this.root();
 
-    const target = resolve(destinationPath, this.toRelative(entryName));
+    const lexical = resolve(destinationPath, this.toRelative(entryName));
 
     // Two checks: under the volume root *and* under the requested destination.
     // An archive must not write elsewhere in the volume than where the user
     // asked for it to be extracted.
+    if (!isInside(root, lexical) || !isInside(destinationPath, lexical)) {
+      throw new PathEscapeError(entryName);
+    }
+
+    // Then dereference, exactly as `resolvePath` does for a user-supplied name.
+    //
+    // Skipping this used to be survivable because the extraction followed links
+    // itself; now that the write refuses a link at the last component, a purely
+    // lexical answer hands back a path the open rejects. A link *inside* the
+    // volume is legitimate — a `logs/latest.log` pointing at today's file is the
+    // ordinary case — and one entry landing on it would otherwise tear down the
+    // whole extraction and leave a half-written tree.
+    const target = await this.realpathOfLongestExistingPrefix(lexical);
+
     if (!isInside(root, target) || !isInside(destinationPath, target)) {
       throw new PathEscapeError(entryName);
     }
@@ -527,6 +850,39 @@ export class JailedFilesystem {
     this.assertNotDenied(await this.toUserPath(target));
 
     return target;
+  }
+}
+
+/**
+ * `open(2)` with the link refusal translated into the jail's own vocabulary.
+ *
+ * The kernel signals "the last component is a symlink" with `ELOOP`, the same
+ * code it uses for a genuine link loop. Left as-is it reaches the file manager
+ * as an opaque `ELOOP` and shows the user a stack trace; as a
+ * {@link PathEscapeError} it becomes the same refusal every other escape gets.
+ *
+ * `EMLINK` is the same refusal on FreeBSD, which reports it there instead.
+ *
+ * The absolute path carried by the error stays inside the daemon: the file
+ * routes log `requestedPath` and answer with a fixed sentence, so naming the
+ * exact path the kernel refused helps the operator reading the log without
+ * describing the host's directory tree to the user who probed it.
+ */
+async function openWithoutFollowing(
+  absolutePath: string,
+  flags: number,
+  mode?: number,
+): Promise<FileHandle> {
+  try {
+    return await open(absolutePath, flags, mode);
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+
+    if (code === 'ELOOP' || code === 'EMLINK') {
+      throw new PathEscapeError(absolutePath);
+    }
+
+    throw error;
   }
 }
 

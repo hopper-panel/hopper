@@ -11,8 +11,14 @@ import { buildEnvironment, buildInvocation } from '../server/invocation.js';
  * what is written here.
  */
 
-/** Reference period of the cgroup CPU quota, in microseconds. */
-const CPU_PERIOD_US = 100_000;
+/**
+ * Reference period of the cgroup CPU quota, in microseconds.
+ *
+ * Exported because the installer bounds its own containers with the same
+ * `cpuQuotaFor`: a quota computed against one period and applied against another
+ * silently means something other than the percentage the operator asked for.
+ */
+export const CPU_PERIOD_US = 100_000;
 
 /** Working directory inside the container. */
 export const CONTAINER_WORKING_DIR = '/home/container';
