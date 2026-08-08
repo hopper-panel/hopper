@@ -12,6 +12,9 @@ import {
   DOCKER_ANSWER_TIMEOUT_MS,
   DockerUnansweredError,
   dockerRequestTimeout,
+  ICC_OPTION,
+  NETWORK_ISOLATION_REPEAT_MS,
+  networkIsolationOf,
   PULL_STALL_TIMEOUT_MS,
   type DockerRequest,
 } from './client.js';
@@ -69,7 +72,93 @@ afterAll(() => {
 const TEST_IMAGE = 'alpine:3.20';
 const NETWORK = 'hopper-test-net';
 
-function makeClient(socket: string | null = dockerSocket): DockerClient {
+/**
+ * A logger that keeps what it was told.
+ *
+ * Used by the tests that check the daemon *says* something, which for a hole it
+ * has decided not to close on its own is the entire remedy: a verdict nobody is
+ * told about is the same as no verdict.
+ */
+function recorder(): { logger: unknown; errors: string[]; warnings: string[] } {
+  const errors: string[] = [];
+  const warnings: string[] = [];
+
+  return {
+    errors,
+    warnings,
+    logger: {
+      debug: () => undefined,
+      info: () => undefined,
+      warn: (_context: unknown, message?: string) => warnings.push(message ?? ''),
+      error: (_context: unknown, message?: string) => errors.push(message ?? ''),
+    },
+  };
+}
+
+/**
+ * The de-duplication of the isolation report, which is a balance rather than a
+ * rule and so is pinned in both directions.
+ *
+ * Too quiet and a hole announces itself once, at a start nobody watched, then
+ * never again — the report is the entire remedy for a fault the daemon
+ * deliberately does not repair. Too loud and "still fine" every half hour is
+ * what teaches an operator to filter these lines out, taking the one line that
+ * mattered with them.
+ *
+ * Driven through `checkNetworkIsolation` on a client whose socket does not
+ * exist, so no engine is involved: an unreachable Docker answers `unknown`,
+ * which is a non-isolated status and therefore repeats, exactly as `open` does.
+ */
+describe('reporting an isolation verdict more than once', () => {
+  const nowhere = '/var/run/hopper-no-such-docker.sock';
+
+  it('says it once, not on every measurement', async () => {
+    const log = recorder();
+    const client = makeClient(nowhere, log.logger);
+
+    await client.checkNetworkIsolation();
+    await client.checkNetworkIsolation();
+    await client.checkNetworkIsolation();
+
+    expect(log.warnings).toHaveLength(1);
+  });
+
+  it('says it again once the repeat window has passed', async () => {
+    vi.useFakeTimers();
+
+    try {
+      const log = recorder();
+      const client = makeClient(nowhere, log.logger);
+
+      await client.checkNetworkIsolation();
+      vi.setSystemTime(Date.now() + NETWORK_ISOLATION_REPEAT_MS + 1);
+      await client.checkNetworkIsolation();
+
+      expect(log.warnings).toHaveLength(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('does not say it again a moment before the window is up', async () => {
+    vi.useFakeTimers();
+
+    try {
+      const log = recorder();
+      const client = makeClient(nowhere, log.logger);
+
+      await client.checkNetworkIsolation();
+      vi.setSystemTime(Date.now() + NETWORK_ISOLATION_REPEAT_MS - 1000);
+      await client.checkNetworkIsolation();
+
+      expect(log.warnings).toHaveLength(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+function makeClient(socket: string | null = dockerSocket, logger?: unknown): DockerClient {
   const config = daemonConfigSchema.parse({
     uuid: '3f2504e0-4f89-41d3-9a0c-0305e82c3301',
     tokenId: 'a'.repeat(16),
@@ -91,7 +180,7 @@ function makeClient(socket: string | null = dockerSocket): DockerClient {
     error: () => undefined,
   };
 
-  return new DockerClient(config, silent as never);
+  return new DockerClient(config, (logger ?? silent) as never);
 }
 
 describe.runIf(dockerSocket)('DockerClient against a real engine', () => {
@@ -147,6 +236,77 @@ describe.runIf(dockerSocket)('DockerClient against a real engine', () => {
     it('is a no-op the second time', async () => {
       await client.ensureNetwork();
       await expect(client.ensureNetwork()).resolves.toBeUndefined();
+    });
+
+    it('reports a network it has just created as isolating the servers', async () => {
+      await client.ensureNetwork();
+
+      // Measured through Docker rather than assumed from the option that was
+      // sent: what is claimed to operators is what the engine says, not what
+      // this file believes it asked for.
+      await expect(client.checkNetworkIsolation()).resolves.toMatchObject({
+        network: NETWORK,
+        status: 'isolated',
+      });
+    });
+
+    /**
+     * **The hole this whole file was reopened for.**
+     *
+     * `ensureNetwork` used to return the instant it saw a network by the right
+     * name, without looking at a single one of its options. So a `hopper0`
+     * created by a bare `docker network create` — by an operator following half
+     * a runbook, by a Hopper older than the option, or restored with a machine
+     * image — left inter-container traffic on, and every server on the node
+     * could reach every other one's RCON. Nothing said so anywhere.
+     *
+     * The two assertions are the two halves of the decision: it is *detected*,
+     * and it is *not repaired behind the operator's back* — recreating the
+     * network would disconnect every container on the machine.
+     */
+    it('sees through a network that already existed with the wrong options', async () => {
+      const preexisting = await client.api.createNetwork({ Name: NETWORK, Driver: 'bridge' });
+
+      await expect(client.ensureNetwork()).resolves.toBeUndefined();
+
+      await expect(client.checkNetworkIsolation()).resolves.toMatchObject({
+        network: NETWORK,
+        status: 'open',
+      });
+
+      // The same network, untouched: no silent teardown of everything running
+      // on this node in the name of fixing it.
+      const after = await client.api.getNetwork(NETWORK).inspect();
+      expect(after.Id).toBe(preexisting.id);
+    });
+
+    // A verdict nobody is told about is not a verdict. This is the whole
+    // remedy for a hole the daemon deliberately leaves open, so it is asserted
+    // rather than assumed: the line names the network and the command that
+    // fixes it.
+    it('says so, loudly, when it finds one', async () => {
+      const log = recorder();
+      const loud = makeClient(dockerSocket, log.logger);
+
+      await loud.api.createNetwork({ Name: NETWORK, Driver: 'bridge' });
+      await loud.ensureNetwork();
+
+      expect(log.errors).toHaveLength(1);
+      expect(log.errors[0]).toContain(NETWORK);
+      expect(log.errors[0]).toContain('NOT isolated');
+      expect(log.errors[0]).toContain(`docker network rm ${NETWORK}`);
+    });
+
+    // Removed under a running daemon: a definite answer from Docker, and still
+    // not evidence that anything is misconfigured. It must not read as "open".
+    it('says it cannot tell rather than accusing a network that is gone', async () => {
+      await client.ensureNetwork();
+      await client.api.getNetwork(NETWORK).remove();
+
+      const verdict = await client.checkNetworkIsolation();
+
+      expect(verdict.status).toBe('unknown');
+      expect(verdict.detail).toContain('does not exist');
     });
   });
 
@@ -235,6 +395,77 @@ describe.runIf(dockerSocket)('DockerClient against a real engine', () => {
 
       expect([...managed.values()].some((info) => info.Id === container.id)).toBe(false);
     }, 120_000);
+  });
+});
+
+/**
+ * What a network's options are read to mean, read as a rule.
+ *
+ * Pure, so the two answers that matter can be asked without an engine: a
+ * network created *by something other than this daemon*, which is the only way
+ * the hole ever appears, and a driver on which the option means nothing. No
+ * test against a network `ensureNetwork` created could reach either.
+ */
+describe('reading a network as isolating or not', () => {
+  const bridge = (options?: Record<string, string>) => ({ Driver: 'bridge', Options: options });
+
+  it('trusts the option this daemon sets', () => {
+    expect(networkIsolationOf('hopper0', bridge({ [ICC_OPTION]: 'false' }))).toMatchObject({
+      status: 'isolated',
+    });
+  });
+
+  /**
+   * **Silence is the dangerous answer here, not the neutral one.** A bare
+   * `docker network create hopper0` writes no `enable_icc` key at all, and
+   * Docker's default is to let containers talk. Reading an absent option as
+   * "probably fine" would be reading the exact shape of the bug as healthy.
+   */
+  it('reads an absent option as traffic allowed', () => {
+    const verdict = networkIsolationOf('hopper0', bridge({}));
+
+    expect(verdict.status).toBe('open');
+    expect(verdict.detail).toContain('not set');
+  });
+
+  it('reads an option turned on as traffic allowed', () => {
+    expect(networkIsolationOf('hopper0', bridge({ [ICC_OPTION]: 'true' }))).toMatchObject({
+      status: 'open',
+    });
+  });
+
+  /**
+   * Parsed the way Docker parses it rather than compared to the string this
+   * daemon happens to write. An operator who created the network with
+   * `--opt …enable_icc=0` really did turn the traffic off, and reporting that
+   * node as wide open would be a false accusation about a correct machine —
+   * which is the failure mode this whole check has to avoid to be worth having.
+   */
+  it.each(['0', 'f', 'F', 'FALSE', 'False'])('accepts %s as Docker does', (value) => {
+    expect(networkIsolationOf('hopper0', bridge({ [ICC_OPTION]: value })).status).toBe('isolated');
+  });
+
+  it.each(['1', 't', 'TRUE', 'True'])('accepts %s as Docker does', (value) => {
+    expect(networkIsolationOf('hopper0', bridge({ [ICC_OPTION]: value })).status).toBe('open');
+  });
+
+  // `enable_icc` is a bridge-driver option and nothing else reads it: on a
+  // macvlan or an overlay wearing this name the containers see one another
+  // whatever the options say.
+  it('reads a network that is not a bridge as traffic allowed', () => {
+    const verdict = networkIsolationOf('hopper0', {
+      Driver: 'macvlan',
+      Options: { [ICC_OPTION]: 'false' },
+    });
+
+    expect(verdict.status).toBe('open');
+    expect(verdict.detail).toContain('macvlan');
+  });
+
+  // A value neither Docker nor this daemon can parse cannot be shown to mean
+  // "off", and the guess is made in the direction that gets looked at.
+  it('does not read a value it cannot parse as off', () => {
+    expect(networkIsolationOf('hopper0', bridge({ [ICC_OPTION]: 'maybe' })).status).toBe('open');
   });
 });
 
@@ -627,6 +858,32 @@ describe('a Docker that has stopped answering', () => {
     await expect(client.attachToContainer('hopper-test', WINDOW_MS)).rejects.toThrow(
       DockerUnansweredError,
     );
+  });
+
+  /**
+   * **A Docker that is not answering must never become an accusation about the
+   * network.**
+   *
+   * hopperd can be started before the engine is ready — systemd ordering is a
+   * request, not a guarantee, and an engine restarts under a running daemon
+   * often enough. The isolation verdict is re-taken on every `/api/system`, so
+   * every one of those moments is a chance to report a perfectly good node as
+   * having its servers wide open, which is worse than saying nothing: it sends
+   * an operator to recreate a network that was never the problem, and it teaches
+   * them to disbelieve the one report that will one day be true.
+   *
+   * So the answer is `unknown`, it says the engine did not answer, and it does
+   * not throw — the caller is a route handler and a timer, neither of which has
+   * anywhere to put an exception.
+   */
+  it('never accuses the network when Docker is the one not answering', async () => {
+    const client = impatient();
+
+    const verdict = await client.checkNetworkIsolation();
+
+    expect(verdict.status).toBe('unknown');
+    expect(verdict.network).toBe(NETWORK);
+    expect(verdict.detail).toContain('did not answer');
   });
 });
 

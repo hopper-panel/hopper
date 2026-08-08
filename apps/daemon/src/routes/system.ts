@@ -22,6 +22,14 @@ export function registerSystemRoutes(
       .info()
       .catch(() => ({ version: '', storageDriver: '', cgroupVersion: '', runningContainers: 0 }));
 
+    // Measured on every call rather than remembered from startup, and for the
+    // same reason the answer above is: the network can be replaced under a
+    // running daemon, and a daemon that started before Docker was ready has no
+    // verdict from that moment worth repeating for the rest of its life. It
+    // never throws — a Docker that cannot be asked answers "unknown", which is
+    // not an accusation about the network.
+    const networkIsolation = await docker.checkNetworkIsolation();
+
     const info: SystemInformation = {
       version: DAEMON_VERSION,
       kernelVersion: release(),
@@ -34,6 +42,10 @@ export function registerSystemRoutes(
       // gates operations on it rather than on the daemon's version string,
       // which says nothing about what was backported into it.
       capabilities: [NODE_CAPABILITIES.allocationRoles, NODE_CAPABILITIES.rconStop],
+      // Beside the capabilities rather than among them: a capability is absent
+      // on every daemon too old to announce it, so "not isolated" and "too old
+      // to say" would be the same answer. See `networkIsolationSchema`.
+      networkIsolation,
     };
 
     return reply.header('x-hopper-contract', CONTRACT_VERSION).send(info);

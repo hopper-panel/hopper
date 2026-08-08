@@ -1,6 +1,7 @@
 import { readdir, stat } from 'node:fs/promises';
 import { request } from 'node:http';
 import { join } from 'node:path';
+import type { NetworkIsolation } from '@hopper/shared';
 import type { INestApplicationContext } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Redis } from 'ioredis';
@@ -300,24 +301,93 @@ async function nodeChecks(context: INestApplicationContext): Promise<Check[]> {
 
   // In parallel: an unreachable node burns its whole timeout, and chaining
   // them would make the diagnostic last as long as there are dead machines.
-  return Promise.all(
-    declared.map(async (node) => {
+  const perNode = await Promise.all(
+    declared.map(async (node): Promise<Check[]> => {
       const connection = await nodes.getConnection(node.uuid).catch(() => null);
 
       if (!connection) {
-        return fail(
-          node.name,
-          'unreadable secrets — did APP_SECRET change? `hopper node:token` regenerates them',
-        );
+        return [
+          fail(
+            node.name,
+            'unreadable secrets — did APP_SECRET change? `hopper node:token` regenerates them',
+          ),
+        ];
       }
 
       const probe = await client.fetchSystemInformation(connection);
 
-      return probe.reachable
-        ? ok(node.name, `${node.fqdn} — hopperd ${probe.system.version}, ${probe.latencyMs} ms`)
-        : fail(node.name, `${node.fqdn} — ${probe.reason}`);
+      if (!probe.reachable) {
+        // Nothing else is asked of a node that did not answer: the line above
+        // already says why, and "could not check the isolation either" is the
+        // same outage said twice.
+        return [fail(node.name, `${node.fqdn} — ${probe.reason}`)];
+      }
+
+      return [
+        ok(node.name, `${node.fqdn} — hopperd ${probe.system.version}, ${probe.latencyMs} ms`),
+        describeNetworkIsolation(node.name, probe.system.networkIsolation),
+      ];
     }),
   );
+
+  return perNode.flat();
+}
+
+/**
+ * Whether the servers on a node can still reach one another, as a check.
+ *
+ * **This is here because a log line at startup is not where anyone looks.** The
+ * isolation between servers on a node rests on one Docker option, set when the
+ * network is created and unchangeable afterwards, so a `hopper0` that predates
+ * hopperd — created by hand, by an older Hopper, or restored with a machine
+ * image — leaves every server able to reach every other server's unpublished
+ * ports. The daemon detects that and says so, but it says so once, on a console
+ * that scrolls; `hopper doctor` is the command an operator actually runs when
+ * something smells wrong, and it said nothing at all about the network.
+ *
+ * Reported as a **failure**, alongside a world-readable `.env` and for the same
+ * reason: neither stops the panel working, both are a security guarantee this
+ * project makes in writing being false on this installation, and both are fixed
+ * by a couple of commands once somebody knows. The exit code is what carries
+ * that into `install.sh && hopper doctor`.
+ *
+ * **Absent is not a verdict.** A daemon predating this check sends no report at
+ * all, and a node whose Docker was not answering sends `unknown`. Neither is
+ * evidence of anything, so neither fails: they warn, and say which of the two
+ * happened, because the fixes are an upgrade and an engine respectively.
+ */
+export function describeNetworkIsolation(
+  node: string,
+  isolation: NetworkIsolation | undefined,
+): Check {
+  const label = `${node} — server isolation`;
+
+  if (isolation === undefined) {
+    return warn(label, 'not reported by this daemon — upgrade hopperd to have it checked');
+  }
+
+  switch (isolation.status) {
+    case 'isolated':
+      return ok(label, `${isolation.network} — ${isolation.detail}`);
+
+    case 'unknown':
+      return warn(label, `${isolation.network} — ${isolation.detail}`);
+
+    case 'open':
+      // No commands printed here, deliberately. Repairing this means replacing
+      // the network, and whether hopperd rebuilds it or refuses to start
+      // depends on `docker.network.autoCreate` in that node's own daemon.yml,
+      // which the panel never sees. The daemon knows, and writes the exact
+      // sequence into its log every time it takes this verdict — so this points
+      // there instead of guessing, because the guess that fits the other half
+      // of the population takes the node permanently offline.
+      return fail(
+        label,
+        `${isolation.network} — ${isolation.detail}; every server there can reach every other ` +
+          `server's unpublished ports. Repair it on the node: journalctl -u hopperd names the ` +
+          `commands for its configuration`,
+      );
+  }
 }
 
 async function dockerChecks(): Promise<Check[]> {

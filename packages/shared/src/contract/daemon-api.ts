@@ -71,6 +71,44 @@ export const NODE_CAPABILITIES = {
   rconStop: 'rcon-stop',
 } as const;
 
+/**
+ * Whether the servers on a node are still isolated from one another.
+ *
+ * The isolation rests on a single Docker option — inter-container communication
+ * turned off on the bridge the servers share — and that option is only settable
+ * when the network is created. A network that already existed when hopperd
+ * first ran keeps whatever it was created with, so the guarantee is a property
+ * of *this node right now* rather than of the daemon's version, and the daemon
+ * measures it instead of assuming it.
+ *
+ * **Three answers, and the third is what keeps the other two honest.** `open` is
+ * an accusation — it says every server on that node can reach every other one's
+ * unpublished ports — and an accusation must only ever be made from an answer
+ * Docker actually gave. A Docker that is restarting, a socket that is not
+ * answering yet, a network that was removed under a running daemon: all of them
+ * are `unknown`, never `open`.
+ */
+export const networkIsolationSchema = z.object({
+  /** The network the servers are attached to, as this node's own config names it. */
+  network: z.string(),
+  /**
+   * `isolated` — traffic between containers is refused. `open` — it is not, and
+   * the guarantee is false on this node. `unknown` — it could not be checked,
+   * which is not the same as either.
+   *
+   * Caught rather than enumerated strictly: a newer daemon that one day answers
+   * a fourth word must not make the whole payload unreadable, which
+   * `fetchSystemInformation` reports as "its version is probably too old" —
+   * the exact opposite of the truth, and it would take the node offline for
+   * being ahead.
+   */
+  status: z.enum(['isolated', 'open', 'unknown']).catch('unknown'),
+  /** One sentence naming what was found, written to be shown to an operator. */
+  detail: z.string(),
+});
+
+export type NetworkIsolation = z.infer<typeof networkIsolationSchema>;
+
 export const systemInformationSchema = z.object({
   version: z.string(),
   kernelVersion: z.string(),
@@ -95,6 +133,24 @@ export const systemInformationSchema = z.object({
    * old", the exact opposite of what would have happened.
    */
   capabilities: z.array(z.string()).default([]),
+  /**
+   * What this node's server network is doing about traffic between containers.
+   *
+   * A field of its own rather than one more string in `capabilities`, and the
+   * reason is the same one that makes the list above work at all: a capability
+   * is *absent* on every daemon too old to announce it, so a missing
+   * `network-isolated` could not be told apart from a daemon that predates the
+   * check — and reading "old daemon" as "this node is wide open" is precisely
+   * the false accusation this whole report exists to avoid. Capabilities also
+   * describe what a build can do, which is fixed at compile time; this is what
+   * one host is doing right now, it has three answers rather than two, and it
+   * carries a sentence for whoever has to fix it.
+   *
+   * Optional, so a daemon predating the check parses as it always did. Absent
+   * means "not reported", never "not isolated": `hopper doctor` says so in
+   * those words and asks for an upgrade rather than passing a verdict.
+   */
+  networkIsolation: networkIsolationSchema.optional().catch(undefined),
 });
 
 export type SystemInformation = z.infer<typeof systemInformationSchema>;

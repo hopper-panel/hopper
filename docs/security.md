@@ -79,6 +79,54 @@ You have nothing to set for the following — it is the default behaviour:
   `--privileged`, and the Docker socket is never mounted into a server container.
 - **A path jail** on every file operation and on SFTP: the path resolved through `realpath`,
   symlinks leaving the volume refused, zip-slip protection on extraction.
+- **Servers isolated from one another on the node**, except through their allocated ports. Each
+  container is attached to a bridge of Hopper's own — `hopper0` by default, never Docker's `bridge`,
+  where every container sees every other — and that bridge is created with
+  `com.docker.network.bridge.enable_icc=false`, so the kernel drops every packet from one server's
+  container to another's address — a server has no route to its neighbour at all. What arrives from
+  outside the node is what Docker publishes for that server, which is exactly its allocations: every
+  allocated port, TCP and UDP, on the address it was allocated on, and nothing besides. A port a
+  plugin opens for itself and nobody allocated — an internal admin listener, a metrics endpoint, a
+  database bound to localhost — is reachable from inside its own container, and no other server on
+  the machine can reach it. RCON is not an example of this: Hopper models it as an allocation, so it
+  is published like any other and reachable from outside the node. Bind it somewhere you trust, or
+  allocate it on 127.0.0.1.
+
+  **One condition, and it is measured rather than assumed.** That option can only be set when the
+  network is created; Docker offers no way to change it afterwards. So a `hopper0` that already
+  existed the first time hopperd ran — created by hand, by a Hopper predating the option, or
+  restored with a machine image — keeps whatever it was created with, and on such a node the
+  paragraph above is simply false. Hopper cannot repair it in place, so it checks instead: the
+  daemon inspects the network at every start and again on every health check, writes the fault to
+  its log with the commands that fix it, and `hopper doctor` reports it as a **failing check**
+  against that node. A daemon that cannot reach Docker says so as "could not check" — never as
+  "not isolated", which would send you to rebuild a network that was never the problem.
+
+  Repairing it is left to you, on purpose, because recreating a network disconnects every container
+  on the machine:
+
+  ```bash
+  # on the node, with its servers stopped
+  docker network rm hopper0
+  systemctl restart hopperd   # recreates it from daemon.yml, with the option set
+  ```
+
+  That second line rebuilds the network only if `docker.network.autoCreate` is true, which is the
+  default. **If you set it false**, hopperd will refuse to start against a missing network instead
+  of creating one — so recreate it yourself before restarting, and the daemon's own log prints the
+  exact `docker network create` for your subnet. `hopper doctor` deliberately prints no commands for
+  this check: it cannot see that setting, and the wrong half of the advice takes a node offline.
+
+  The daemon does neither of the two things it could have done instead, and both were worse. Doing
+  that recreation itself, at startup, would be an outage across every server on the node — caused by
+  the daemon, unprompted, to close a hole between servers that were all running a second earlier —
+  and Docker refuses to remove a network while anything is attached, so it would fail halfway on
+  exactly the busy node where it matters. Refusing to start protects the isolation perfectly and
+  takes the whole node down to do it: no console, no backups, nothing startable or stoppable, and no
+  way to say why, since a daemon that has exited shows in the panel as a node that is offline —
+  indistinguishable from a dead machine. The hole stays open and reported, because its blast radius
+  is between the servers on one node while the blast radius of either cure is every server on it.
+
 - **Two-part node tokens**: public identifier, secret encrypted in the database with `APP_SECRET`,
   rotation through `hopper node:token`. Encrypted rather than hashed, and the difference is worth
   knowing: a node token is not a password the panel only ever checks, it is a **shared secret used
