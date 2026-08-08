@@ -137,7 +137,10 @@ export class StartupService {
         continue;
       }
 
-      const violations = validateValue(value, variable.rules);
+      // The environment name and not the display one: a malformed rule is
+      // logged under it, and that is the string an administrator will grep the
+      // template for.
+      const violations = validateValue(value, variable.rules, variable.envVariable);
 
       if (violations.length > 0) {
         errors.push(`${variable.name}: ${violations.map((one) => one.message).join(' ')}`);

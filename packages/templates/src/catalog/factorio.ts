@@ -538,13 +538,16 @@ export const factorio: TemplateDefinition = {
        *
        * Written as a character class and not as an alternation of the three
        * channel words and a dotted version, which is what it would like to be.
-       * The rule string is split on `|` *before* anything looks at `regex:`, so
-       * an alternation is torn into fragments: the first becomes an unterminated
-       * expression that fails to compile — and an expression that fails to
-       * compile is treated as the template's fault and passes every value — and
-       * the rest become unknown rules, which are ignored. The check would read
-       * as the strictest one in the file and enforce nothing at all. A class
-       * survives the split because it contains no `|`.
+       * That was forced: the panel used to split the rule string on `|` before
+       * looking for `regex:`, which tore an alternation into fragments the
+       * first of which no longer compiled — and an expression that would not
+       * compile was treated as the template's fault and passed every value. The
+       * class survived only because it contains no pipe. The panel now scans
+       * for the delimiters instead of splitting, so an alternation here would
+       * hold, and a rule that will not compile refuses the value rather than
+       * waving it through. The class is kept because it is correct and in use;
+       * narrowing it to an alternation is a separate decision about what a
+       * version may be, not a workaround any more.
        *
        * What it admits: `stable`, `experimental`, `latest`, and `2.0.28`. What
        * it excludes is what matters — no `/`, `%`, `:`, `@`, `?` or `\`, so

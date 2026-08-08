@@ -57,6 +57,32 @@ describe('catalogue de templates', () => {
         }
 
         expect(template.stopCommand).toMatch(/^(command:.+|signal:SIG(TERM|INT|KILL))$/);
+
+        /**
+         * Every `regex:` rule is delimited, comes last, and compiles.
+         *
+         * All three matter to the panel's reading of the rule string. It scans
+         * a `regex:/…/` whole, so an alternation inside one is safe — but only
+         * a delimited one; a bare `regex:` is still cut on the pipe, because
+         * nothing can tell an alternation's pipe from the next rule's. And a
+         * rule that will not compile no longer passes every value: it refuses
+         * them all, so a typo shipped here would make the variable impossible
+         * to set rather than merely unguarded. Last in the list is this
+         * catalogue's own convention, and what `ruleExpression` below reads.
+         */
+        for (const variable of template.variables) {
+          if (!variable.rules.includes('regex:')) {
+            continue;
+          }
+
+          const delimited = /regex:\/(.*)\/([a-z]*)$/.exec(variable.rules);
+
+          expect(
+            delimited,
+            `${variable.envVariable}: its regex rule is not delimited, or is not last`,
+          ).not.toBeNull();
+          expect(() => new RegExp(delimited?.[1] ?? '', delimited?.[2])).not.toThrow();
+        }
       },
     );
   });
@@ -336,32 +362,6 @@ describe('catalogue de templates', () => {
 
         return new RegExp(source!);
       };
-
-      /**
-       * The rule string is split on `|` **before** anything looks for `regex:`.
-       *
-       * An alternation inside one is therefore torn into fragments: the first
-       * becomes an unterminated expression, which fails to compile, and a
-       * pattern that fails to compile is treated as the template's mistake and
-       * accepts every value; the remaining fragments are read as rules nobody
-       * recognises and ignored. The result reads as the strictest line in the
-       * file and enforces nothing at all — so the expressions here are written
-       * as character classes, and this is what keeps them that way.
-       */
-      it('writes its regular expressions without an alternation', () => {
-        for (const variable of factorio?.variables ?? []) {
-          const index = variable.rules.indexOf('regex:');
-
-          if (index === -1) {
-            continue;
-          }
-
-          expect(
-            variable.rules.slice(index),
-            `${variable.envVariable} splits on its own rule`,
-          ).not.toContain('|');
-        }
-      });
 
       // This value becomes a segment of the download URL, and curl resolves a
       // path before it sends it.
