@@ -271,6 +271,44 @@ describe('LineAssembler', () => {
   });
 
   /**
+   * The cost of a line arriving in very small pieces, which is a clock and is
+   * here on purpose.
+   *
+   * `push` used to read `pending + rest` by index, and indexing a pair of
+   * strings is what makes the engine join them into a new one. Every packet of a
+   * line therefore recopied and rescanned everything of that line held so far —
+   * bounded by {@link MAX_LINE_LENGTH} rather than unbounded, so it was eight
+   * kilobytes of extra work per packet and not a hang, which is exactly why it
+   * was never noticed. It arrived instead as a five-second timeout on the
+   * comparison test below, on a CI runner, two versions after the change that
+   * caused it.
+   *
+   * A wall clock is a poor assertion and the margins are what make it a usable
+   * one. Four mebibytes one byte at a time is about 60 ms with the fix and about
+   * thirty seconds without it; the bound is 3 000 ms, which is fifty times the
+   * one and a tenth of the other. It fails on the regression on any machine that
+   * can run the rest of this suite, and a slow runner has to be fifty times
+   * slower than a laptop to fail on the fix.
+   *
+   * One byte per push is not a straw man. Docker hands over what the container
+   * flushed, and a game printing a spinner or a progress percentage character by
+   * character flushes exactly this way.
+   */
+  it('stays linear when a long line arrives one byte at a time', () => {
+    const assembler = new LineAssembler();
+    const line = `${'z'.repeat(4 * 1024 * 1024)}\n`;
+
+    const started = performance.now();
+    for (let index = 0; index < line.length; index += 1) {
+      assembler.push(line[index]!);
+    }
+    const elapsed = performance.now() - started;
+
+    expect(assembler.flush()).toEqual([]);
+    expect(elapsed).toBeLessThan(3_000);
+  });
+
+  /**
    * Every existing server's output has to survive this change untouched, and
    * "untouched" is measured against the splitter that shipped, not asserted.
    *
