@@ -4,10 +4,14 @@ A template describes **what a server installs and runs**: its Docker image, its 
 startup command and the variables the user can set. It is the equivalent of Pterodactyl's "eggs",
 and the importer accepts those as they are.
 
-The shipped catalogue covers Vanilla, Paper, Purpur, Fabric, NeoForge, Velocity and BungeeCord —
-seven. Folia, Forge and Bedrock were listed here before they existed; they do not, yet. Anything
-else runs through an imported egg. **Administration → Templates → Resynchronise** reinstalls it after a Hopper
-update; a template edited by hand is flagged "edited" and is not overwritten.
+The shipped catalogue covers Vanilla, Paper, Purpur, Fabric, NeoForge, Velocity and BungeeCord for
+Minecraft, with Factorio and Garry's Mod beside them. Folia, Forge and Bedrock were listed here
+before they existed; they do not, yet — and the count that used to close this sentence stopped being
+true the day the catalogue grew past Minecraft, so the list that ships is
+`packages/templates/src/index.ts` and this paragraph is only its summary. Anything else runs through
+an imported egg.
+**Administration → Templates → Resynchronise** reinstalls it after a Hopper update; a template
+edited by hand is flagged "edited" and is not overwritten.
 
 ## Importing a Pterodactyl egg
 
@@ -20,8 +24,13 @@ Two differences worth knowing:
 - The egg's Docker images are kept as they are. An egg referencing
   `ghcr.io/pterodactyl/yolks:java_21` will keep using it — the public image exists, nothing to do,
   but you then depend on its registry.
-- An egg's install scripts run in a throwaway container mounted on `/mnt/server`, exactly as under
-  Pterodactyl.
+- An egg's install scripts run in a throwaway container mounted on `/mnt/server`, as under
+  Pterodactyl — but not with Pterodactyl's privileges. Hopper drops Docker's whole default
+  capability set there and hands seven back (`apps/daemon/src/server/installer.ts` lists them and
+  says what each is for). What an egg loses is `MKNOD`, `NET_RAW`, `SETFCAP`, `SETPCAP`,
+  `NET_BIND_SERVICE`, `SYS_CHROOT` and `AUDIT_WRITE` — and a download-unpack-chown script, which is
+  what almost every egg is, touches none of the seven. This page used to name `su` as the casualty
+  of that drop; it is not one. See [Installing from SteamCMD](#installing-from-steamcmd).
 
 ## Writing a template
 
@@ -56,24 +65,37 @@ The shipped templates are TypeScript in `packages/templates/src/catalog/`. A min
 
 ### The startup command
 
-`startup` is a **template with variables**, never a string handed to a shell. The `{{VARIABLE}}`
-placeholders are replaced with validated values, then the command is split into arguments. A user
-typing `server.jar; rm -rf /` into a variable would get an unusable argument, not a second command.
+`startup` is a **template with variables**, never a string handed to a shell. The command is split
+into arguments **first**, honouring quotes, and the `{{VARIABLE}}` placeholders are then replaced
+_inside_ each argument. That order is the whole of the defence and it is worth reading the right way
+round — split, then substitute — because a value is dropped into an argument whose boundaries have
+already been decided: a user typing `server.jar; rm -rf /` into a variable gets one unusable
+argument, not a second command. No interpreter sees any of it at any point.
 
 These variables are supplied by Hopper:
 
-| Variable                             | Value                                                      |
-| ------------------------------------ | ---------------------------------------------------------- |
-| `{{SERVER_MEMORY}}`                  | Heap budget, in MiB — **lower** than the container's limit |
-| `{{SERVER_IP}}`                      | IP of the primary allocation                               |
-| `{{SERVER_PORT}}`                    | Port of the primary allocation                             |
-| `{{server.allocations.<role>.port}}` | Port the operator named `<role>` — see below               |
-| `{{server.allocations.<role>.ip}}`   | Its address                                                |
+| Variable                             | Value                                                          |
+| ------------------------------------ | -------------------------------------------------------------- |
+| `{{SERVER_MEMORY}}`                  | Heap budget, in MiB — **lower** than the container's limit     |
+| `{{SERVER_MEMORY_LIMIT}}`            | The container's memory limit itself, in MiB                    |
+| `{{SERVER_IP}}`                      | Address of the primary allocation, **on the host** — see below |
+| `{{SERVER_PORT}}`                    | Port of the primary allocation                                 |
+| `{{server.allocations.<role>.port}}` | Port the operator named `<role>` — see below                   |
+| `{{server.allocations.<role>.ip}}`   | Its address                                                    |
 
 `SERVER_MEMORY` is not the container's limit: the JVM consumes beyond its heap — metaspace, thread
 stacks, direct buffers — and the kernel's page cache counts towards the cgroup limit. Hopper
 therefore reserves headroom, without which a 1 GiB server is killed by the kernel before it has
-finished starting.
+finished starting. A game with no heap to size has no use for that figure and wants
+`SERVER_MEMORY_LIMIT`, which is the limit as the operator set it.
+
+`SERVER_IP` is the address the allocation carries **on the host**, which is often `0.0.0.0` and is
+not always. Where an operator allocated a specific address, no interface inside the container
+carries it and a game told to bind to it does not start. A server listens on every interface of its
+own container and Docker is what restricts publication to the allocated port — which is why
+`SERVER_PROPERTIES_CONFIG` pins `server-ip` to `0.0.0.0` and the Factorio template passes no
+`--bind` at all. An imported egg that hands `{{SERVER_IP}}` to a `-ip`/`+ip` flag is the shape to
+look at twice.
 
 #### Naming a port in the command
 
@@ -250,11 +272,19 @@ stopCommand: 'command:stop',      // written to the server's standard input
 stopCommand: 'signal:SIGTERM',    // signalled to PID 1 of the container
 ```
 
-Both answer for Minecraft and for very little else. **Rust, ARK, Palworld and most Source servers
-read no standard input at all**: `command:stop` writes into a pipe nobody is holding, nothing
-happens for the whole timeout, and the server is SIGKILLed — a "clean stop" that is a kill with
-extra waiting. `signal:` was the alternative, and a signal is a request the game may handle, ignore,
-or handle by exiting without writing its world.
+Between them they answer for Minecraft, and for fewer other games than it looks. **Rust, ARK and
+Palworld read no standard input at all**: `command:stop` writes into a pipe nobody is holding,
+nothing happens for the whole timeout, and the server is SIGKILLed — a "clean stop" that is a kill
+with extra waiting. `signal:` was the alternative, and a signal is a request the game may handle,
+ignore, or handle by exiting without writing its world.
+
+**A Source server is not one of them, whatever this page said before Garry's Mod was written.**
+`srcds` reads its console from standard input, so `command:quit` stops one cleanly and is what every
+Pterodactyl Source egg does. The correction is recorded rather than quietly made, because this list
+is what a template author picks a transport from: one wrong name in it sends a game to RCON — a
+password, a port and four new ways to fail — for a channel it already had. What a Source template
+does need is `-norestart`, without which that clean exit ends in the SIGKILL anyway for an entirely
+different reason; see [Installing from SteamCMD](#installing-from-steamcmd).
 
 `stop` is the general answer, and its third transport is the reason it exists:
 
@@ -268,10 +298,11 @@ stop: {
 ```
 
 The daemon connects, authenticates, sends that one command and then waits for the process exactly as
-it does for the other two. Which command depends on the game: `quit` for Rust and Factorio, `DoExit`
-for ARK, `shutdown 30 Restarting` for Palworld, `stop` for Minecraft. It is sent as written — nothing
-in the daemon knows which game is on the other end, so nothing adds a leading slash or a save
-beforehand.
+it does for the other two. Which command depends on the game: `quit` for Rust, `DoExit` for ARK,
+`shutdown 30 Restarting` for Palworld, `stop` for Minecraft, `/quit` for Factorio — whose console
+reads a line without the leading slash as chat and keeps running, which is why the shipped template
+sends the slash. It is sent as written — nothing in the daemon knows which game is on the other end,
+so nothing adds a leading slash or a save beforehand.
 
 `role` names the port the same way a readiness strategy does, with the same refusal: a role matching
 no port on the server is refused, never read as "the primary one then". `secretVariable` names the
@@ -480,11 +511,80 @@ It is not the server's disk limit. That number is what the operator sells, weigh
 creation against the node's declared capacity and its overallocation setting; a 50 GiB plan that
 will use 900 MiB has no business refusing to install on a node with 20 GiB free.
 
+### Installing from SteamCMD
+
+A SteamCMD install runs like any other install script, and two of Hopper's own decisions become
+visible the first time one does. Both are rules whose punishment is a server that looks like it
+worked. A third was listed here and was not real; it is corrected at the end of the section rather
+than removed, because it was acted on.
+
+**`+force_install_dir /mnt/server`, named before the `+app_update` that uses it.** SteamCMD applies
+it to the commands that follow, not to the ones already run, and left unsaid it installs into a
+directory of its own under the container's filesystem. That directory is not the volume: it is the
+install container's own layer, which is thrown away the moment the installation ends, so the depot
+downloads to completion, the script exits 0, and the server starts on an empty volume. It is also
+the directory nothing measured — the disk preflight above measures the filesystem holding the volume
+and names no other, so `installRequiredDiskBytes` was checked against a disk the download never
+touched, on a node that may well not have had room for it on the one it did. That is what makes
+`+force_install_dir` load-bearing rather than a convention: it is the line that puts the bytes where
+both the check and the server are looking. `/mnt/server` is also the working directory, so a
+relative path lands in the volume — but SteamCMD's install directory is not a relative path, it is a
+setting, and it defaults to somewhere else.
+
+**`-norestart`, in the startup command.** It reads like a tuning flag and is not one: `srcds_run` is
+a shell wrapper that relaunches the server whenever it exits, so a clean `quit` is answered with a
+fresh server and PID 1 — the wrapper — never ends. What Hopper waits for on a stop is the container
+going down, for `stopTimeoutSeconds`, and then it SIGKILLs whatever is still in there. So a template
+that omits the flag turns **every** graceful stop into a kill at the timeout, restarts included, and
+each one prints the console line about the server not having answered and data loss being possible.
+The command was delivered and obeyed; it is the wrapper that undoes it. What the SIGKILL lands on,
+minutes later, is the replacement — a server that came up during the stop and has been taking
+players ever since.
+
+#### The `su` rule that was here, and was wrong
+
+This section used to open with a third rule: that `su` cannot work in the install container, because
+`AUDIT_WRITE` is dropped and PAM needs it to open a session, so the community Steam eggs — "built
+almost entirely out of `su steam -c …`" — fail on their first line. Both halves of that are false,
+and it was acted on: a template comment repeated it and a catalogue-wide test enforced it. Deleting
+it silently would leave the next person to rediscover it from the same plausible reasoning.
+
+**What was measured.** `su steam -c "…"` and `su - steam -c …` were run in `debian:bookworm-slim`
+with exactly the capability set the daemon gives an install container — `CapDrop: ALL` plus the
+seven of `INSTALL_CAPABILITIES`, `CapEff` reading `00000000000000fb`. Both switched user and
+returned **0**. Debian's `su` is linked against `libaudit`, so the audit call is really made; it
+simply is not fatal there.
+
+**What was not measured.** The kernel underneath was WSL2's (`6.18.33.2-microsoft-standard-WSL2`).
+Audit is compiled into it — `/proc/self/loginuid` exists — but nothing was collecting records. On a
+node running `auditd`, the kernel may refuse the login record for want of `AUDIT_WRITE`, and whether
+`su` then fails or shrugs has not been tested here. So the honest claim is "`su` worked where it was
+tried", not "`su` always works".
+
+**What to do about it: nothing.** The problem the rule was protecting against has no known instance.
+Of 274 eggs whose install script was read from the published catalogue, 104 use SteamCMD and **not
+one of those runs `su` at all**; the three that do are the Red-DiscordBot egg and two Postgres ones,
+which are not Steam installs. A script that does want another uid can keep using `runuser -u steam
+-- …` or `setpriv --reuid=steam --regid=steam --clear-groups --`, which need only `SETUID` and
+`SETGID` and so cannot depend on the host's audit configuration; that half of the old advice was
+sound, for a better reason than the one it was given.
+
+`AUDIT_WRITE` stays dropped regardless, and that part never rested on `su`: the audit subsystem is
+not namespaced, so a record written from in there lands in the **host's** audit log — the log an
+operator reads to reconstruct what happened on the node — and this container's environment carries
+values a server's own user edits from the startup page.
+
 ## Configuration files
 
 `configFiles` describes the files Hopper patches at startup, so the server really listens on the
-allocation it was given. `SERVER_PROPERTIES_CONFIG` handles `server-ip`, `server-port` and
-`query.port` in `server.properties`.
+allocation it was given. `SERVER_PROPERTIES_CONFIG` handles two keys of `server.properties` and only
+two: `server-ip`, pinned to `0.0.0.0`, and `server-port`, set to the primary allocation. It does
+**not** touch `query.port`, which this page claimed for some time — a template that needs the query
+port rewritten has to say so itself.
 
 Without it, a player editing `server-port` in the file editor would make their server unreachable —
 and the allocation the panel displays would be a lie.
+
+A template whose port arrives as a command-line argument needs none of this and says so with an
+empty `configFiles`: there is nothing on disk holding the port for the daemon to rewrite. Factorio
+is the shipped example.

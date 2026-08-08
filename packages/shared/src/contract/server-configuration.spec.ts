@@ -76,11 +76,15 @@ describe('serverConfigurationSchema', () => {
 /**
  * Stopping a server that reads no standard input.
  *
- * Rust, ARK, Palworld and most Source servers never read stdin, so the
- * `command` transport writes into a pipe nobody holds: nothing happens for the
- * whole deadline and the server is SIGKILLed. `signal` was the alternative, and
- * a signal is a request a game may handle, ignore, or handle by exiting without
- * writing its world. RCON is the channel those servers answer on.
+ * Rust, ARK and Palworld never read stdin, so the `command` transport writes
+ * into a pipe nobody holds: nothing happens for the whole deadline and the
+ * server is SIGKILLed. `signal` was the alternative, and a signal is a request a
+ * game may handle, ignore, or handle by exiting without writing its world. RCON
+ * is the channel those servers answer on.
+ *
+ * Source is not one of them, though it was written here as one: a Garry's Mod
+ * server was measured stopping on `quit` written to stdin, exit code 0, and the
+ * shipped template stops that way.
  */
 describe('the rcon stop transport', () => {
   const RCON_STOP = {

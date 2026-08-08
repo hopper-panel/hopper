@@ -1395,11 +1395,18 @@ export class ServerInstance extends EventEmitter {
   /**
    * Stops the server by sending its own shutdown command over RCON.
    *
-   * For the games this transport exists for — Rust, ARK, Palworld, most Source
-   * servers — this is the only channel that ends in a save. They read no
-   * standard input, so a `command` stop goes into a pipe nobody holds; and a
-   * signal is a request the game may handle, ignore, or handle by exiting
-   * without writing its world.
+   * For the games this transport exists for — Rust, ARK, Palworld — this is the
+   * only channel that ends in a save. They read no standard input, so a
+   * `command` stop goes into a pipe nobody holds; and a signal is a request the
+   * game may handle, ignore, or handle by exiting without writing its world.
+   *
+   * Source servers were named in that list and do not belong in it: `srcds`
+   * reads its console from standard input, and `quit` written
+   * there is a clean exit — measured on app 4020, container exit code 0. The
+   * correction is recorded here rather than quietly made, because this list is
+   * what a template author picks a transport from, and a wrong name in it sends
+   * a game to RCON — a password, a port and the four refusals below — for a
+   * channel it already had.
    *
    * **A stop that cannot be delivered refuses instead of falling through to the
    * SIGKILL.** That is the decision in this method, and it goes against what

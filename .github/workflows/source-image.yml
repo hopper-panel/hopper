@@ -1,0 +1,246 @@
+name: Source image
+
+# Builds `ghcr.io/hopper-panel/source`, the image the SteamCMD templates name,
+# and publishes it when a release is published.
+#
+# Why the image is published from this repository at all rather than borrowed
+# from someone else's registry: `Server.dockerImage` is copied onto the server
+# row at creation, so the string a template ships with on day one outlives every
+# later edit of that template and cannot be renamed for the servers already
+# carrying it. A name this project does not control is therefore a permanent
+# dependency on somebody else's retention policy. The reasoning is set out in
+# full in `docker/source/Dockerfile`.
+#
+# It publishes on a **published release** rather than on a tag push, because
+# that is the step `scripts/release.mjs` ends its instructions on and the event
+# the panel's update check reads — the two now happen at the same moment instead
+# of a tag quietly shipping an image nobody announced.
+#
+# Merges to main and pull requests that touch the image build it and run the
+# assertions below **without pushing**. Everything this job checks is a contract
+# with the daemon rather than a matter of taste, and a release is the worst
+# possible moment to discover one has been broken.
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'docker/source/**'
+      - '.github/workflows/source-image.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'docker/source/**'
+      - '.github/workflows/source-image.yml'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  IMAGE: ghcr.io/hopper-panel/source
+  # The image's own major, not Hopper's version. A template names `:1` for ever,
+  # so this moves only when the image changes in a way that would stop an
+  # existing server from starting — at which point the new servers get `:2` and
+  # the old ones keep the tag they were created with.
+  MAJOR: '1'
+
+jobs:
+  image:
+    name: Build, check, and publish on a release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # Needed only by the publish step. A pull request from a fork gets a
+      # read-only token whatever is written here, which is why the build and the
+      # assertions are arranged to need no token at all.
+      packages: write
+    env:
+      # A release is the announced version; the manual trigger is how the image
+      # is published the *first* time and how a base-image security fix is
+      # shipped without waiting for the next release. Neither a merge nor a pull
+      # request pushes anything.
+      PUBLISH: ${{ github.event_name == 'release' || github.event_name == 'workflow_dispatch' }}
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: docker/setup-buildx-action@v4
+
+      - name: Build
+        uses: docker/build-push-action@v7
+        with:
+          context: docker/source
+          # srcds is a 32-bit x86 binary and there is no ARM build of it. An
+          # arm64 variant of this image would pull, then fail at the first
+          # `exec` with a message about a missing interpreter.
+          platforms: linux/amd64
+          load: true
+          tags: ${{ env.IMAGE }}:${{ env.MAJOR }}
+          # A plain single manifest, not an OCI index carrying attestation
+          # manifests beside it. The nodes that pull this run whatever Docker
+          # their distribution shipped, and an index whose extra entries have no
+          # platform is the classic source of "no matching manifest for
+          # linux/amd64" on an older client. There is nothing to attest here
+          # that the build log does not already say.
+          provenance: false
+
+      - name: The image keeps the contract the daemon relies on
+        run: |
+          set -euo pipefail
+          IMAGE="$IMAGE:$MAJOR"
+
+          # What these can and cannot check, said once up front. They are
+          # invariants of the *image*; the thing that actually matters — that a
+          # Garry's Mod server starts on it — needs 6.5 GB of depot and a Steam
+          # login, and is not run here. It was run by hand instead, and the
+          # findings are written into `docker/source/Dockerfile`. In
+          # particular, the soname list below is the set of files a running
+          # server was observed to map out of `/proc/<pid>/maps`, not a guess
+          # at what a Source binary might want.
+
+          # The daemon sets `Cmd` and never `Entrypoint`
+          # (apps/daemon/src/docker/container-config.ts, and the same in
+          # apps/daemon/src/server/installer.ts). An entrypoint here would not
+          # be replaced by the startup command, it would swallow it: the argv
+          # built from the template would arrive as arguments to someone else's
+          # script, and the server would start wrong rather than not start —
+          # the failure that takes a day to find.
+          #
+          # `Cmd` is checked beside it for a smaller reason. The daemon
+          # overwrites it on every container, so an inherited one cannot change
+          # how a server runs — but `debian:bookworm-slim` sets `CMD ["bash"]`
+          # and an image inherits its parent's, so a null here is the evidence
+          # that the `CMD []` in the Dockerfile is still doing its job and that
+          # `docker run` on this image refuses rather than opening a shell.
+          test "$(docker image inspect --format '{{json .Config.Entrypoint}}' "$IMAGE")" = 'null'
+          test "$(docker image inspect --format '{{json .Config.Cmd}}' "$IMAGE")" = 'null'
+
+          # One architecture. `srcds_linux` is a 32-bit x86 binary and there is
+          # no ARM build of it, so the `platforms:` above is the real decision
+          # and this is the check that it survived a change to the build.
+          test "$(docker image inspect --format '{{.Architecture}}/{{.Os}}' "$IMAGE")" = 'amd64/linux'
+
+          # `User` empty — and the reason this file gave for it was wrong, so
+          # it is worth being exact. It named the install container and the
+          # ownership reclaim as the things that would inherit a `USER` from
+          # here. Neither ever runs on this image: the install container is
+          # whatever the template names, which for the Source templates is
+          # `debian:bookworm-slim`, and `reclaimOwnership` is handed that same
+          # `install.containerImage` (apps/daemon/src/server/installer.ts).
+          #
+          # The only container built from this image is the server's, and the
+          # daemon sets `User: uid:gid` on it explicitly, which wins over
+          # whatever the image says. So this assertion is not what makes a
+          # server run as the right user. What it pins is that the image holds
+          # no opinion about which uid owns the volume — a question only the
+          # node can answer, because that is where the daemon picks the uid.
+          # And the day somebody does name this image as an `installContainer`,
+          # which a Source template whose install script has to run the game
+          # binary would have to do the way Factorio's does, a `USER` baked in
+          # here becomes an `apt-get` that cannot write and a `chown -R`
+          # refused for every file it walks.
+          test "$(docker image inspect --format '{{.Config.User}}' "$IMAGE")" = ''
+
+          # `HOME`, which the daemon does not set: `buildEnvironment`
+          # (apps/daemon/src/server/invocation.ts) emits the template's
+          # variables and the built-ins, and `HOME` is neither. Docker's
+          # fallback is the passwd entry of the container's user, and the uid
+          # the daemon picks has none in this image or any other — so without
+          # this variable, `$HOME` is `/`.
+          #
+          # What that costs is measured in the Dockerfile: `$HOME` is what
+          # resolves the `.steam/sdk32/steamclient.so` the install script wrote
+          # into the volume, and a server that cannot find it starts, listens,
+          # and never logs in to Steam — so it prints neither readiness pattern
+          # and is failed at the deadline with nothing in the console that
+          # looks like an error.
+          #
+          # Twice over, because the two catch different mistakes: that the
+          # image carries the variable at all, and that a container started as
+          # a uid with no passwd entry — which is every container the daemon
+          # creates — actually sees it.
+          docker image inspect --format '{{json .Config.Env}}' "$IMAGE" | grep -q '"HOME=/home/container"'
+          docker run --rm --user 4242:4242 "$IMAGE" sh -c 'test "$HOME" = /home/container'
+
+          # The 32-bit loader and the seven sonames a running server maps from
+          # outside its volume. Arrived at with `readelf -d` over all 44 ELF
+          # objects of an installed app 4020, then confirmed against the maps
+          # of a server sitting at both readiness markers.
+          #
+          # This list is shorter than it was, and every removal was a
+          # measurement rather than a tidy-up. `libcurl.so.4` and
+          # `libcurl-gnutls.so.4` appear in no NEEDED entry and in no string
+          # table anywhere in the depot. `libSDL2-2.0.so.0` and
+          # `libtcmalloc_minimal.so.4` are shipped by the game in `bin/` and
+          # resolved from there by `srcds_run`'s own `LD_LIBRARY_PATH`, so an
+          # image copy would only ever shadow the one Valve tested.
+          # `libtinfo.so.6` is named by nothing at all: what srcds asks for is
+          # the other major, by `dlopen`, and `docker/source/Dockerfile` sets
+          # out why that warning is left standing rather than answered.
+          #
+          # `ldconfig -p` is asked rather than `dpkg -l`, because what has to
+          # be true is that the loader can find these, not that some package is
+          # installed. The `(libc6) => ` suffix is what makes it an *i386*
+          # check and is not decoration: ldconfig prints the amd64 copy of
+          # every one of these names as `(libc6,x86-64)`, so a grep without it
+          # would pass on an image with no i386 in it at all. The last line
+          # runs the loader, which is the only one of these that would notice
+          # an `/lib/ld-linux.so.2` that exists and does not work.
+          docker run --rm "$IMAGE" sh -c '
+            set -eu
+            test -e /lib/ld-linux.so.2
+            for soname in libc.so.6 libdl.so.2 libgcc_s.so.1 libm.so.6 \
+                          libpthread.so.0 librt.so.1 libstdc++.so.6; do
+              ldconfig -p | grep -qF "$soname (libc6) => " || { echo "missing i386 $soname"; exit 1; }
+            done
+            /lib/ld-linux.so.2 --list /lib/i386-linux-gnu/libstdc++.so.6 >/dev/null
+          '
+
+          # The trust store, which a slim Debian does not have — and it is not
+          # a nicety. An image built without `ca-certificates` was run: the
+          # server gets as far as "logging into anonymous game server account",
+          # steamclient.so then prints "unable to load trusted SSL root
+          # certificates", and it stops there. No "Connection to Steam servers
+          # successful", no Steam ID line, no VAC line, so neither readiness
+          # pattern is ever printed and the start fails at the ten-minute
+          # deadline over a server that is otherwise up. This exact path is one
+          # of the three that library names in its own string table.
+          docker run --rm "$IMAGE" sh -c 'test -s /etc/ssl/certs/ca-certificates.crt'
+
+          # The daemon passes `TZ` to every container it creates. Without
+          # tzdata, glibc silently answers UTC to any value at all, and every
+          # timestamp in the console is hours out of step with the panel around
+          # it. Eucla for its three-quarter-hour offset, which no accidental
+          # UTC could produce.
+          docker run --rm -e TZ=Australia/Eucla "$IMAGE" sh -c 'test "$(date +%z)" = "+0845"'
+
+      - name: Log in to the registry
+        if: env.PUBLISH == 'true'
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish
+        if: env.PUBLISH == 'true'
+        uses: docker/build-push-action@v7
+        # The layers were built and cached by the step above, so this pushes
+        # what was tested rather than building it a second time.
+        with:
+          context: docker/source
+          platforms: linux/amd64
+          push: true
+          # Two tags for one image. `:1` is what a template names and what every
+          # node pulls; `:1-v0.8.0` never moves, so an operator comparing the
+          # digest on their node against the registry can say which build they
+          # are running and roll back to a named one. The fallback is the commit
+          # for a manual run, which has no release tag to borrow.
+          tags: |
+            ${{ env.IMAGE }}:${{ env.MAJOR }}
+            ${{ env.IMAGE }}:${{ env.MAJOR }}-${{ github.event.release.tag_name || github.sha }}
+          provenance: false

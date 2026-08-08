@@ -269,9 +269,10 @@ describe('a transfer of a server whose template names a port', () => {
 
   it('lets through a template that names none', async () => {
     // The regression this gate could easily become. An RCON stop on the game
-    // port names nothing, is the shape most Source servers use, and has to go
-    // on transferring — so the failure here is the mocked file listing, three
-    // steps past the gate.
+    // port names nothing — the shape an imported egg arrives in, since
+    // Pterodactyl has no notion of a named allocation — and has to go on
+    // transferring, so the failure here is the mocked file listing, three steps
+    // past the gate.
     const { service, client } = transferring({
       template: { stop: RCON_STOP_ON_THE_GAME_PORT },
     });
