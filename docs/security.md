@@ -88,7 +88,9 @@ You have nothing to set for the following — it is the default behaviour:
   so a dump of the database on its own yields nothing usable. A dump that comes with `APP_SECRET`
   yields control of every node, which is why that file's permissions are the ones to guard.
 - **Short-lived console JWTs**, carrying the bearer's permissions, verified by the daemon — which
-  also checks the origin of the WebSocket connection.
+  also checks the origin of the WebSocket connection. They are never issued to an API key: that
+  route answers `403`. Read "short-lived" as the guarantee itself, and see
+  [what a revocation does not reach](#what-hopper-does-not-protect-a-console-already-open).
 - **Startup commands as templates**, never a concatenation handed to a shell.
 - **A bounded install container**: the server's own memory limit, at least a whole core of CPU (its
   own entitlement where that is more), a pids limit of its own — 512, rather than the server's,
@@ -192,15 +194,56 @@ script that stages its download in `/tmp` writes to the container's own layer, u
 root, and so lands on the filesystem the split was meant to protect. It is also the filesystem the
 preflight above does **not** measure — that one reads the volume's, and says so when it refuses.
 
+## What Hopper does not protect: a console already open
+
+**Revoking an access does not close a console that is already connected.** It closes the next one.
+
+The console is the one place a browser talks straight to the daemon, and the daemon verifies the
+token on its own — no call back to the panel, which is what lets fifty consoles cost the panel
+nothing. The consequence is exact: nothing the panel does reaches a console mid-session. Signing
+out, changing a password, suspending an account, deleting a subuser, taking a permission away — all
+of them take effect at the **next renewal**, which is an ordinary
+authenticated request to the panel and is refused like any other. Until then the connection stays
+up, with the permissions frozen into the token rather than the current ones.
+
+**That window is two minutes**, the token's whole lifetime. It is deliberately short because it is
+the only bound there is: the token carries no session identifier, and there is no channel by which
+the panel could tell a daemon to drop a session. The token does carry a unique identifier, but
+nothing anywhere reads it — it is not a handle you can revoke one console by.
+
+To cut live consoles on a node **now** rather than within two minutes, re-key it — the procedure
+below does exactly that, because it replaces the secret those tokens are signed with. Legitimate
+users reconnect on their own within seconds; a revoked one cannot, having nothing left to obtain a
+new token with.
+
+Three neighbours of this, worth knowing while you are here:
+
+- **An SFTP session already open is the same shape of hole, without the two minutes.** The daemon
+  asks the panel to authenticate an SFTP connection once, when it opens, and applies the permissions
+  it got back for as long as the session lasts. `systemctl restart hopperd` is what ends one; the
+  client's automatic reconnect then goes back through the panel and is refused.
+- **There are no signed download URLs.** The panel can mint and verify them — the code is there,
+  and the contract calls them single-use, which they are not — but nothing in the product issues
+  one. Every download goes through an authenticated call instead. Said here because the machinery
+  is visible to anyone reading the source, and an unused mechanism described as a protection is a
+  protection somebody will count on.
+- **The file manager is not affected.** Every one of its operations is an authenticated call to the
+  panel, so a revocation bites there at once.
+
 ## After an incident
 
 If you suspect credentials were stolen:
 
 ```bash
 hopper user:password --username <account>   # also closes every session
-hopper node:token --node <node>             # invalidates the daemon's token
+hopper node:token --node <node>             # new daemon token *and* new console signing key
+# put the printed daemon.yml on the node, then:
 systemctl restart hopperd
 ```
+
+The middle command is the one that reaches consoles already open: it re-keys the node, so every
+console token issued before it becomes unverifiable the moment the daemon restarts. Without it,
+count on the two minutes described above.
 
 Then read back the activity log of each affected server — it carries the IP address and the author
 of every action — and change the passwords of the databases created from the panel.

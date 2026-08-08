@@ -1,5 +1,5 @@
 import { CONSOLE_TOKEN_TTL_SECONDS, PERMISSIONS } from '@hopper/shared';
-import { Controller, Get, Param } from '@nestjs/common';
+import { Controller, ForbiddenException, Get } from '@nestjs/common';
 import { TokenService } from '../auth/token.service.js';
 import { RequireServerPermission } from '../auth/decorators.js';
 import {
@@ -27,8 +27,12 @@ export interface ConsoleCredentials {
  * straight to the daemon. That is what lets fifty open consoles cost the panel
  * nothing, and what keeps the console fluid even when the panel is busy.
  *
- * The price of that choice: a permission revoked in the panel only takes effect
- * when the token is renewed, hence its deliberately short lifetime.
+ * The price of that choice: the daemon cannot ask the panel anything about the
+ * token it is holding. A revoked permission, a sign-out, a password change, a
+ * suspension — none of them reach a console that is already open. They only
+ * stop the *renewal*, which comes back through this route and is checked like
+ * any other request. `CONSOLE_TOKEN_TTL_SECONDS` is therefore the whole of the
+ * revocation delay, and the reason it is two minutes rather than ten.
  */
 @Controller('api/servers')
 export class ConsoleController {
@@ -38,13 +42,49 @@ export class ConsoleController {
     private readonly tokens: TokenService,
   ) {}
 
+  /**
+   * The `:serverId` in the path is deliberately **not** a parameter of this
+   * handler.
+   *
+   * `ServerPermissionGuard` has already looked that string up and put the row
+   * it found on the request, so `server.uuid` is the uuid the database holds
+   * rather than the spelling the caller used. Signing the caller's spelling is
+   * what would let a request for `3F2504E0-…` produce a token and a socket URL
+   * the daemon cannot match against a server it knows by `3f2504e0-…`: a
+   * credential issued dead. Taking nothing from the caller here also means the
+   * handler's whole input is guard-computed, which is the property the token's
+   * permissions rest on.
+   */
   @Get(':serverId/console')
   @RequireServerPermission(PERMISSIONS.WEBSOCKET_CONNECT)
   async credentials(
-    @Param('serverId') serverId: string,
     @CurrentUser() user: RequestUser,
     @CurrentServer() server: RequestServer,
   ): Promise<ConsoleCredentials> {
+    /**
+     * An API key does not open a console. Refused here, first thing, and not
+     * left to the scopes.
+     *
+     * A key's scope is decided from the HTTP verb — `scopeAllows` — and this
+     * route is a `GET`, so a key scoped `read` walks straight through it. What
+     * comes back is not a read: it is a token carrying whatever the resolver
+     * computed for the account, `control.console` and `control.stop` included
+     * for an owner, honoured by a daemon that has no idea a key was involved.
+     * On a Minecraft server that is arbitrary command execution from a
+     * credential whose whole promise was that it could not stop anything.
+     *
+     * Requiring `write` instead would only move the problem: a `write` key
+     * would then hold a console token off-session, outside every revocation the
+     * panel has, for as long as it kept renewing. So the answer is the one
+     * `docs/api.md` has always given its readers — the console is for a
+     * signed-in browser.
+     */
+    if (user.authenticatedBy === 'api-key') {
+      throw new ForbiddenException(
+        'The console cannot be opened with an API key: sign in to the panel.',
+      );
+    }
+
     const node = await this.prisma.node.findUniqueOrThrow({
       where: { id: server.nodeId },
       select: { uuid: true, scheme: true, fqdn: true, port: true },
@@ -56,7 +96,7 @@ export class ConsoleController {
       nodeUuid: node.uuid,
       nodeJwtSecret: jwtSecret,
       userUuid: user.uuid,
-      serverUuid: serverId,
+      serverUuid: server.uuid,
       // The permissions are frozen into the token: that is what lets the
       // daemon decide on its own, without calling the panel on every message.
       permissions: server.permissions,
@@ -68,7 +108,9 @@ export class ConsoleController {
     const scheme = node.scheme === 'https' ? 'wss' : 'ws';
 
     return {
-      socketUrl: `${scheme}://${node.fqdn}:${node.port}/api/servers/${serverId}/ws`,
+      // The same uuid the token names, for the same reason: the daemon refuses
+      // a token whose `serverUuid` is not the server the socket was opened on.
+      socketUrl: `${scheme}://${node.fqdn}:${node.port}/api/servers/${server.uuid}/ws`,
       token,
       expiresIn: CONSOLE_TOKEN_TTL_SECONDS,
     };
