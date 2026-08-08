@@ -32,6 +32,49 @@ Two differences worth knowing:
   what almost every egg is, touches none of the seven. This page used to name `su` as the casualty
   of that drop; it is not one. See [Installing from SteamCMD](#installing-from-steamcmd).
 
+### The `config.files` block
+
+This is where an egg says how the allocated port reaches the game, and it is carried over. It used
+to be dropped with a warning, which was worth measuring before it was worth fixing: of the 274 eggs
+in the public corpus, **159 declare configuration files, and 115 of them write the port nowhere
+else** — their startup command names no port, because for those games there is nothing on the
+command line to name. Dropping the block gave those templates a server listening on whatever port
+the egg's author had left in a file.
+
+Three things change on the way through, and the rest is spelling — where the parser is one Hopper
+means the same thing by. Two of them it does not; see the refusals below.
+
+- `{{server.build.env.NAME}}` and `{{env.NAME}}` both become `{{NAME}}`. The prefixes mean "an
+  environment variable" and Hopper's are named without one. `{{server.build.default.port}}`,
+  `{{server.build.default.ip}}` and `{{server.build.memory}}` are left alone — the daemon answers
+  those aliases, for exactly these imports.
+- A value written as an object is Pterodactyl's conditional form —
+  `{"127.0.0.1": "…", "localhost": "…"}` means _replace this key only where it currently reads_
+  each of those — and becomes one replacement per condition.
+- `{{config.docker.interface}}` is dropped, with a warning naming the key. It is the address of
+  Pterodactyl's own Docker bridge, read out of that daemon's configuration file; Hopper has nothing
+  to put there, and every use of it in the corpus is a proxy rewriting an address, where a blank is
+  worse than the value already in the file.
+
+Two parsers are refused outright, each with a warning naming the file:
+
+- **`xml`.** The daemon's rewriter throws on it, so a template carrying one imports cleanly and then
+  fails on the first start of the first server built from it. Seven eggs in the corpus.
+- **`file`** — and this one looks like a bug until you read it, because Hopper has a `file` parser
+  of its own. They are not the same parser. Hopper's rewrites _the value_ on a matching line and
+  keeps the key, the delimiter and the spacing; that is what the Velocity template asks of it.
+  Pterodactyl's finds a line by prefix and replaces **the whole line**, which is why its eggs write
+  the key into the value: `"DISCORD_TOKEN": "DISCORD_TOKEN={{env.discord_token}}"`. Carried across
+  unchanged that is not a no-op, it is corruption — Hopper keeps its own prefix and writes
+  `DISCORD_TOKEN=DISCORD_TOKEN=…`. Measured: **255 of the 265 `file` replacements in the corpus
+  repeat their key**, and 75 name a match already carrying the `=`, which Hopper's pattern cannot
+  match at all. A parser with Pterodactyl's semantics is worth having — 27 templates write their
+  port that way — and it is a change to the contract rather than to the importer.
+
+What lands, over the whole corpus: **100 templates carry configuration files** (107 files, 544
+replacements), **85 of them now write the allocated port**, and 60 carry at least one warning
+naming what was left behind.
+
 ## Writing a template
 
 The shipped templates are TypeScript in `packages/templates/src/catalog/`. A minimal template:
