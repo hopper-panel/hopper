@@ -2,7 +2,7 @@ import { mkdir } from 'node:fs/promises';
 import { parseArgs } from 'node:util';
 import { BackupManager } from './backup/backup-manager.js';
 import { ConfigError, loadConfig } from './config/load.js';
-import { DockerClient } from './docker/client.js';
+import { DockerClient, NETWORK_ISOLATION_REPEAT_MS } from './docker/client.js';
 import { buildHttpServer } from './http/server.js';
 import { createLogger } from './logger.js';
 import { PanelClient } from './panel/panel-client.js';
@@ -45,13 +45,46 @@ async function main(): Promise<void> {
   // creation with no explanation.
   try {
     await docker.ping();
-    await docker.ensureNetwork();
   } catch (error: unknown) {
     throw new ConfigError(
       `Docker is unreachable on ${loaded.config.docker.socket}.`,
       `Check that the Docker service is running and that the daemon's user belongs to the "docker" group. Detail: ${String(error)}`,
     );
   }
+
+  // Separate from the ping, because the two fail for different reasons and used
+  // to be reported as the same one: a network that does not exist with
+  // `autoCreate` off, or a subnet that collides with another network, came out
+  // as "Docker is unreachable" and sent the operator to look at a service that
+  // was answering perfectly.
+  //
+  // A network whose *options* are wrong does not land here at all — it is
+  // reported rather than refused, and `checkNetworkIsolation` is where that
+  // decision is argued.
+  try {
+    await docker.ensureNetwork();
+  } catch (error: unknown) {
+    throw new ConfigError(
+      `The Docker network "${loaded.config.docker.network.name}" could not be prepared.`,
+      // The two things that actually go wrong here, named because Docker's own
+      // words for them are useless: a colliding subnet says "pool overlaps",
+      // and a name over fifteen characters — the kernel's limit on an interface
+      // name, which this network's bridge is given — says "numerical result out
+      // of range".
+      `Check docker.network in the configuration file: its subnet must not collide with an existing network, and its name must be at most 15 characters. Detail: ${String(error)}`,
+    );
+  }
+
+  // The verdict on that network is re-taken on a timer as well as on every
+  // `/api/system`. The panel's polling covers a node the panel is watching; this
+  // covers the one it is not, which is exactly the node whose isolation nobody
+  // would notice had gone. `checkNetworkIsolation` never rejects, so there is
+  // nothing here to handle, and the timer never keeps hopperd alive on its own.
+  const isolationWatch = setInterval(() => {
+    void docker.checkNetworkIsolation();
+  }, NETWORK_ISOLATION_REPEAT_MS);
+
+  isolationWatch.unref();
 
   const panel = new PanelClient(loaded.config, logger);
   const manager = new ServerManager(loaded, docker, panel, logger);
@@ -93,6 +126,7 @@ async function main(): Promise<void> {
     logger.info({ signal }, 'Shutdown requested');
     // The server containers are deliberately not stopped: restarting the daemon
     // must not disconnect the players. They are reconciled on the next start.
+    clearInterval(isolationWatch);
     manager.shutdown();
     sftp.stop();
 

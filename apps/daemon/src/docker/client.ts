@@ -1,5 +1,6 @@
 import { request as httpRequest } from 'node:http';
 import type { Duplex } from 'node:stream';
+import type { NetworkIsolation } from '@hopper/shared';
 import Dockerode from 'dockerode';
 import type { Logger } from '../logger.js';
 import type { DaemonConfig } from '../config/schema.js';
@@ -294,6 +295,137 @@ function alsoOn(caller: AbortSignal | undefined, ours: AbortSignal): AbortSignal
   return caller === undefined ? ours : AbortSignal.any([caller, ours]);
 }
 
+/**
+ * The one Docker option the whole isolation between servers rests on.
+ *
+ * With it off, the kernel drops every packet from one container on this bridge
+ * to another's address: a server has no route to a neighbour at all. With it on
+ * — Docker's default, and what a network created by anything other than this
+ * daemon carries — every server on the node can reach every other server's
+ * *unpublished* ports: RCON, a plugin's internal admin listener, a proxy's
+ * forwarding port.
+ */
+export const ICC_OPTION = 'com.docker.network.bridge.enable_icc';
+
+/**
+ * How long the same verdict about the network goes unrepeated in the log.
+ *
+ * The verdict is re-taken far more often than this — on every `/api/system`,
+ * which the panel polls — and a line per poll would bury the log rather than
+ * fill it. So a change speaks at once, and a state that persists says so again
+ * every half hour: often enough that an operator tailing a log meets it, rare
+ * enough that it is not what they are scrolling past.
+ *
+ * It is also the interval hopperd re-takes the verdict on of its own accord,
+ * for the node the panel is not polling.
+ */
+export const NETWORK_ISOLATION_REPEAT_MS = 30 * 60_000;
+
+/**
+ * Reads a Docker network's options the way the guarantee is worded.
+ *
+ * Pure, and exported, because this is the rule rather than a call: whether a
+ * network isolates the servers on it has to be readable and testable without an
+ * engine, and the two interesting cases — an option that is simply absent, and
+ * a driver on which the option means nothing — are exactly the ones no test
+ * against a network *this daemon created* would ever reach.
+ *
+ * **An absent option is the dangerous answer, not the neutral one.** A bare
+ * `docker network create hopper0` writes no `enable_icc` key at all, and
+ * Docker's default is to allow the traffic. So silence here is `open`.
+ *
+ * The value is parsed the way Docker's own bridge driver parses it — Go's
+ * `strconv.ParseBool` — rather than compared to the string this file writes.
+ * An operator who created the network with `--opt …enable_icc=0` really did
+ * turn it off, and reporting that node as wide open would be a false accusation
+ * about a correct configuration.
+ */
+export function networkIsolationOf(
+  name: string,
+  network: { Driver?: string; Options?: Record<string, string> },
+): NetworkIsolation {
+  const driver = network.Driver ?? 'unknown';
+
+  // `enable_icc` is a bridge-driver option and nothing else reads it. On a
+  // macvlan, an overlay or anything else wearing this name, the containers see
+  // one another whatever the options say — a definite answer from Docker about
+  // a definite configuration, so it is reported as one.
+  if (driver !== 'bridge') {
+    return {
+      network: name,
+      status: 'open',
+      detail: `its driver is "${driver}" and not "bridge", so ${ICC_OPTION} does not apply to it`,
+    };
+  }
+
+  const configured = network.Options?.[ICC_OPTION];
+
+  if (configured === undefined) {
+    return {
+      network: name,
+      status: 'open',
+      detail: `${ICC_OPTION} is not set on it, and Docker's default is to allow that traffic`,
+    };
+  }
+
+  return {
+    network: name,
+    status: dockerBoolean(configured) === false ? 'isolated' : 'open',
+    detail: `${ICC_OPTION}=${configured}`,
+  };
+}
+
+/**
+ * A Docker option's value as Docker itself reads it, or `null` for one neither
+ * of us can.
+ *
+ * The spellings are Go's `strconv.ParseBool`, which is what the bridge driver
+ * hands the option to. A value it cannot parse never reaches an existing
+ * network — the driver refuses to create one — so `null` here is a shape
+ * nobody has seen, and the caller treats it as "not demonstrably off" rather
+ * than guessing in the reassuring direction.
+ */
+function dockerBoolean(value: string): boolean | null {
+  if (['1', 't', 'T', 'TRUE', 'true', 'True'].includes(value)) {
+    return true;
+  }
+
+  if (['0', 'f', 'F', 'FALSE', 'false', 'False'].includes(value)) {
+    return false;
+  }
+
+  return null;
+}
+
+/**
+ * Docker saying "there is no such network", as opposed to not saying anything.
+ *
+ * The difference decides which sentence an operator is shown, and both are
+ * `unknown`: a network that has been removed is a definite answer about a
+ * definite state, but it is still not evidence that anything is misconfigured,
+ * and the daemon rebuilds it correctly at its next start.
+ *
+ * The status code is what is checked; the message is a fallback for a Docker
+ * whose error object does not carry one, and matches the engine's own wording.
+ */
+function missingNetwork(error: unknown): boolean {
+  const status = (error as { statusCode?: number } | null)?.statusCode;
+
+  return status === 404 || /no such network/i.test(String(error));
+}
+
+/**
+ * The first line of an error, for a message meant to fit on one.
+ *
+ * Docker's failures arrive with a stack or a multi-line body attached, and a
+ * verdict shown in `hopper doctor` next to a badge has room for a sentence.
+ */
+function firstLine(error: unknown): string {
+  const text = error instanceof Error ? error.message : String(error);
+
+  return text.split('\n')[0]?.trim() ?? 'no detail';
+}
+
 /** What an abandoned call is called, on a console and in a log. */
 function unanswered(request: DockerRequest, timeoutMs: number): string {
   const endpoint = (request.path ?? '').split('?')[0] ?? '';
@@ -318,6 +450,16 @@ function unanswered(request: DockerRequest, timeoutMs: number): string {
  */
 export class DockerClient {
   private readonly docker: Dockerode;
+
+  /**
+   * The last verdict about the servers' network, and when it was last said out
+   * loud.
+   *
+   * Kept so the log can tell a state that has just changed from one that has
+   * merely been re-measured for the ninetieth time this hour — see
+   * {@link NETWORK_ISOLATION_REPEAT_MS}.
+   */
+  private isolationLog: { status: NetworkIsolation['status']; at: number } | null = null;
 
   constructor(
     private readonly config: DaemonConfig,
@@ -371,39 +513,197 @@ export class DockerClient {
   }
 
   /**
-   * Creates the dedicated bridge network if it does not exist.
+   * Creates the dedicated bridge network if it does not exist, and checks what
+   * it isolates either way.
    *
    * A separate network rather than the default bridge: on `bridge`, every
    * container sees every other, and a server could scan then reach the internal
    * ports of its neighbours.
+   *
+   * **The check is the point, and it used to be missing.** This method returned
+   * the moment it saw a network by that name, without ever looking at its
+   * options — so a `hopper0` created by a bare `docker network create`, by an
+   * operator following half a runbook, by a Hopper older than the option, or
+   * restored with a machine image, left inter-container traffic on and nothing
+   * anywhere said so. The claim was true of every network this file had created
+   * and of no other, which is the worst kind of guarantee: correct in the tests,
+   * absent on the node that inherited its network from somewhere else.
+   *
+   * The verdict is taken on the creation path too. It costs one inspection and
+   * it means the isolation this daemon reports is always something Docker was
+   * asked about, never something this code believes because it sent the option.
    */
   async ensureNetwork(): Promise<void> {
     const { name, autoCreate, subnet, gateway, enableIpv6 } = this.config.docker.network;
 
     const networks = await this.docker.listNetworks({ filters: { name: [name] } });
-    if (networks.some((network) => network.Name === name)) {
-      this.logger.debug({ network: name }, 'Docker network already present');
-      return;
+
+    if (!networks.some((network) => network.Name === name)) {
+      if (!autoCreate) {
+        throw new Error(
+          `The Docker network "${name}" does not exist and docker.network.autoCreate is false.`,
+        );
+      }
+
+      this.logger.info({ network: name, subnet }, 'Creating the Docker network');
+
+      await this.docker.createNetwork({
+        Name: name,
+        Driver: 'bridge',
+        EnableIPv6: enableIpv6,
+        IPAM: { Driver: 'default', Config: [{ Subnet: subnet, Gateway: gateway }] },
+        Options: {
+          [ICC_OPTION]: 'false',
+          'com.docker.network.bridge.name': name,
+        },
+      });
     }
 
-    if (!autoCreate) {
-      throw new Error(
-        `The Docker network "${name}" does not exist and docker.network.autoCreate is false.`,
+    await this.checkNetworkIsolation();
+  }
+
+  /**
+   * Asks Docker whether the servers on this node are still isolated from one
+   * another, and says so where it will be read.
+   *
+   * **Never rejects.** Every caller wants a verdict, not an exception: the
+   * startup path must not turn a network that is merely misconfigured into a
+   * daemon that will not start, `/api/system` must keep answering, and the timer
+   * that re-takes the verdict has nowhere to put a rejection. A Docker that
+   * cannot be asked produces `unknown`, which is an answer.
+   *
+   * **A misconfigured network is reported, not repaired, and that is the
+   * decision this whole file turns on.** Three things could happen here and only
+   * one of them is defensible:
+   *
+   *  - *Recreate it.* Docker offers no way to change `enable_icc` on an existing
+   *    network, so repairing it means deleting and rebuilding it — which
+   *    disconnects every container on the machine, and which Docker refuses
+   *    outright while any of them is attached. At startup, unprompted, that is
+   *    an outage across every server on the node, caused by the daemon, to fix a
+   *    fault between servers that were all running a second earlier. A cure
+   *    worse than the disease, and one that would fail halfway on precisely the
+   *    busy node where it matters.
+   *  - *Refuse to start.* It protects the isolation perfectly and takes the
+   *    whole node down to do it: no console, no backups, no start or stop, every
+   *    server unmanageable, over a condition an operator fixes with two commands
+   *    once they know. Worse, a daemon that exits cannot tell anyone why — the
+   *    panel shows the node offline, which is the same thing it shows for a dead
+   *    machine, so the loudest possible action produces the quietest possible
+   *    message.
+   *  - *Start, and report it.* The hole stays open, which is the honest cost of
+   *    this choice and is written down as such in `docs/security.md`. In
+   *    exchange the node keeps working, the fault is named at every start, again
+   *    every {@link NETWORK_ISOLATION_REPEAT_MS} while it lasts, on `/api/system`
+   *    for the panel, and as a failing check in `hopper doctor` — where an
+   *    operator is actually looking, with the commands that fix it.
+   *
+   * The third, because the blast radius of the fault is *between the servers on
+   * one node* while the blast radius of both other cures is *every server on
+   * that node*, immediately and without being asked.
+   */
+  async checkNetworkIsolation(): Promise<NetworkIsolation> {
+    const { name } = this.config.docker.network;
+
+    let inspected: Dockerode.NetworkInspectInfo;
+
+    try {
+      inspected = await this.docker.getNetwork(name).inspect();
+    } catch (error: unknown) {
+      // Nothing here may become `open`. A Docker that is restarting, a socket
+      // that is not answering yet, a network someone removed under a running
+      // daemon: none of them is evidence about how a network is configured, and
+      // a daemon that started before Docker was ready would otherwise open its
+      // life by accusing a perfectly good node.
+      const detail = missingNetwork(error)
+        ? 'it does not exist on this node any more — hopperd recreates it, with the right ' +
+          'options, the next time it starts'
+        : `Docker did not answer when asked about it: ${firstLine(error)}`;
+
+      return this.reportIsolation({ network: name, status: 'unknown', detail });
+    }
+
+    return this.reportIsolation(networkIsolationOf(name, inspected));
+  }
+
+  /** Logs a verdict if it is news, and hands it back either way. */
+  /**
+   * How to replace a network whose isolation is off, for *this* configuration.
+   *
+   * Branching on `autoCreate` rather than printing one sentence, because the
+   * sentence is wrong for half the population and wrong in the worst direction.
+   * With `autoCreate: false` — a documented setting, and the one an operator who
+   * hand-provisions networks is likeliest to have set, which is exactly the
+   * operator this check exists to catch — "remove it and restart hopperd" does
+   * not rebuild anything. The daemon finds the network gone, refuses to start,
+   * and the node goes permanently offline: the outcome this whole design
+   * refused to cause, arrived at by following its own advice.
+   */
+  private repairAdvice(): string {
+    const { name, autoCreate, subnet, gateway } = this.config.docker.network;
+
+    if (autoCreate) {
+      return (
+        `stop the servers on this node, run "docker network rm ${name}", then restart ` +
+        `hopperd, which will recreate it with the option set.`
       );
     }
 
-    this.logger.info({ network: name, subnet }, 'Creating the Docker network');
+    return (
+      `stop the servers on this node, run "docker network rm ${name}", then recreate it ` +
+      `yourself — hopperd will not, because docker.network.autoCreate is false and it would ` +
+      `refuse to start instead: docker network create --driver bridge ` +
+      `--subnet ${subnet} --gateway ${gateway} ` +
+      `--opt com.docker.network.bridge.enable_icc=false ` +
+      `--opt com.docker.network.bridge.name=${name} ${name}`
+    );
+  }
 
-    await this.docker.createNetwork({
-      Name: name,
-      Driver: 'bridge',
-      EnableIPv6: enableIpv6,
-      IPAM: { Driver: 'default', Config: [{ Subnet: subnet, Gateway: gateway }] },
-      Options: {
-        'com.docker.network.bridge.enable_icc': 'false',
-        'com.docker.network.bridge.name': name,
-      },
-    });
+  private reportIsolation(verdict: NetworkIsolation): NetworkIsolation {
+    const previous = this.isolationLog;
+    const changed = previous === null || previous.status !== verdict.status;
+    const due = previous !== null && Date.now() - previous.at >= NETWORK_ISOLATION_REPEAT_MS;
+
+    // A healthy node is not re-announced on a timer: "still fine" every half
+    // hour is what teaches an operator to filter out these lines, and the one
+    // line worth keeping is the one where it stopped being fine.
+    if (!changed && !(due && verdict.status !== 'isolated')) {
+      return verdict;
+    }
+
+    this.isolationLog = { status: verdict.status, at: Date.now() };
+
+    const context = { network: verdict.network, detail: verdict.detail };
+
+    switch (verdict.status) {
+      case 'open':
+        this.logger.error(
+          context,
+          `The servers on this node are NOT isolated from one another: the Docker network ` +
+            `"${verdict.network}" allows traffic between containers (${verdict.detail}). Every ` +
+            `server here can reach every other server's unpublished ports. ` +
+            `Docker cannot change this on an existing network, so repairing it means replacing ` +
+            `it: ${this.repairAdvice()}`,
+        );
+        break;
+
+      case 'unknown':
+        this.logger.warn(
+          context,
+          `Could not check whether the servers on this node are isolated from one another: ` +
+            `${verdict.detail}. This says nothing about how "${verdict.network}" is configured.`,
+        );
+        break;
+
+      case 'isolated':
+        this.logger.info(
+          context,
+          `Traffic between the containers on "${verdict.network}" is refused`,
+        );
+        break;
+    }
+
+    return verdict;
   }
 
   /**

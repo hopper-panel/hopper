@@ -169,6 +169,55 @@ describe('buildContainerOptions', () => {
       expect(binds.some((bind) => bind.includes('docker.sock'))).toBe(false);
     });
 
+    /**
+     * The half of "isolated except its allocated ports" that lives here.
+     *
+     * The other half is the network's own `enable_icc=false`, checked in
+     * `client.spec.ts`, and it protects nothing at all if the container is not
+     * on that network to begin with: Docker's default is `bridge`, where every
+     * container sees every other whatever `hopper0` was created with. Every
+     * neighbouring property in this block had a test and this one did not,
+     * which for a default that applies itself when the field is dropped is the
+     * wrong way round.
+     */
+    it('attaches the server to the dedicated network, not to Docker default bridge', () => {
+      expect(options.HostConfig?.NetworkMode).toBe('hopper0');
+      expect(['bridge', 'host', 'default']).not.toContain(options.HostConfig?.NetworkMode);
+    });
+
+    /**
+     * And nothing is published that the panel did not allocate.
+     *
+     * `portBindingsFor` above already pins the exact set for one, two and named
+     * allocations; this pins the join — what the container is *built* with is
+     * that set and no more. A port a plugin opens for itself is reachable from
+     * inside the container and from nowhere else, and that sentence is only
+     * true while these two agree.
+     */
+    it('publishes the allocations and nothing else', () => {
+      const configuration = makeConfiguration({
+        allocations: {
+          default: { ip: '0.0.0.0', port: 25565 },
+          additional: [{ ip: '127.0.0.1', port: 25575, role: 'rcon' }],
+        },
+      });
+
+      const built = buildContainerOptions({ configuration, ...OPTIONS });
+      const { exposed, bindings } = portBindingsFor(configuration);
+
+      expect(built.ExposedPorts).toEqual(exposed);
+      expect(built.HostConfig?.PortBindings).toEqual(bindings);
+      expect(Object.keys(bindings).sort()).toEqual([
+        '25565/tcp',
+        '25565/udp',
+        '25575/tcp',
+        '25575/udp',
+      ]);
+      // The address is the allocation's own: an RCON port allocated on the
+      // loopback is published there and not on every interface of the host.
+      expect(bindings['25575/tcp']).toEqual([{ HostIp: '127.0.0.1', HostPort: '25575' }]);
+    });
+
     it('does not let Docker restart the container on its own', () => {
       expect(options.HostConfig?.RestartPolicy?.Name).toBe('no');
     });

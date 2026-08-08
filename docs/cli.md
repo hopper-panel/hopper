@@ -20,7 +20,11 @@ What it checks:
   panel is in production, absence of TLS.
 - **Database**: connection, **pending migrations**, presence of at least one administrator.
 - **Redis**: reachable, or absent — in which case rate limiting restarts from zero on every restart.
-- **Nodes**: each node is genuinely queried. A declared node is not a reachable node.
+- **Nodes**: each node is genuinely queried. A declared node is not a reachable node. Each one that
+  answers is also asked whether its servers are still isolated from one another — see
+  [what that rests on](./security.md#what-hopper-already-protects). A node whose Docker network lets
+  containers talk to each other is a `✗`; a daemon too old to be asked, or one whose Docker was not
+  answering, is a `!`, because neither is evidence that anything is open.
 - **Docker host**: socket reachable and engine version, if the machine hosts a daemon. A socket the
   panel is not allowed to open reads as healthy: the panel runs as `hopper`, and `hopperd` is what
   talks to Docker, as root.
