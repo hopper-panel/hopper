@@ -156,9 +156,34 @@ export class LineAssembler {
       this.trailingReturn = 'none';
     }
 
+    // A chunk that ends no line at all, taken before the buffer is built.
+    //
+    // This is not a shortcut, it is the difference between linear and quadratic.
+    // The loop below reads `pending + rest` **by index**, and indexing the pair
+    // is what forces the engine to flatten it into one fresh string; do that on
+    // every packet of a line that goes forty kilobytes without a terminator and
+    // the daemon copies the whole line again for each one. `+=` on its own
+    // leaves the halves unjoined until something reads them, so a line that
+    // arrives in a thousand pieces is joined once, when its terminator finally
+    // comes. Measured on the case the tests already cover — 40 KiB, one byte per
+    // push — it is 310 ms without this and under 10 with it, and the test that
+    // found it did so by timing out on a CI runner rather than by being wrong.
+    //
+    // Nothing else is skipped: with no terminator in the chunk there is no line
+    // to hand over and no row to settle, and the cap is applied either way.
+    if (!rest.includes('\n') && !rest.includes('\r')) {
+      this.pending += rest;
+      this.capPending(lines);
+
+      return lines;
+    }
+
     const buffer = this.pending + rest;
     let start = 0;
-    let index = 0;
+    // Scanning starts where the last chunk stopped, and can: every terminator is
+    // consumed by the loop below, so what stays in `pending` provably holds
+    // none. Re-reading it would be the same quadratic cost by another route.
+    let index = this.pending.length;
 
     while (index < buffer.length) {
       const character = buffer[index];
@@ -217,29 +242,38 @@ export class LineAssembler {
     }
 
     this.pending = buffer.slice(start);
+    this.capPending(lines);
 
-    // A stream with no terminator at all must not grow the buffer forever: past
-    // the limit, it is cut and started over.
-    //
-    // `normalizeLine` here is the same slice-and-suffix v0.7.1 wrote out by
-    // hand, and deliberately not an improvement on it. What is left in `pending`
-    // cannot hold a return — every one of them is a terminator the loop above
-    // consumed — and the guard has just established that it is longer than the
-    // cap, so both halves of the normalisation are a foregone conclusion and the
-    // two spellings cannot be told apart by any input. It is written this way to
-    // keep one statement of where the cap falls and what the suffix says, not
-    // because it does anything the slice did not.
-    //
-    // What did have to change is `push` rather than `return`. The early return
-    // this replaced was safe where it stood — it sat in the branch taken when the
-    // chunk held no newline at all, so there were never any lines to lose — and
-    // is not safe here, where the guard runs after a loop that may have finished
-    // half a dozen of them.
-    //
-    // Strictly `>`: a line of exactly {@link MAX_LINE_LENGTH} is not over the
-    // cap, and a `>=` here would hand it over as "truncated" with nothing
-    // missing from it — while also cutting a line that a terminator one byte
-    // later would have completed intact.
+    return lines;
+  }
+
+  /**
+   * Cuts a line that has gone on too long, and appends it to `lines`.
+   *
+   * A stream with no terminator at all must not grow the buffer forever: past
+   * the limit, it is cut and started over.
+   *
+   * `normalizeLine` here is the same slice-and-suffix v0.7.1 wrote out by hand,
+   * and deliberately not an improvement on it. What is left in `pending` cannot
+   * hold a return — every one of them is a terminator `push` consumed — and the
+   * guard has just established that it is longer than the cap, so both halves of
+   * the normalisation are a foregone conclusion and the two spellings cannot be
+   * told apart by any input. It is written this way to keep one statement of
+   * where the cap falls and what the suffix says, not because it does anything
+   * the slice did not.
+   *
+   * `lines` is appended to rather than returned, because both of `push`'s exits
+   * reach here and one of them arrives with lines already in hand. An early
+   * `return` was safe where this logic used to sit — in the branch taken when
+   * the chunk held no newline at all — and stopped being safe the moment the
+   * cap had to be applied after a loop that may have finished half a dozen.
+   *
+   * Strictly `>`: a line of exactly {@link MAX_LINE_LENGTH} is not over the cap,
+   * and a `>=` here would hand it over as "truncated" with nothing missing from
+   * it — while also cutting a line that a terminator one byte later would have
+   * completed intact.
+   */
+  private capPending(lines: ConsoleLine[]): void {
     if (this.pending.length > MAX_LINE_LENGTH) {
       lines.push({ text: normalizeLine(this.pending), overwritesPreviousRow: this.overwritesRow });
       this.pending = '';
@@ -249,8 +283,6 @@ export class LineAssembler {
       // tail of a line whose beginning it has thrown away.
       this.overwritesRow = false;
     }
-
-    return lines;
   }
 
   /** Empties the buffer and returns whatever partial line is left. */
