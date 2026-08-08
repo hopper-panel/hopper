@@ -269,17 +269,58 @@ jobs:
         run: |
           set -euo pipefail
 
-          token=$(curl -fsS "https://ghcr.io/token?scope=repository:hopper-panel/source:pull&service=ghcr.io" | jq -r .token)
-          status=$(curl -s -o /dev/null -w '%{http_code}' \
-            -H "Authorization: Bearer $token" \
-            -H 'Accept: application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.v2+json' \
-            "https://ghcr.io/v2/hopper-panel/source/manifests/${MAJOR}")
-
-          if [ "$status" != '200' ]; then
-            echo "::error::ghcr.io/hopper-panel/source:${MAJOR} answered ${status} to an anonymous pull."
-            echo '::error::The package is private. Every node pulling this image will fail to start a server.'
-            echo '::error::Fix once, at https://github.com/orgs/hopper-panel/packages/container/source/settings — change visibility to public.'
+          # Guarded, because `set -e` on its own turns a refusal here into
+          # `curl: (22)` and nothing else. The token endpoint answers 403 for a
+          # repository that does not exist at all — a renamed package, a typo in
+          # the name above — which is a different problem from the one this step
+          # was written for and deserves to say so rather than die quietly.
+          if ! token=$(curl -fsS "https://ghcr.io/token?scope=repository:hopper-panel/source:pull&service=ghcr.io" | jq -r .token); then
+            echo '::error::The registry refused to issue an anonymous pull token for hopper-panel/source. That is what it answers when the repository does not exist — check the name this workflow publishes to, before looking at visibility.'
             exit 1
           fi
 
-          echo "Anonymous pull of ${MAJOR}: HTTP 200."
+          # All four media types, and the first is the one that matters. This
+          # image is a single-platform build, so its manifest is an OCI
+          # *manifest* and not an index — and a registry that cannot satisfy the
+          # Accept header answers **404**, not 406. The first version of this
+          # check asked for the index and the Docker types only, and was
+          # measured returning 404 against a package that was public and
+          # pullable: it would have failed every release while reporting the
+          # opposite of the truth. The two Docker types stay because a future
+          # multi-platform build would answer with one of them.
+          accept='application/vnd.oci.image.manifest.v1+json'
+          accept="${accept}, application/vnd.oci.image.index.v1+json"
+          accept="${accept}, application/vnd.docker.distribution.manifest.v2+json"
+          accept="${accept}, application/vnd.docker.distribution.manifest.list.v2+json"
+
+          status=$(curl -s -o /dev/null -w '%{http_code}' \
+            -H "Authorization: Bearer $token" \
+            -H "Accept: ${accept}" \
+            "https://ghcr.io/v2/hopper-panel/source/manifests/${MAJOR}")
+
+          if [ "$status" = '200' ]; then
+            echo "Anonymous pull of ${MAJOR}: HTTP 200."
+            exit 0
+          fi
+
+          # What the status means, rather than one guess for all of them. The
+          # first version said "the package is private" whatever came back,
+          # which is the sentence that would have sent somebody to a visibility
+          # setting that was already correct.
+          echo "::error::ghcr.io/hopper-panel/source:${MAJOR} answered ${status} to an anonymous pull."
+
+          case "$status" in
+            401 | 403)
+              echo '::error::The package is private: a node holds no credential for this registry, so every pull of this image will fail and no server built from a Source template will start.'
+              echo '::error::Fix once, and it stays fixed. The organisation has to allow public packages first — https://github.com/organizations/hopper-panel/settings/packages, under Package creation — and only then does Public stop being greyed out at https://github.com/orgs/hopper-panel/packages/container/source/settings.'
+              ;;
+            404)
+              echo "::error::The tag is missing, or this check is asking for a media type the registry will not serve. Compare against the tag list: curl -H \"Authorization: Bearer \$token\" https://ghcr.io/v2/hopper-panel/source/tags/list"
+              echo '::error::A 404 here is not evidence of a private package — a private one answers 401 or 403.'
+              ;;
+            *)
+              echo '::error::Neither a permission answer nor a missing tag. Read the registry response before assuming a visibility problem.'
+              ;;
+          esac
+
+          exit 1
