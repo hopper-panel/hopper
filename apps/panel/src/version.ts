@@ -9,4 +9,4 @@
  * `scripts/release.mjs` moves all of them together. Editing one by hand is how
  * they drift.
  */
-export const PANEL_VERSION = '0.7.1';
+export const PANEL_VERSION = '0.7.2';
