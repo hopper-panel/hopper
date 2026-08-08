@@ -240,3 +240,16 @@ CMD []
 # here would survive; what this image must not do is state which uid owns the
 # volume, because that uid is the node's to choose. The workflow asserts it, and
 # says there what it would cost to be wrong.
+
+# What links this package to the repository that builds it.
+#
+# GHCR reads this label and attaches the package to the repository, which is
+# what puts the source, the licence and a history beside it on the registry
+# page. It is documentation rather than a mechanism: **it does not make the
+# package public**. A package Actions creates is private whatever the visibility
+# of the repository, that has to be changed once by hand, and v0.8.0 shipped a
+# template naming an image nobody could pull because nothing checked. The
+# workflow checks now, anonymously, after the push.
+LABEL org.opencontainers.image.source="https://github.com/hopper-panel/hopper" \
+      org.opencontainers.image.description="32-bit runtime for Source engine dedicated servers, built from the eight libraries a running Garry's Mod server maps from outside its volume." \
+      org.opencontainers.image.licenses="AGPL-3.0-only"

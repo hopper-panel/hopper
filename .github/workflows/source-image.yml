@@ -244,3 +244,42 @@ jobs:
             ${{ env.IMAGE }}:${{ env.MAJOR }}
             ${{ env.IMAGE }}:${{ env.MAJOR }}-${{ github.event.release.tag_name || github.sha }}
           provenance: false
+
+      # ---------------------------------------------------------------------
+      # The check that would have caught v0.8.0
+      # ---------------------------------------------------------------------
+      # A package GitHub Actions creates is **private**, whatever the visibility
+      # of the repository that built it, and nothing above notices: the push
+      # succeeds, the release goes out, and the first operator to create a
+      # Garry's Mod server gets an image pull failure on a template this project
+      # ships. That is exactly what v0.8.0 did.
+      #
+      # Anonymously, because that is how a node pulls: it holds no credential
+      # for this registry, so a check made with `secrets.GITHUB_TOKEN` still in
+      # hand would pass on a package nobody else can read. The token request
+      # below asks for nothing and gets a token good only for public pulls.
+      #
+      # It fails the run rather than warning, and the failure is a release that
+      # is already published — which is the right way round. A visibility that
+      # has to be fixed by hand should be discovered by this job and not by an
+      # operator, and the fix is one click that stays fixed:
+      # https://github.com/orgs/hopper-panel/packages/container/source/settings
+      - name: The published image can be pulled by a node that holds no credential
+        if: env.PUBLISH == 'true'
+        run: |
+          set -euo pipefail
+
+          token=$(curl -fsS "https://ghcr.io/token?scope=repository:hopper-panel/source:pull&service=ghcr.io" | jq -r .token)
+          status=$(curl -s -o /dev/null -w '%{http_code}' \
+            -H "Authorization: Bearer $token" \
+            -H 'Accept: application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.v2+json' \
+            "https://ghcr.io/v2/hopper-panel/source/manifests/${MAJOR}")
+
+          if [ "$status" != '200' ]; then
+            echo "::error::ghcr.io/hopper-panel/source:${MAJOR} answered ${status} to an anonymous pull."
+            echo '::error::The package is private. Every node pulling this image will fail to start a server.'
+            echo '::error::Fix once, at https://github.com/orgs/hopper-panel/packages/container/source/settings — change visibility to public.'
+            exit 1
+          fi
+
+          echo "Anonymous pull of ${MAJOR}: HTTP 200."
