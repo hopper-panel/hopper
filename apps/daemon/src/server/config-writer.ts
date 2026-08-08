@@ -219,8 +219,17 @@ function rewrite(
       // Not a whole-file overwrite, whatever the name suggests: the shipped
       // Velocity template declares `parser: 'file'` with `match: 'bind'`, and
       // overwriting velocity.toml with the word `0.0.0.0:25577` would delete
-      // everything else the operator configured. This is the same
-      // key-on-a-line rewrite an imported Pterodactyl egg expects from it.
+      // everything else the operator configured.
+      //
+      // **Not Pterodactyl's `file` parser either**, which this comment used to
+      // claim it matched. Theirs finds a line by prefix and replaces the whole
+      // line, so an egg writes the key into the value —
+      // `"DISCORD_TOKEN": "DISCORD_TOKEN={{env.discord_token}}"` — and 255 of
+      // the 265 uses in the public egg corpus do. Handed to this branch, that
+      // value would be written after the prefix this rewrite preserves, giving
+      // `DISCORD_TOKEN=DISCORD_TOKEN=…`. The importer refuses them rather than
+      // corrupt a file, and says so; a parser with those semantics would be a
+      // new name in `configParserSchema`, not a reinterpretation of this one.
       return rewriteLines(original, replacements, ['=', ':']);
     case 'json':
       return rewriteJson(original, replacements);
