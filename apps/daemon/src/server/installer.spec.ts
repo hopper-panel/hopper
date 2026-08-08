@@ -23,8 +23,23 @@ import {
   runInstallation,
   INSTALL_FREE_SPACE_FLOOR_BYTES,
 } from './installer.js';
+import type { ConsoleLine } from './console-buffer.js';
 import type * as DiskUsage from './disk-usage.js';
 import type { DockerStats } from './stats.js';
+
+/**
+ * Collects what an installation printed, as text.
+ *
+ * `onOutput` is handed Hopper's own remarks as plain strings and the container's
+ * terminal as {@link ConsoleLine}s, which carry the row they were written on as
+ * well. Every assertion in this file is about what was said; the row is the
+ * console buffer's business and is tested where it is acted on.
+ */
+function collecting(lines: string[]): (line: string | ConsoleLine) => void {
+  return (line) => {
+    lines.push(typeof line === 'string' ? line : line.text);
+  };
+}
 
 /**
  * What Docker sends for a container that exists and is doing nothing.
@@ -1699,7 +1714,7 @@ describe('runInstallation', () => {
       tmpPath,
       ownership: { uid: 988, gid: 988 },
       networkName: 'hopper0',
-      onOutput: (line) => lines.push(line),
+      onOutput: collecting(lines),
     });
 
     await fake.started;
@@ -1755,7 +1770,7 @@ describe('runInstallation', () => {
       tmpPath,
       ownership: { uid: 988, gid: 988 },
       networkName: 'hopper0',
-      onOutput: (line) => lines.push(line),
+      onOutput: collecting(lines),
     });
 
     await fake.started;
@@ -1879,7 +1894,7 @@ describe('runInstallation', () => {
       tmpPath,
       ownership: { uid: 988, gid: 988 },
       networkName: 'hopper0',
-      onOutput: (line) => lines.push(line),
+      onOutput: collecting(lines),
     });
 
     await fake.started;
@@ -1951,11 +1966,16 @@ describe('runInstallation', () => {
 
     await fake.started;
 
-    // Five windows' worth of downloading, and **not one complete line**: this is
-    // a carriage-return progress bar, which is how SteamCMD reports a depot. A
-    // deadline pushed back by assembled console lines rather than by the stream
-    // would see complete silence here and kill the download it exists to
-    // protect.
+    // Five windows' worth of downloading with **no newline in any of it**: this
+    // is a carriage-return progress bar, which is how SteamCMD reports a depot.
+    // The assembler does turn each refresh into a line now, so the deadline is
+    // no longer choosing between a download and silence — but it must not start
+    // depending on it, and this stream is why. The return leads each refresh
+    // here, as SteamCMD writes it, so a frame is only ever completed by the
+    // *next* one: the line lags the bytes by a whole refresh, and a frame slow
+    // enough to straddle the window completes nothing at all. Counting lines,
+    // this download is dead before its second frame. The watchdog reads the raw
+    // chunk for that reason.
     for (let chunk = 0; chunk < 5; chunk += 1) {
       await vi.advanceTimersByTimeAsync(WINDOW_MS - 1_000);
       fake.stream.emit('data', Buffer.from('\rUpdate state (0x61) downloading, progress: 41.62'));
@@ -2085,7 +2105,7 @@ describe('runInstallation', () => {
       tmpPath,
       ownership: { uid: 988, gid: 988 },
       networkName: 'hopper0',
-      onOutput: (line) => lines.push(line),
+      onOutput: collecting(lines),
     });
 
     await fake.started;
@@ -2140,7 +2160,7 @@ describe('runInstallation', () => {
         tmpPath,
         ownership: { uid: 988, gid: 988 },
         networkName: 'hopper0',
-        onOutput: (line) => lines.push(line),
+        onOutput: collecting(lines),
       });
 
       // The request reached the fake, which is what says the real filesystem
@@ -2225,7 +2245,7 @@ describe('runInstallation', () => {
       tmpPath,
       ownership: { uid: 988, gid: 988 },
       networkName: 'hopper0',
-      onOutput: (line) => lines.push(line),
+      onOutput: collecting(lines),
     });
 
     await fake.started;
@@ -2267,7 +2287,7 @@ describe('runInstallation', () => {
       tmpPath,
       ownership: { uid: 988, gid: 988 },
       networkName: 'hopper0',
-      onOutput: (line) => lines.push(line),
+      onOutput: collecting(lines),
     });
 
     await expect(running).rejects.toThrow(/external connectivity/);
@@ -2276,6 +2296,58 @@ describe('runInstallation', () => {
 
     expect(fake.calls.stops).toBe(0);
     expect(lines).toEqual([]);
+  });
+
+  /**
+   * What the console buffer needs out of an installation, and cannot work out
+   * for itself: which of these lines were written on the same terminal row.
+   *
+   * A depot download is five thousand refreshes of one row, ten times what the
+   * buffer keeps, so an operator opening the console after a failed Steam
+   * install would find nothing but progress bar unless the row travels with the
+   * line. Hopper's own remarks stay plain strings and stand on rows of their
+   * own — `[Hopper] Giving up on it…` is printed from a timer and lands in the
+   * middle of exactly this stream, and no frame gets to overwrite it.
+   */
+  it("hands the container's output over with the row it was written on", async () => {
+    const { volumePath, tmpPath } = await workspace();
+    const fake = fakeDocker();
+    const lines: (string | ConsoleLine)[] = [];
+
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+
+    const running = runInstallation(fake.docker, {
+      configuration: installable({ inactivityTimeoutMs: WINDOW_MS }),
+      volumePath,
+      tmpPath,
+      ownership: { uid: 988, gid: 988 },
+      networkName: 'hopper0',
+      onOutput: (line) => lines.push(line),
+    });
+
+    await fake.started;
+
+    fake.stream.emit('data', Buffer.from('Reading package lists...\n'));
+    fake.stream.emit('data', Buffer.from('progress: 12.34\r'));
+    fake.stream.emit('data', Buffer.from('progress: 41.62\r'));
+    fake.stream.emit('data', Buffer.from('progress: 78.90\r'));
+
+    fake.settle(0);
+    await expect(running).resolves.toMatchObject({ successful: true });
+
+    expect(lines.filter((line) => typeof line !== 'string')).toEqual([
+      { text: 'Reading package lists...', overwritesPreviousRow: false },
+      // The first frame lands on a row of its own: the line before it ended in a
+      // newline.
+      { text: 'progress: 12.34', overwritesPreviousRow: false },
+      { text: 'progress: 41.62', overwritesPreviousRow: true },
+      { text: 'progress: 78.90', overwritesPreviousRow: true },
+    ]);
+
+    // Nothing else reached the console: an installation that works says nothing
+    // of its own, which is what makes the one line Hopper does print — when it
+    // gives up on a container — worth protecting from the frame after it.
+    expect(lines.filter((line) => typeof line === 'string')).toEqual([]);
   });
 
   /**
@@ -2303,7 +2375,7 @@ describe('runInstallation', () => {
       tmpPath,
       ownership: { uid: 988, gid: 988 },
       networkName: 'hopper0',
-      onOutput: (line) => lines.push(line),
+      onOutput: collecting(lines),
     });
 
     await fake.started;
@@ -2350,7 +2422,7 @@ describe('runInstallation', () => {
       tmpPath,
       ownership: { uid: 988, gid: 988 },
       networkName: 'hopper0',
-      onOutput: (line) => lines.push(line),
+      onOutput: collecting(lines),
     });
 
     await fake.started;
@@ -2404,7 +2476,7 @@ describe('runInstallation', () => {
       tmpPath,
       ownership: { uid: 988, gid: 988 },
       networkName: 'hopper0',
-      onOutput: (line) => lines.push(line),
+      onOutput: collecting(lines),
     });
 
     await fake.started;
@@ -2453,7 +2525,7 @@ describe('runInstallation', () => {
       tmpPath,
       ownership: { uid: 988, gid: 988 },
       networkName: 'hopper0',
-      onOutput: (line) => lines.push(line),
+      onOutput: collecting(lines),
     });
 
     await fake.started;
@@ -2501,7 +2573,7 @@ describe('runInstallation', () => {
       tmpPath,
       ownership: { uid: 988, gid: 988 },
       networkName: 'hopper0',
-      onOutput: (line) => lines.push(line),
+      onOutput: collecting(lines),
     });
 
     await fake.started;
@@ -2560,7 +2632,7 @@ describe('runInstallation', () => {
       tmpPath,
       ownership: { uid: 988, gid: 988 },
       networkName: 'hopper0',
-      onOutput: (line) => lines.push(line),
+      onOutput: collecting(lines),
     });
 
     await fake.started;
@@ -2595,7 +2667,7 @@ describe('runInstallation', () => {
       tmpPath,
       ownership: { uid: 988, gid: 988 },
       networkName: 'hopper0',
-      onOutput: (line) => lines.push(line),
+      onOutput: collecting(lines),
     });
 
     await fake.started;
@@ -2627,7 +2699,7 @@ describe('runInstallation', () => {
       tmpPath,
       ownership: { uid: 988, gid: 988 },
       networkName: 'hopper0',
-      onOutput: (line) => lines.push(line),
+      onOutput: collecting(lines),
     });
 
     await fake.started;
@@ -2663,7 +2735,7 @@ describe('runInstallation', () => {
       tmpPath,
       ownership: { uid: 988, gid: 988 },
       networkName: 'hopper0',
-      onOutput: (line) => lines.push(line),
+      onOutput: collecting(lines),
     });
 
     await fake.started;
@@ -2694,7 +2766,7 @@ describe('runInstallation', () => {
       tmpPath,
       ownership: { uid: 988, gid: 988 },
       networkName: 'hopper0',
-      onOutput: (line) => lines.push(line),
+      onOutput: collecting(lines),
     });
 
     await fake.started;
@@ -2727,7 +2799,7 @@ describe('runInstallation', () => {
       tmpPath,
       ownership: { uid: 988, gid: 988 },
       networkName: 'hopper0',
-      onOutput: (line) => lines.push(line),
+      onOutput: collecting(lines),
     });
 
     await fake.started;
@@ -2786,7 +2858,7 @@ describe('runInstallation', () => {
         tmpPath,
         ownership: { uid: 988, gid: 988 },
         networkName: 'hopper0',
-        onOutput: (line) => lines.push(line),
+        onOutput: collecting(lines),
       }),
     ).rejects.toThrow(/Not enough disk space/);
 
@@ -2821,7 +2893,7 @@ describe('runInstallation', () => {
         tmpPath,
         ownership: { uid: 988, gid: 988 },
         networkName: 'hopper0',
-        onOutput: (line) => lines.push(line),
+        onOutput: collecting(lines),
       }),
     ).rejects.toThrow(/Not enough disk space/);
 
@@ -2862,7 +2934,7 @@ describe('runInstallation', () => {
       tmpPath,
       ownership: { uid: 988, gid: 988 },
       networkName: 'hopper0',
-      onOutput: (line) => lines.push(line),
+      onOutput: collecting(lines),
     });
 
     await fake.started;

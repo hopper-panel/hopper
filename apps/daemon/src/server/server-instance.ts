@@ -294,12 +294,17 @@ export class ServerInstance extends EventEmitter {
     const lines = this.assembler.push(chunk.toString('utf8'));
 
     for (const line of lines) {
-      this.console.push(line);
-      this.emit('console', line);
+      // The two paths part here, and deliberately. The buffer is a replay and
+      // takes the row: a progress bar redrawn a thousand times is one line of it
+      // afterwards. The emit is a live stream and takes every frame: whoever is
+      // watching wants the figure to move, and their terminal is doing its own
+      // scrolling.
+      this.console.pushAssembled(line);
+      this.emit('console', line.text);
 
       // The `starting` → `running` switch happens here: it is the server itself
       // that announces it accepts connections.
-      if (this.state === 'starting' && announcesReady(this.readiness, line)) {
+      if (this.state === 'starting' && announcesReady(this.readiness, line.text)) {
         this.setState('running');
       }
     }
@@ -460,7 +465,7 @@ export class ServerInstance extends EventEmitter {
       const lines = [...assembler.push(text), ...assembler.flush()];
 
       for (const line of lines) {
-        this.console.push(line);
+        this.console.pushAssembled(line);
       }
 
       // Nothing is emitted to connected clients: there are none yet. A client
@@ -846,8 +851,8 @@ export class ServerInstance extends EventEmitter {
     });
     stream.on('end', () => {
       this.assembler.flush().forEach((line) => {
-        this.console.push(line);
-        this.emit('console', line);
+        this.console.pushAssembled(line);
+        this.emit('console', line.text);
       });
       this.stream = null;
 
@@ -972,14 +977,16 @@ export class ServerInstance extends EventEmitter {
 
     stream.on('data', (chunk: Buffer) => {
       // Docker sends one JSON object per line; an object can be split across
-      // two packets, hence the reassembly.
-      for (const line of assembler.push(chunk.toString('utf8'))) {
-        if (line.trim() === '') {
+      // two packets, hence the reassembly. Only the text is of any use here:
+      // which terminal row a line of JSON was written on is a question about
+      // consoles, and this stream never reaches one.
+      for (const { text } of assembler.push(chunk.toString('utf8'))) {
+        if (text.trim() === '') {
           continue;
         }
 
         try {
-          const stats = JSON.parse(line) as DockerStats;
+          const stats = JSON.parse(text) as DockerStats;
           this.refreshDiskUsage();
           this.emit(
             'stats',
@@ -1102,9 +1109,24 @@ export class ServerInstance extends EventEmitter {
           ownership: this.options.ownership,
           networkName: this.options.networkName,
           onOutput: (line) => {
-            this.console.push(line);
-            this.emit('console', line);
-            this.emit('install_output', line);
+            // A string is Hopper talking about the installation and stands on a
+            // line of its own; an assembled line is the container's terminal and
+            // brings the row it was written on, so that a depot download is one
+            // row of the replay instead of five thousand. Both go out live
+            // unchanged: the browser appends what it is sent, which is what a
+            // terminal does with a bar that is still moving.
+            let text: string;
+
+            if (typeof line === 'string') {
+              text = line;
+              this.console.push(line);
+            } else {
+              text = line.text;
+              this.console.pushAssembled(line);
+            }
+
+            this.emit('console', text);
+            this.emit('install_output', text);
           },
         });
 
@@ -1732,8 +1754,10 @@ export class ServerInstance extends EventEmitter {
 
     const assembler = new LineAssembler();
 
-    for (const line of [...assembler.push(response), ...assembler.flush()]) {
-      this.emitConsoleLine(`${RCON_CONSOLE_PREFIX} ${line}`);
+    // Prefixed, so every one of these is a line Hopper composed: the row an RCON
+    // answer was written on belongs to a terminal that is not this console.
+    for (const { text } of [...assembler.push(response), ...assembler.flush()]) {
+      this.emitConsoleLine(`${RCON_CONSOLE_PREFIX} ${text}`);
     }
   }
 
