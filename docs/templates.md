@@ -115,6 +115,24 @@ A `userEditable` variable feeds the startup command: it is user input that influ
 runs. The default is therefore "not editable", and every exception has to be a conscious choice —
 with rules narrow enough to accept only what makes sense.
 
+**Write a `regex:` with its delimiters**, `regex:/^(paper|purpur)$/`, as the eggs do. The rule string
+is scanned rather than split, so the pipes of an alternation belong to the expression and the rules
+written after it are still read; flags, escaped delimiters and a `/` inside a character class are all
+handled. A `regex:` without delimiters — or one whose closing delimiter is missing — is cut on the
+pipe like any other rule, because nothing can tell an alternation's pipe from the one introducing the
+next rule. An undelimited alternation therefore does not survive: what is left of it is its first
+branch, which accepts less than was written, or a fragment that does not compile at all. Only the
+second of those says anything in the log, so the delimiters are worth the two characters.
+
+**A rule that is not a valid regular expression refuses every value it is applied to**, with a
+message saying the template is at fault and an error in the panel's log naming the variable. The
+exception is an empty value: no rule but `required` is ever applied to one, so it is still accepted —
+but the log fires all the same, which is how a broken rule on a variable normally left empty gets
+noticed at all. A malformed rule used to accept every value instead, which meant a typo left the
+variable unvalidated with nothing anywhere saying so. The trade is deliberate: the variable cannot be
+given a value until the template is corrected, and that is a block somebody sees and fixes rather
+than a hole nobody hears about.
+
 ### Startup detection
 
 A server that is up is not a server that is ready. The template says how to tell the difference, and
