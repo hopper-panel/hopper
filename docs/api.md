@@ -35,8 +35,14 @@ POST   /api/servers/:uuid/backups         triggers a backup
 GET    /api/servers/:uuid/webhooks        outgoing notifications
 ```
 
-The console does not open with an API key: it uses a very short-lived token issued by
-`GET /api/servers/:uuid/console`, which the browser presents directly to the daemon.
+**The console does not open with an API key.** `GET /api/servers/:uuid/console` answers `403` to any
+request carrying one, whatever its scopes — the route is a `GET`, so a `read` key would otherwise
+reach it, and what it hands back is not a read: it is a two-minute token carrying the account's
+permissions on that server, which the browser presents directly to the daemon and which the daemon
+honours without asking the panel anything. Open a console from a signed-in browser.
+
+That two-minute lifetime is also the delay before a withdrawn access stops working; see
+[Securing your instance](security.md) if you are handling an incident.
 
 ## Outgoing notifications
 

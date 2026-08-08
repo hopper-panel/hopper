@@ -10,6 +10,20 @@ export interface RequestUser {
   email: string;
   role: 'ADMIN' | 'USER';
   sessionId: string;
+  /**
+   * Which credential authenticated this request.
+   *
+   * Stated as a field of its own rather than read off the shape of
+   * `sessionId`, which happens to be prefixed `api-key:` for one of the two.
+   * A route that has to refuse API keys — the console does — must rest on
+   * something a reader can find and a compiler can check, not on a string
+   * whose format reads like a logging detail and could be changed by someone
+   * improving the logs.
+   *
+   * Being required rather than optional is the point: a third way of
+   * authenticating cannot be added without deciding what it is worth here.
+   */
+  authenticatedBy: 'session' | 'api-key';
 }
 
 /**

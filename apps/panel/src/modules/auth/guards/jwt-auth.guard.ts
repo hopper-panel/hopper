@@ -95,6 +95,7 @@ export class JwtAuthGuard implements CanActivate {
       // reconnecte.
       role: session.user.role,
       sessionId: payload.sid,
+      authenticatedBy: 'session',
     };
 
     const requiredRole = this.reflector.getAllAndOverride<string>(REQUIRED_ROLE_KEY, [
@@ -146,6 +147,10 @@ export class JwtAuthGuard implements CanActivate {
       // A key opens no session: there is nothing to revoke on the session
       // side, and the identifier tells the origin apart in the logs.
       sessionId: `api-key:${key.id}`,
+      // Read by the console route, which refuses to mint a daemon credential
+      // for a key: a key's scope is decided from the HTTP verb, and the console
+      // is handed out by a GET.
+      authenticatedBy: 'api-key',
     };
 
     const requiredRole = this.reflector.getAllAndOverride<string>(REQUIRED_ROLE_KEY, [
