@@ -157,17 +157,34 @@ export type Readiness = z.infer<typeof readinessSchema>;
  * side to stay in agreement about what a name means.
  *
  * `command` writes a string to stdin (`stop` for Minecraft) and waits for the
- * process to end; `signal` signals PID 1 of the container. Either way a SIGKILL
- * follows after `stopTimeoutSeconds`.
+ * process to end; `signal` signals PID 1 of the container. Either way what is
+ * waited for is the **container** going down, and a SIGKILL follows if it has
+ * not within `stopTimeoutSeconds`. That is worth reading literally wherever
+ * PID 1 is a launcher script rather than the game: a server that obeys the
+ * command and exits cleanly into a wrapper that starts it again — `srcds_run`
+ * without `-norestart` — leaves the container up, so its stop is delivered,
+ * obeyed and killed all the same.
  *
- * `rcon` is the third, and it exists because the first two answer for Minecraft
- * and for very little else. **Rust, ARK, Palworld and most Source servers read
- * no standard input at all**: the string goes into a pipe nobody is holding,
- * nothing happens for the whole deadline, and the server is SIGKILLed — a
- * "clean stop" that is a kill with extra waiting. `signal` was the only
- * alternative, and a signal is a request the game may handle, ignore, or handle
- * by exiting without writing its world. RCON is the channel those servers do
- * answer on, and their own shutdown command is the one that ends in a save.
+ * `rcon` is the third, and it exists because the first two answer for fewer
+ * games than it looks. **Rust, ARK and Palworld read no standard input at
+ * all**: the string goes into a pipe nobody is holding, nothing happens for the
+ * whole deadline, and the server is SIGKILLed — a "clean stop" that is a kill
+ * with extra waiting. `signal` was the only alternative, and a signal is a
+ * request the game may handle, ignore, or handle by exiting without writing its
+ * world. RCON is the channel those servers do answer on, and their own shutdown
+ * command is the one that ends in a save.
+ *
+ * **Source servers were named in that list and do not belong in it.** `srcds`
+ * reads its console from standard input, and `quit` written to it is the clean
+ * stop every Pterodactyl Source egg performs — so `command` is the right
+ * transport there, not this one. The correction is recorded rather than quietly
+ * made, because this list is what a template author picks a transport from: a
+ * wrong name in it sends a game to RCON — a password, a port and four fresh
+ * ways for a stop to be refused — for a channel it already had. What a Source
+ * template does need is `-norestart` on `srcds_run`, whose wrapper otherwise
+ * relaunches the server after the clean exit and leaves PID 1 alive — which
+ * ends in the `stopTimeoutSeconds` SIGKILL whichever transport carried the
+ * command, as the paragraph above says.
  *
  * The password is **named, never carried**, exactly as in the rcon readiness
  * arm above: a stop configuration holding a secret would be a secret in every
@@ -198,8 +215,9 @@ export const stopConfigurationSchema = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('rcon'),
     /**
-     * The game's own shutdown command — `quit` for Factorio, `DoExit` for ARK,
-     * `shutdown 30 Restarting` for Palworld, `quit` for Rust.
+     * The game's own shutdown command — `quit` for Rust, `DoExit` for ARK,
+     * `shutdown 30 Restarting` for Palworld, `/quit` for Factorio, whose console
+     * reads a line without the leading slash as chat and goes on running.
      *
      * Sent as written. Nothing here knows which game is on the other end, so
      * nothing here can add a leading slash, a delay or a save beforehand; a

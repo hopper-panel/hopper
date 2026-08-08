@@ -922,11 +922,17 @@ function stoppable(options: StoppableOptions): ServerConfiguration {
 /**
  * Stopping a server that reads no standard input.
  *
- * Rust, ARK, Palworld and most Source servers never read stdin: the `command`
- * transport writes into a pipe nobody holds, nothing happens for the whole
- * deadline, and the server is SIGKILLed — a "clean stop" that is a kill with
- * extra waiting. These are also the games whose save is written on shutdown and
- * nowhere else, which is what makes every refusal below worth its two lines.
+ * Rust, ARK and Palworld never read stdin: the `command` transport writes into a
+ * pipe nobody holds, nothing happens for the whole deadline, and the server is
+ * SIGKILLed — a "clean stop" that is a kill with extra waiting. These are also
+ * the games whose save is written on shutdown and nowhere else, which is what
+ * makes every refusal below worth its two lines.
+ *
+ * Source servers used to be on that list and are not. Measured: `quit` written
+ * down the attach stream, the way `sendCommand` writes it, stops a Garry's Mod
+ * dedicated server in about a second with exit code 0. `srcds_run` is `#!/bin/sh`
+ * and `exec`s the binary under `-norestart`, so the container's process is the
+ * game and the game reads its console from stdin.
  */
 describe('a stop sent over RCON', () => {
   const named = (rconPort: number) => ({
