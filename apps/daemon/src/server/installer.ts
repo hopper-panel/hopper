@@ -130,21 +130,29 @@ const INSTALL_PIDS_LIMIT = 512;
  *    root, which is the sandbox these two pay for; the maintainer scripts fail
  *    outright.
  *
- * `su` is the deliberate casualty, and it is worth being exact about why. This
- * list used to justify SETUID/SETGID partly by "maintainer scripts call `su`",
- * which the set does not in fact deliver: `AUDIT_WRITE` sits in Docker's default
- * set precisely so that `su` and `login` can record the switch, PAM's audit call
- * returns EPERM without it, and Debian's util-linux `su` turns that into
- * `cannot open session: Permission denied`. The refusal comes at the audit call,
- * before any uid changes, so SETUID sits unused and `su` fails no matter what
- * else is granted beside it. Dropping `AUDIT_WRITE` is dropping `su`.
+ * `su` was written here as the deliberate casualty of dropping `AUDIT_WRITE`,
+ * and that was wrong. The reasoning read well — `AUDIT_WRITE` is in Docker's
+ * default set so `su` and `login` can record the switch, PAM makes that call,
+ * and it returns EPERM without the capability — but it was never run. It has
+ * been now: a container with exactly this set (`CapEff 00000000000000fb`) runs
+ * `su steam -c …` and `su - steam -c id` and both exit 0, on a Debian `su` that
+ * `ldd` confirms is linked against `libaudit.so.1`. PAM logs the failed audit
+ * call and carries on; it is not fatal. Two independent runs agree, and 0 of the
+ * 104 SteamCMD install scripts in the public egg corpus use `su` anyway.
  *
- * That is the trade being made, and it is made knowingly. The audit subsystem is
- * not namespaced: a record written from in here lands in the host's audit log,
- * which is where an operator goes to reconstruct what happened on the node.
- * Handing a container whose environment a server's user edits the means to forge
- * and flood that log, in exchange for a `su` that has `runuser` and `setpriv` as
- * working substitutes, is the wrong side of it.
+ * One case stays unmeasured: both runs were on a kernel with the audit subsystem
+ * compiled in and nothing collecting (`/proc/self/loginuid` reads -1). A host
+ * running `auditd` may well refuse, and that is the host an operator is most
+ * likely to have. So nothing changes here — `runuser` and `setpriv` remain what
+ * this project's own scripts use, on the narrower ground that they depend on
+ * nothing about the host rather than that `su` cannot work.
+ *
+ * The trade `AUDIT_WRITE` is actually being dropped for is still worth making,
+ * and it is not about `su` at all. The audit subsystem is not namespaced: a
+ * record written from in here lands in the host's audit log, which is where an
+ * operator goes to reconstruct what happened on the node. Handing a container
+ * whose environment a server's user edits the means to forge and flood that log
+ * buys nothing an install needs.
  *
  * What is gone matters more than what stays. `MKNOD` let a script create a
  * device node **inside the volume**: the daemon streams files out of that volume

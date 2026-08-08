@@ -113,6 +113,20 @@ describe('catalogue de templates', () => {
       expect(template.startupDetection).toBeTruthy();
     });
 
+    // A pattern is only ever exercised by a running server, and a broken one
+    // does not fail loudly: the server sits in `starting` until its deadline
+    // expires — or for ever, where the template declared none.
+    it.each(withReadiness)('%s declares patterns that compile', (_name, template) => {
+      if (template.readiness?.type !== 'log') {
+        return;
+      }
+
+      for (const pattern of template.readiness.patterns) {
+        // Exactly how the daemon compiles them: `new RegExp(source)`, no flags.
+        expect(() => new RegExp(pattern), pattern).not.toThrow();
+      }
+    });
+
     it.each(withReadiness)('%s agrees with its own first pattern', (_name, template) => {
       // Only a `log` strategy can be expressed in the deprecated field at all,
       // and then only its first pattern — one string is the whole of what it
@@ -399,6 +413,490 @@ describe('catalogue de templates', () => {
     });
   });
 
+  /**
+   * The first template installed from Steam, and the first on the Source engine.
+   *
+   * Everything asserted below is something no test in this repository can
+   * observe by running: there is no Garry's Mod here, no SteamCMD, and no six
+   * and a half gigabytes to download. What these tests hold in place is the set
+   * of decisions whose consequences are invisible until they are expensive — a
+   * missing `-norestart` that turns every stop into a kill, a `+force_install_dir`
+   * that arrived too late and installed into a container layer, an install
+   * script that quietly deleted the operator's configuration on the reinstall
+   * they ran to *update* the server.
+   *
+   * The decisions themselves were checked outside the suite, which is where the
+   * figures and console lines quoted below come from: the depot really was
+   * installed, the server really was started on the runtime image and stopped
+   * with `quit`, and four of the claims these tests were first written around
+   * did not survive it: `su`, the `server.cfg` guard, the `sdk64` copy and the
+   * disk figure. Each is named where it used to be asserted.
+   */
+  describe('the first template installed from SteamCMD', () => {
+    const garrysMod = TEMPLATE_CATALOG.find((template) => template.key === 'garrys-mod');
+
+    it('is in the catalogue', () => {
+      expect(garrysMod).toBeDefined();
+    });
+
+    it('joins the group Factorio is in rather than inventing one', () => {
+      // A group name is stored as `TemplateGroup.name` and that column is the
+      // upsert key: a group cannot be renamed later, only duplicated. "Other
+      // games" was named for the category precisely so that the second
+      // non-Minecraft template needs no new one.
+      const factorio = TEMPLATE_CATALOG.find((template) => template.key === 'factorio');
+
+      expect(garrysMod?.group).toBe(factorio?.group);
+    });
+
+    /**
+     * The readiness patterns against the lines they claim to match.
+     *
+     * Like Factorio's, and unlike what this comment first claimed, the console
+     * lines below are copied from a run: app 4020 was installed by this
+     * template's own script and started on the runtime image, and it printed
+     * `Assigned anonymous gameserver Steam ID [A-1:857537543(50865)].` and
+     * `VAC secure mode is activated.` — both patterns, in that order, with the
+     * `Connection to Steam servers successful.` and `Public IP is …` lines
+     * immediately in front of them. No *test* here can do that, which is why
+     * the strings are pinned rather than produced.
+     *
+     * What they are for is the boundary: which lines mean serving, and which of
+     * the lines around them a well-meaning loosening of a pattern would start
+     * taking.
+     */
+    describe('its readiness', () => {
+      const announcesReady = (line: string): boolean =>
+        (garrysMod?.readiness?.type === 'log' ? garrysMod.readiness.patterns : []).some((pattern) =>
+          new RegExp(pattern).test(line),
+        );
+
+      it('waits on the console, which is the only channel that can answer', () => {
+        // Not `port`: the game and its A2S queries are UDP, and the daemon
+        // refuses a UDP probe rather than knocking on a TCP port nothing is
+        // listening on. Not `rcon` either — that needs the password this
+        // template deliberately does not ship.
+        expect(garrysMod?.readiness?.type).toBe('log');
+
+        const patterns = garrysMod?.readiness?.type === 'log' ? garrysMod.readiness.patterns : [];
+
+        expect(patterns.length).toBeGreaterThan(1);
+        expect(garrysMod?.startupDetection).toBe(patterns[0]);
+      });
+
+      it('opts into a start that is allowed to fail', () => {
+        // No default exists: a template that names no deadline leaves a failed
+        // start spinning for ever.
+        const timeout = garrysMod?.readiness?.type === 'log' ? garrysMod.readiness.timeoutMs : 0;
+
+        expect(timeout).toBeGreaterThan(0);
+        // The contract's own ceiling. Past an hour a deadline is not one.
+        expect(timeout).toBeLessThanOrEqual(3_600_000);
+      });
+
+      it('matches the lines srcds prints once its game server has logged in', () => {
+        expect(
+          announcesReady('Assigned anonymous gameserver Steam ID [A-1:1234567890(9876)].'),
+        ).toBe(true);
+
+        // The same line with a login token configured, which this template does
+        // not ship and an operator may one day be given a way to add. The marker
+        // stops before the word that differs for exactly this reason.
+        expect(
+          announcesReady('Assigned persistent gameserver Steam ID [A-1:1234567890(9876)].'),
+        ).toBe(true);
+
+        // The second pattern, printed immediately after the login.
+        expect(announcesReady('VAC secure mode is activated.')).toBe(true);
+      });
+
+      it('does not match the lines around it', () => {
+        // The line that looks most like an announcement and is not one: it
+        // reports how the socket was configured, not that a level has loaded.
+        // It was considered as a marker and passed over for the Steam login,
+        // which cannot happen before there is a game server to register.
+        expect(
+          announcesReady('Network: IP 0.0.0.0, mode MP, dedicated Yes, ports 27015 SV / 27005 CL'),
+        ).toBe(false);
+        expect(announcesReady('Setting breakpad minidump AppID = 4000')).toBe(false);
+        expect(announcesReady('maxplayers set to 16')).toBe(false);
+
+        // The neighbours of the marker, from the same login. Close enough that
+        // a pattern reaching for the word "Steam" would take them, and what
+        // they report is a connection to Steam rather than this server having
+        // been given an identity on it.
+        expect(announcesReady('Connection to Steam servers successful.')).toBe(false);
+        expect(announcesReady('   Public IP is 203.0.113.7.')).toBe(false);
+
+        // And the lines the rest of this catalogue waits for, which share
+        // nothing with these.
+        expect(
+          announcesReady('[12:00:00] [Server thread/INFO]: Done (12.417s)! For help, type "help"'),
+        ).toBe(false);
+        expect(announcesReady('  37.287 Hosting game at IP ADDR:({0.0.0.0:34197})')).toBe(false);
+      });
+    });
+
+    describe('its stop', () => {
+      it('goes down standard input, which a Source server does read', () => {
+        // The correction this template was written around: `docs/templates.md`
+        // and the contract both listed Source among the games that read no
+        // stdin, and sent them to RCON on the strength of it. srcds reads its
+        // console from stdin, so the transport it already had is the right one
+        // — no password, no port, no fresh ways to be refused.
+        expect(garrysMod?.stop).toBeUndefined();
+        expect(garrysMod?.stopCommand).toBe('command:quit');
+      });
+
+      it("keeps the contract stop timeout rather than borrowing Factorio's", () => {
+        // Absent on purpose. Factorio's four minutes buy a world being
+        // serialised; a Source server writes nothing on the way out, so there
+        // is nothing for a timeout to cut in half. Saying nothing is how a
+        // template asks for the contract's thirty seconds, and the assertion is
+        // here so that a number appearing later is a decision somebody made.
+        expect(garrysMod?.stopTimeoutSeconds).toBeUndefined();
+      });
+    });
+
+    describe('its startup command', () => {
+      /**
+       * What a node hands the builder for a Garry's Mod server: the template's
+       * own variables at their defaults, and one unnamed port.
+       */
+      const context = {
+        environment: Object.fromEntries(
+          (garrysMod?.variables ?? []).map((variable) => [
+            variable.envVariable,
+            variable.defaultValue,
+          ]),
+        ),
+        // Supplied to every server whether or not the game can use it. This one
+        // cannot: there is no heap to size.
+        memoryMib: 4096,
+        allocations: { default: { ip: '0.0.0.0', port: 27015 }, additional: [] },
+      };
+
+      it('becomes the argv srcds expects', () => {
+        const { argv } = buildInvocation(garrysMod!.startup, context);
+
+        expect(argv).toEqual([
+          './srcds_run',
+          '-game',
+          'garrysmod',
+          '-console',
+          '-norestart',
+          '-port',
+          '27015',
+          // Before `+map`, because `map` is the command that loads the level and
+          // starts the server: what follows it lands on a server already up.
+          '+maxplayers',
+          '16',
+          '+gamemode',
+          'sandbox',
+          '+map',
+          'gm_construct',
+        ]);
+      });
+
+      /**
+       * The one flag whose absence costs a kill, every time.
+       *
+       * `srcds_run` is a wrapper that relaunches the server whenever it exits.
+       * Hopper waits for the **container** to go down, and the container is the
+       * wrapper — so without this the `quit` above is delivered, obeyed and
+       * answered with a fresh server, `stopTimeoutSeconds` expires, and the
+       * SIGKILL lands on a replacement that has been taking players since the
+       * stop began. Asserted on the built argv rather than on the template
+       * string, because what matters is that it survives into what runs.
+       */
+      it('passes -norestart, without which every stop is a kill at the timeout', () => {
+        expect(buildInvocation(garrysMod!.startup, context).argv).toContain('-norestart');
+      });
+
+      it('gives every value-taking flag its value', () => {
+        const { argv } = buildInvocation(garrysMod!.startup, context);
+        const takesValue = new Set(['-game', '-port', '+maxplayers', '+gamemode', '+map']);
+
+        argv.forEach((token, index) => {
+          if (!takesValue.has(token)) {
+            return;
+          }
+
+          const value = argv[index + 1];
+
+          expect(value, `${token} was left with no value`).toBeDefined();
+          expect(value, `${token} was followed by another flag`).not.toMatch(/^[-+]/);
+        });
+      });
+
+      it('references no variable a running server would not have', () => {
+        expect(() => buildInvocation(garrysMod!.startup, context)).not.toThrow();
+      });
+
+      it('refuses the start if its port variable stops resolving', () => {
+        const typo = garrysMod!.startup.replace('{{SERVER_PORT}}', '{{SERVER_PROT}}');
+
+        expect(() => buildInvocation(typo, context)).toThrow(/SERVER_PROT/);
+      });
+
+      /**
+       * Why every variable here is `required` with a default that is not empty.
+       *
+       * A variable that is *defined and empty* is not an error: its argument is
+       * dropped, silently as far as the argv is concerned, and the flag in front
+       * of it takes the next one. `+map` would then be handed nothing and the
+       * server would start on a map nobody chose — which is the failure the
+       * builder deliberately cannot fix on its own, since it cannot know which
+       * flags take a value.
+       */
+      it('leaves no flag able to be stranded by an empty value', () => {
+        for (const variable of garrysMod?.variables ?? []) {
+          expect(variable.rules, variable.envVariable).toContain('required');
+          expect(variable.defaultValue, variable.envVariable).not.toBe('');
+        }
+      });
+
+      it('is what every variable it declares is for', () => {
+        // A variable the command never reads is a field an operator can change
+        // to no effect, which is worse than not offering it.
+        for (const variable of garrysMod?.variables ?? []) {
+          expect(garrysMod!.startup, variable.envVariable).toContain(`{{${variable.envVariable}}}`);
+        }
+      });
+    });
+
+    describe('its install script', () => {
+      const script = garrysMod?.installScript ?? '';
+
+      /**
+       * What the shell will actually run, which is not what `installScript`
+       * contains.
+       *
+       * Every assertion below searches for command text, and this script's
+       * comments quote that same text — one line reads `# +login anonymous: app
+       * 4020 is the public Garry's Mod dedicated server and`, another names
+       * `+app_update 4020 validate` while recounting what was measured. Search
+       * the whole script and a comment answers. Measured, not reasoned: with the
+       * steamcmd line mutated to `+app_update 4000` — the wrong game entirely,
+       * downloading something with no `garrysmod/` in it — the suite stayed
+       * green, and so it did for dropping `validate` and for dropping `+login
+       * anonymous`. All three are killed against this.
+       */
+      const executable = script
+        .split('\n')
+        .filter((line) => !line.trimStart().startsWith('#'))
+        .join('\n');
+
+      /**
+       * The line that decides whether six gigabytes land in the volume.
+       *
+       * SteamCMD applies `force_install_dir` to the commands that follow it and
+       * not to the ones already run. Named after `app_update`, or not at all,
+       * the depot goes into a directory on the install container's own
+       * filesystem — deleted seconds later — and the script still exits 0. The
+       * server then starts on an empty volume, and the disk preflight will have
+       * checked a filesystem the download never touched.
+       */
+      it('names the install directory before the download that uses it', () => {
+        const forced = executable.indexOf('+force_install_dir /mnt/server');
+        const update = executable.indexOf('+app_update 4020');
+
+        expect(forced, 'no +force_install_dir /mnt/server').toBeGreaterThan(-1);
+        expect(update, 'no +app_update 4020').toBeGreaterThan(-1);
+        expect(forced).toBeLessThan(update);
+      });
+
+      it('validates, which is what makes a reinstall a repair', () => {
+        // The whole update mechanism for this server: there is no SteamCMD in
+        // the runtime image, so reinstalling is how the game is brought up to
+        // date, and `validate` is what re-downloads only what no longer matches
+        // the manifest.
+        expect(executable).toContain('+app_update 4020 validate');
+      });
+
+      it('logs in anonymously, holding no credential', () => {
+        expect(executable).toContain('+login anonymous');
+      });
+
+      /**
+       * Where srcds looks for the Steam client library **second**.
+       *
+       * `HOME` is `/home/container` in the runtime image and the volume is
+       * mounted there, so this path is `~/.steam/sdk32` as the server resolves
+       * it. What it is not is a requirement: app 4020 ships its own
+       * `steamclient.so` at the install root and `srcds_run` puts `.` first on
+       * `LD_LIBRARY_PATH`, so with `/mnt/server/.steam` masked out entirely the
+       * server still logs in, is assigned its gameserver Steam ID and turns VAC
+       * on. Mask the depot's copy instead and srcds says what this line is for,
+       * in as many words: `Loaded '/home/container/.steam/sdk32/steamclient.so'
+       * OK. (First tried local 'steamclient.so')`.
+       *
+       * No `sdk64` beside it, and the assertion is here so that one does not
+       * quietly come back: `srcds_run`'s `detectcpu()` has no 64-bit branch on
+       * Linux, so this template can only start the 32-bit binary, and the copy
+       * would be 44 MiB of the operator's volume on a path nothing takes.
+       */
+      it('puts steamclient.so where the server looks when its own copy fails', () => {
+        expect(executable).toContain('/mnt/server/.steam/sdk32/steamclient.so');
+
+        // Comments are out of the way already, which is what lets this assert an
+        // absence: saying why sdk64 is not written is exactly what the script
+        // ought to be doing.
+        expect(executable, 'a copy on a path this template cannot start').not.toContain('sdk64');
+      });
+
+      /**
+       * Idempotence, which for a Steam server is not a nicety — and the guard
+       * that has to be about content rather than existence.
+       *
+       * Reinstalling is the only way to update this game, so this script runs
+       * over a volume full of the operator's work every time they keep their
+       * server current. The published egg truncates `garrysmod/cfg/server.cfg`
+       * on every run; here the write is behind a test of what is in it.
+       *
+       * Testing for the *file* is what this used to assert, and it made the
+       * whole block dead: the depot ships `garrysmod/cfg/server.cfg`, four bytes
+       * of line endings, so a fresh install already had one and took the
+       * "keeping the existing" branch every time. The `grep` is what tells that
+       * placeholder from a file somebody has written in, so both halves are
+       * asserted — the emptiness test, and the write after it.
+       */
+      it('seeds the operator config only where there is nothing in it', () => {
+        const guard = executable.indexOf('if [ -f "${SERVER_CFG}" ] && grep -q "[^[:space:]]"');
+        const write = executable.indexOf('cat > "${SERVER_CFG}"');
+
+        expect(guard, 'server.cfg is written without testing its content first').toBeGreaterThan(
+          -1,
+        );
+        expect(write).toBeGreaterThan(guard);
+      });
+
+      it('removes nothing from the volume', () => {
+        // `garrysmod/addons`, `garrysmod/cfg` and everything uploaded are the
+        // operator's, and `app_update` leaves files it does not own alone. The
+        // only way they can be lost is this script deleting them.
+        const removals = [...script.matchAll(/^\s*rm\s.*$/gm)].map((match) => match[0]);
+
+        for (const removal of removals) {
+          expect(removal, 'an install script that deletes inside the volume').not.toContain(
+            '/mnt/server',
+          );
+        }
+      });
+    });
+
+    describe('its variable rules', () => {
+      const rulesOf = (envVariable: string): string =>
+        garrysMod?.variables.find((variable) => variable.envVariable === envVariable)?.rules ?? '';
+
+      const ruleExpression = (envVariable: string): RegExp => {
+        const source = /regex:\/(.*)\/$/.exec(rulesOf(envVariable))?.[1];
+
+        expect(source, `${envVariable} declares no regex rule`).toBeDefined();
+
+        return new RegExp(source!);
+      };
+
+      // The value becomes `garrysmod/maps/<value>.bsp`, so it is a path segment
+      // before it is anything else.
+      it.each(['gm_construct', 'gm_flatgrass', 'de_dust2', 'rp_downtown_v4c_v2'])(
+        'accepts %s as a map',
+        (value) => {
+          expect(ruleExpression('SRCDS_MAP').test(value)).toBe(true);
+        },
+      );
+
+      it.each([
+        '../../etc/passwd',
+        'maps/gm_construct',
+        '..',
+        'gm_construct.bsp',
+        'gm construct',
+        '',
+        // The trailing-newline bypass, which is real in the languages where `$`
+        // matches before a final newline. It is not in JavaScript without the
+        // `m` flag, and the panel compiles these without flags.
+        'gm_construct\n',
+      ])('refuses %j as a map', (value) => {
+        expect(ruleExpression('SRCDS_MAP').test(value)).toBe(false);
+      });
+
+      // A directory name under `garrysmod/gamemodes`, and upper case is admitted
+      // because a gamemode's folder is whatever its author called it.
+      it.each(['sandbox', 'terrortown', 'DarkRP'])('accepts %s as a gamemode', (value) => {
+        expect(ruleExpression('GAMEMODE').test(value)).toBe(true);
+      });
+
+      it.each([
+        '../sandbox',
+        'sandbox/../..',
+        'sand box',
+        '',
+        'sandbox;quit',
+        // A separator and nothing else objectionable. Every other case here is
+        // refused by a dot, a space or a semicolon as well, so none of them can
+        // tell whether `/` is still excluded: loosening the class to
+        // `[A-Za-z0-9_/-]` survived the whole suite until this line existed,
+        // while the same mutation on the map rule was killed by
+        // `maps/gm_construct`.
+        'gamemodes/sandbox',
+      ])('refuses %j as a gamemode', (value) => {
+        expect(ruleExpression('GAMEMODE').test(value)).toBe(false);
+      });
+
+      it('bounds the player limit at the engine ceiling', () => {
+        expect(rulesOf('MAX_PLAYERS')).toContain('min:1');
+        expect(rulesOf('MAX_PLAYERS')).toContain('max:128');
+      });
+
+      it.each(['1', '16', '128'])('accepts %s as a player limit', (value) => {
+        expect(ruleExpression('MAX_PLAYERS').test(value)).toBe(true);
+      });
+
+      /**
+       * Digits, and the spelling matters as much as the value.
+       *
+       * `integer` is satisfied by anything `Number()` reads as a whole number,
+       * so `1e2` and `20.0` pass it — and the string, not the number, is what
+       * becomes the argv token the engine's own parser then makes what it likes
+       * of. The expression is what removes the question.
+       */
+      it.each(['1e2', '20.0', ' 20 ', '-1', '12x', ''])('refuses %j as a player limit', (value) => {
+        expect(ruleExpression('MAX_PLAYERS').test(value)).toBe(false);
+      });
+    });
+
+    /**
+     * The figure the disk preflight refuses installations on.
+     *
+     * It has to allow for the **peak** rather than the final size: SteamCMD
+     * stages a depot into `steamapps/downloading` inside `force_install_dir`, so
+     * the chunks and the files they become are on the same filesystem at once.
+     * Being under does not fail this server — it fills the node's disk, and that
+     * takes down every server on the machine.
+     *
+     * The bounds below are the interesting part. The installed tree measures
+     * 6 919 647 587 bytes by `du -sb --apparent-size`, and Steam's rule of thumb
+     * for an install is twice the unpacked size, so anything at or under that
+     * doubling is a figure that has stopped following its own reasoning — which
+     * is exactly what 12 GiB was.
+     */
+    it('declares the disk its download peaks at, not the disk it settles on', () => {
+      const declared = garrysMod?.installRequiredDiskBytes ?? 0;
+
+      // Twice the measured tree, in bytes rather than in a rounded gibibyte, so
+      // that trimming the figure back under Steam's own rule fails here. The
+      // measurement is the one in `source.ts`, and it has to stay that one:
+      // a bound taken from a bigger tree than the script produces would fail
+      // against a figure that is correct.
+      expect(declared).toBeGreaterThanOrEqual(2 * 6_919_647_587);
+      // And not a figure that refuses nodes which would have installed it
+      // perfectly well. The preflight counts what the volume already holds
+      // towards this, so a reinstall does not need it free twice over.
+      expect(declared).toBeLessThan(32 * 1024 ** 3);
+    });
+  });
+
   describe('install scripts', () => {
     it.each(TEMPLATE_CATALOG.map((template) => [template.name, template] as const))(
       '%s fails loudly',
@@ -413,6 +911,50 @@ describe('catalogue de templates', () => {
         const curlCalls = template.installScript.match(/curl [^\n|]*-o /g) ?? [];
         for (const call of curlCalls) {
           expect(call).toContain('--fail');
+        }
+      },
+    );
+
+    /**
+     * A portability rule, and **not** the rule this test was written for.
+     *
+     * It was written to enforce a claim that turned out to be false: that `su`
+     * cannot work in the install container because `AUDIT_WRITE` is dropped and
+     * PAM needs it to open a session. Run with exactly the capability set the
+     * daemon grants — `CapDrop: ALL` plus the seven of `INSTALL_CAPABILITIES`,
+     * `CapEff` `00000000000000fb` — `su steam -c "…"` returns 0. The assertion
+     * message said something untrue on every failure it could ever have
+     * produced.
+     *
+     * What survives the correction is thinner but real. That measurement was
+     * taken on one kernel, WSL2's, with the audit subsystem compiled in and
+     * nothing collecting; a node running `auditd` may refuse the login record
+     * for want of the capability, and whether `su` then fails has not been
+     * tested. A shipped template runs on every node there is and cannot see
+     * which kind it landed on, whereas `runuser -u steam --` and
+     * `setpriv --reuid=… --regid=… --` need only the granted `SETUID` and
+     * `SETGID` and so cannot depend on it at all.
+     *
+     * The rule costs this catalogue nothing to keep — nothing in it wants
+     * another uid, and of the 104 SteamCMD eggs among the 274 published install
+     * scripts read, not one runs `su` either. `docs/templates.md` carries the
+     * correction in full.
+     *
+     * Comment lines are skipped, because explaining why `su` is absent is
+     * exactly the thing a template ought to do.
+     */
+    it.each(TEMPLATE_CATALOG.map((template) => [template.name, template] as const))(
+      '%s does not switch user with su',
+      (_name, template) => {
+        const executable = template.installScript
+          .split('\n')
+          .filter((line) => !line.trimStart().startsWith('#'));
+
+        for (const line of executable) {
+          expect(
+            line,
+            'su behaves differently depending on the node\'s audit configuration; use "runuser -u" or "setpriv"',
+          ).not.toMatch(/(^|[\s;&|(])su\s/);
         }
       },
     );
