@@ -6,7 +6,7 @@ import type Dockerode from 'dockerode';
 import { DOCKER_ANSWER_TIMEOUT_MS, DockerUnansweredError } from '../docker/client.js';
 import type { DockerClient } from '../docker/client.js';
 import { CPU_PERIOD_US, cpuQuotaFor, memorySwapFor } from '../docker/container-config.js';
-import { LineAssembler } from './console-buffer.js';
+import { LineAssembler, type ConsoleLine } from './console-buffer.js';
 import { directorySize, formatBytes, freeSpaceBytes } from './disk-usage.js';
 import { buildEnvironment } from './invocation.js';
 import {
@@ -55,7 +55,19 @@ export interface InstallationOptions {
   tmpPath: string;
   ownership: { uid: number; gid: number };
   networkName: string;
-  onOutput: (line: string) => void;
+  /**
+   * Where a line of the installation goes.
+   *
+   * Takes either shape on purpose. Hopper's own remarks are plain strings and
+   * stand on a line of their own, which is every call in this file but one; the
+   * container's output arrives as {@link ConsoleLine} because a progress bar
+   * redrawing itself is one row of a terminal and the console buffer is the only
+   * thing that can act on that. Widening the parameter rather than wrapping the
+   * strings keeps the distinction to the one place that has it to make — and the
+   * helpers below that are handed this callback go on declaring the narrower
+   * `(line: string) => void` they actually use.
+   */
+  onOutput: (line: string | ConsoleLine) => void;
 }
 
 export interface InstallationResult {
@@ -430,10 +442,14 @@ export interface StallReport {
  *
  * Two things push it back, and the second is the one that matters. Output is the
  * obvious signal, and it is taken from the raw stream rather than from assembled
- * console lines: SteamCMD renders its progress by rewriting one line with
- * carriage returns, and {@link LineAssembler} emits nothing at all until a
- * newline arrives, so a deadline counting lines would see a download printing
- * `progress: 41.62 (…)` twice a second as perfectly silent. But most install
+ * console lines. {@link LineAssembler} does turn each refresh of a
+ * carriage-return progress bar into a line of its own, so the difference is no
+ * longer the whole of a download against nothing — but it is still the
+ * difference that decides this. A line is only ever produced by a terminator,
+ * and one frame slow enough to straddle the window produces none: a depot
+ * download on a failing uplink writes `progress: 41.62 (…)` and then spends four
+ * minutes on the next figure, which is bytes arriving the whole time and not one
+ * complete line. A deadline counting lines would kill it. But most install
  * scripts do not print during a transfer at all — `curl -sSL` is the universal
  * idiom and `-s` means exactly that — so the second signal is the container's
  * own counters, fed in by {@link ContainerActivityProbe}.
@@ -1162,11 +1178,13 @@ export async function runInstallation(
 
   const assembler = new LineAssembler();
   stream.on('data', (chunk: Buffer) => {
-    // Before the assembly, and this ordering is the feature. A progress bar
-    // rewriting one line with carriage returns — which is how SteamCMD reports a
-    // forty-gigabyte download — produces chunks here and no completed line at
-    // all, so a deadline pushed back by lines would kill the very install it was
-    // written for while it was working perfectly.
+    // Before the assembly, and this ordering is the feature: bytes are the
+    // evidence the container is alive, and a line is only ever the evidence that
+    // one of them was a terminator. A depot download whose uplink has gone bad
+    // spends minutes writing a single frame of its progress bar — see
+    // {@link ActivityWatchdog} — and that is a stream of chunks with no completed
+    // line in it, which a deadline pushed back by lines would kill while it was
+    // working.
     watchdog.noteActivity();
 
     for (const line of assembler.push(chunk.toString('utf8'))) {

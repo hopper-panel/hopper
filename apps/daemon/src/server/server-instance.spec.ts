@@ -695,6 +695,35 @@ describe('ServerInstance.reconcile', () => {
     expect(fake.instance.consoleSnapshot()).toEqual([]);
   });
 
+  /**
+   * The two console paths, which want different things out of the same bytes.
+   *
+   * A progress bar redrawing itself with carriage returns is one row of a
+   * terminal, and that is what the replay keeps: an operator opening the console
+   * after a two-hour modpack download must still find the line above it. The
+   * live stream is the terminal, and gets every frame — a bar that stopped
+   * moving is how a stall is noticed in the first place.
+   */
+  it('replays a progress bar as one row while sending every frame live', async () => {
+    const fake = instanceWith({ running: true, logs: '[10:00:00 INFO]: Done (12.4s)!\n' });
+
+    await fake.instance.reconcile();
+
+    const live: string[] = [];
+    fake.instance.on('console', (line) => live.push(line));
+
+    for (let refresh = 0; refresh < 200; refresh += 1) {
+      fake.stream.emit('data', Buffer.from(`Downloading modpack: ${refresh}%\r`));
+    }
+
+    expect(live).toHaveLength(200);
+    expect(live.at(-1)).toBe('Downloading modpack: 199%');
+    expect(fake.instance.consoleSnapshot()).toEqual([
+      '[10:00:00 INFO]: Done (12.4s)!',
+      'Downloading modpack: 199%',
+    ]);
+  });
+
   it('reads no log for a container that is not running', async () => {
     // Its buffer would be the previous run's output, presented as if it were
     // this one's, above a server that is plainly offline.
