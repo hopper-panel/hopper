@@ -78,6 +78,41 @@ export async function parseError(response: Response): Promise<ApiError> {
   return new ApiError(response.status, message, body.issues);
 }
 
+/**
+ * The endpoints where a 401 is the answer rather than an accident.
+ *
+ * Signing in with the wrong password, a passkey assertion that does not verify,
+ * a password-setup link that has expired: each of those returns 401 and means
+ * it. Refreshing and retrying them would be pointless at best, and `refresh`
+ * itself would recurse.
+ *
+ * **Everything else under `/api/auth` is an ordinary authenticated call**, and
+ * the prefix test this replaces did not know the difference. `/api/auth/me` is
+ * the one that mattered. It is what `AuthProvider` asks on every mount, the
+ * access cookie lives exactly as long as the access token, and so coming back
+ * to the panel more than fifteen minutes later meant: cookie gone, `me` answers
+ * 401, no refresh even attempted because the path begins with `/api/auth/`, the
+ * query resolves to "no session", and the sign-in screen appears. Every time,
+ * on top of a refresh token good for thirty days and a session the database
+ * still held as live. Changing the password and the 2FA endpoints were caught
+ * by the same prefix and would have failed the same way once the access token
+ * had expired.
+ *
+ * Listed rather than derived, because the property that matters — "reachable
+ * while signed out" — is not visible in the path.
+ */
+const SIGN_IN_ENDPOINTS = [
+  '/api/auth/login',
+  '/api/auth/refresh',
+  '/api/auth/logout',
+  '/api/auth/password-setup',
+  '/api/auth/passkeys/authenticate/',
+];
+
+function isSignInEndpoint(path: string): boolean {
+  return SIGN_IN_ENDPOINTS.some((endpoint) => path.startsWith(endpoint));
+}
+
 async function send<T>(path: string, options: RequestOptions, retry: boolean): Promise<T> {
   const response = await fetch(path, {
     method: options.method ?? 'GET',
@@ -90,7 +125,7 @@ async function send<T>(path: string, options: RequestOptions, retry: boolean): P
   // A 401 on a normal request nearly always means an expired access token: a
   // silent rotation is attempted before sending the user back to the sign-in
   // screen. Once only, so as not to loop.
-  if (response.status === 401 && retry && !path.startsWith('/api/auth/')) {
+  if (response.status === 401 && retry && !isSignInEndpoint(path)) {
     if (await refreshSession()) {
       return send<T>(path, options, false);
     }

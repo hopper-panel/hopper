@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
-import { ApiError, parseError } from './api';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { ApiError, api, parseError } from './api';
 
 function response(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), {
@@ -53,5 +53,85 @@ describe('parseError', () => {
     const error = await parseError(response(401, { message: 'Authentication required.' }));
 
     expect(error.status).toBe(401);
+  });
+});
+
+/**
+ * Which 401 is worth a silent rotation, and which is the answer.
+ *
+ * The distinction used to be the path's prefix, and `/api/auth/me` was on the
+ * wrong side of it. That endpoint is what `AuthProvider` asks on every mount;
+ * the access cookie lives exactly as long as the access token; so returning to
+ * the panel a quarter of an hour later meant a 401 nothing tried to recover
+ * from, a query resolving to "no session" and the sign-in screen — on top of a
+ * refresh token good for thirty days.
+ */
+describe('the silent refresh', () => {
+  function stubFetch(answers: (path: string) => Response) {
+    const calls: string[] = [];
+
+    const fetch = vi.fn((input: string) => {
+      calls.push(input);
+      return Promise.resolve(answers(input));
+    });
+
+    vi.stubGlobal('fetch', fetch);
+
+    return calls;
+  }
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('renews an expired session behind the account lookup', async () => {
+    let meCalls = 0;
+
+    const calls = stubFetch((path) => {
+      if (path === '/api/auth/refresh') {
+        return response(200, {});
+      }
+
+      // Expired on the first call, answered once the token has been rotated.
+      meCalls += 1;
+      return meCalls === 1
+        ? response(401, { message: 'Unauthorized' })
+        : response(200, { username: 'admin' });
+    });
+
+    await expect(api.get('/api/auth/me')).resolves.toEqual({ username: 'admin' });
+
+    expect(calls).toEqual(['/api/auth/me', '/api/auth/refresh', '/api/auth/me']);
+  });
+
+  it('does not try to renew a sign-in that was refused', async () => {
+    // A wrong password is a 401 that means it. Rotating anything here would be
+    // pointless, and the visitor has no session to rotate.
+    const calls = stubFetch(() => response(401, { message: 'Invalid credentials.' }));
+
+    await expect(api.post('/api/auth/login', { identifier: 'admin' })).rejects.toBeInstanceOf(
+      ApiError,
+    );
+
+    expect(calls).toEqual(['/api/auth/login']);
+  });
+
+  it('does not recurse when the renewal itself is refused', async () => {
+    const calls = stubFetch(() => response(401, { message: 'Session revoked.' }));
+
+    await expect(api.post('/api/auth/refresh')).rejects.toBeInstanceOf(ApiError);
+
+    expect(calls).toEqual(['/api/auth/refresh']);
+  });
+
+  it('gives up after one rotation rather than looping', async () => {
+    const calls = stubFetch((path) =>
+      path === '/api/auth/refresh' ? response(200, {}) : response(401, { message: 'nope' }),
+    );
+
+    await expect(api.get('/api/servers')).rejects.toBeInstanceOf(ApiError);
+
+    // The original, the rotation, the retry — and then it stops.
+    expect(calls).toEqual(['/api/servers', '/api/auth/refresh', '/api/servers']);
   });
 });
