@@ -779,15 +779,10 @@ export const fr: Partial<Messages> = {
   'adminTemplateGroup.empty': 'Aucun template dans ce groupe',
   'adminTemplateGroup.emptyHint': 'Écrivez-en un, ou importez-y un egg Pterodactyl.',
   'adminTemplateGroup.newTemplate': 'Nouveau template',
-  'adminTemplateGroup.settings': 'Groupe',
   'adminTemplateGroup.deleteTitle': 'Supprimer ce groupe',
   'adminTemplateGroup.deleteHint': 'Possible uniquement lorsqu’il ne contient plus de template.',
   'adminTemplateGroup.deleteConfirm': 'Supprimer le groupe « {name} » ?',
   'adminTemplateGroup.importEgg': 'Importer un egg',
-  'adminTemplateGroup.importTitle': 'Importer un egg Pterodactyl',
-  'adminTemplateGroup.importHint':
-    'Le fichier JSON de l’egg, tel qu’exporté depuis Pterodactyl. Il arrivera dans « {group} ».',
-  'adminTemplateGroup.chooseFile': 'Choisir un fichier',
   'adminTemplateGroup.importing': 'Import…',
   'adminTemplateGroup.notJson':
     '« {file} » n’est pas du JSON. Réexportez l’egg depuis Pterodactyl.',

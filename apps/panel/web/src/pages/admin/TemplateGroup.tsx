@@ -26,7 +26,9 @@ export function AdminTemplateGroupPage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const [importing, setImporting] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const picker = useRef<HTMLInputElement>(null);
+  const [unreadable, setUnreadable] = useState<string | null>(null);
 
   const groups = useQuery({
     queryKey: ['admin', 'template-groups'],
@@ -38,6 +40,10 @@ export function AdminTemplateGroupPage() {
     queryFn: () => api.get<TemplateSummary[]>('/api/admin/templates'),
   });
 
+  // Resolved before the hooks below rather than after the loading guard: they
+  // close over it, and every hook has to run before the first early return.
+  const group = groups.data?.find((candidate) => candidate.uuid === uuid);
+
   const remove = useMutation({
     mutationFn: () => api.delete(`/api/admin/templates/groups/${uuid}`),
     onSuccess: () => {
@@ -46,11 +52,55 @@ export function AdminTemplateGroupPage() {
     },
   });
 
+  /**
+   * Uploading a Pterodactyl egg.
+   *
+   * The mutation lives on the page rather than inside a card of its own,
+   * because the button that starts it is in the header: "Import an egg" opens
+   * the file dialog directly. It used to unfold a panel whose only content was
+   * a second button saying "Choose a file", which is two clicks and an
+   * explanation to do the thing the first button already named.
+   *
+   * There is still something to render afterwards, and it is the reason the
+   * result is not a toast: an import that succeeds routinely drops something
+   * the egg declared — a `file` parser whose semantics differ here, a
+   * `{{config.*}}` token nothing on this side can resolve — and that list is
+   * the only warning before the first server built from it fails to start.
+   */
+  const upload = useMutation({
+    mutationFn: (egg: unknown) =>
+      api.post<{ template: TemplateSummary; warnings: string[] }>('/api/admin/templates/import', {
+        egg,
+        group: group?.name,
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['admin', 'templates'] });
+      void queryClient.invalidateQueries({ queryKey: ['admin', 'template-groups'] });
+    },
+  });
+
+  async function importEgg(file: File): Promise<void> {
+    setUnreadable(null);
+    upload.reset();
+
+    let parsed: unknown;
+
+    try {
+      parsed = JSON.parse(await file.text());
+    } catch {
+      // Read here rather than posted: an egg saved from a browser tab as HTML
+      // is the common mistake, and "unexpected token <" from the API says less
+      // than the file's own name does.
+      setUnreadable(t('adminTemplateGroup.notJson', { file: file.name }));
+      return;
+    }
+
+    upload.mutate(parsed);
+  }
+
   if (groups.isLoading || templates.isLoading) {
     return <Spinner label={t('common.loading')} />;
   }
-
-  const group = groups.data?.find((candidate) => candidate.uuid === uuid);
 
   if (!group) {
     return (
@@ -79,8 +129,13 @@ export function AdminTemplateGroupPage() {
         }
         action={
           <div className="flex gap-2">
-            <Button onClick={() => setImporting((value) => !value)}>
-              {importing ? t('common.cancel') : t('adminTemplateGroup.importEgg')}
+            <Button onClick={() => setEditing((value) => !value)}>
+              {editing ? t('common.cancel') : t('common.edit')}
+            </Button>
+            <Button disabled={upload.isPending} onClick={() => picker.current?.click()}>
+              {upload.isPending
+                ? t('adminTemplateGroup.importing')
+                : t('adminTemplateGroup.importEgg')}
             </Button>
             <Link to={`/admin/templates/groups/${uuid}/new`}>
               <Button variant="primary">{t('adminTemplateGroup.newTemplate')}</Button>
@@ -89,15 +144,30 @@ export function AdminTemplateGroupPage() {
         }
       />
 
-      {importing ? (
-        <ImportEggCard
-          group={group.name}
-          onImported={() => {
-            void queryClient.invalidateQueries({ queryKey: ['admin', 'templates'] });
-            void queryClient.invalidateQueries({ queryKey: ['admin', 'template-groups'] });
-          }}
-        />
-      ) : null}
+      {/* Always mounted, never shown: the header button is what opens it, and a
+          file input rendered only while some panel is open cannot be clicked by
+          a button that is the thing opening the panel. */}
+      <input
+        ref={picker}
+        type="file"
+        accept="application/json,.json"
+        className="hidden"
+        onChange={(event) => {
+          const file = event.target.files?.[0];
+
+          if (file) {
+            void importEgg(file);
+          }
+
+          // Cleared so that picking the same file twice fires a second change:
+          // correcting an egg and re-uploading it is the ordinary case.
+          event.target.value = '';
+        }}
+      />
+
+      {editing ? <GroupSettingsCard group={group} onSaved={() => setEditing(false)} /> : null}
+
+      <ImportOutcome unreadable={unreadable} error={upload.error} result={upload.data} />
 
       {owned.length === 0 ? (
         <EmptyState
@@ -144,9 +214,7 @@ export function AdminTemplateGroupPage() {
         </div>
       )}
 
-      <GroupSettingsCard group={group} />
-
-      <Card className="mt-4 border-danger/40">
+      <Card className="mt-6 border-danger/40">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
             <h2 className="font-medium text-content">{t('adminTemplateGroup.deleteTitle')}</h2>
@@ -216,7 +284,25 @@ export function ExportButton({ uuid, templateKey }: { uuid: string; templateKey:
   );
 }
 
-function GroupSettingsCard({ group }: { group: TemplateGroupSummary }) {
+/**
+ * The group's own three fields, behind the header's Edit.
+ *
+ * It used to sit open below the templates, between them and the delete card,
+ * on every visit — a form nobody had asked for, under a heading that repeated
+ * the page title, offering to rename the thing the reader had just navigated
+ * into. Reading a group is the common case and editing one is rare, so the
+ * rare one now costs a click and the common one costs nothing.
+ *
+ * Not deleted outright: `author` exists as a column for this form and nowhere
+ * else, and the only description a group will ever have is the one typed here.
+ */
+function GroupSettingsCard({
+  group,
+  onSaved,
+}: {
+  group: TemplateGroupSummary;
+  onSaved: () => void;
+}) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const [form, setForm] = useState({
@@ -224,26 +310,24 @@ function GroupSettingsCard({ group }: { group: TemplateGroupSummary }) {
     description: group.description,
     author: group.author,
   });
-  const [saved, setSaved] = useState(false);
 
   const save = useMutation({
     mutationFn: () => api.patch(`/api/admin/templates/groups/${group.uuid}`, form),
     onSuccess: () => {
-      setSaved(true);
       void queryClient.invalidateQueries({ queryKey: ['admin', 'template-groups'] });
+      // Closed on success, so the page returns to what it is for. A refusal
+      // keeps it open, because the message belongs next to the field.
+      onSaved();
     },
   });
 
   function handleSubmit(event: FormEvent): void {
     event.preventDefault();
-    setSaved(false);
     save.mutate();
   }
 
   return (
-    <Card className="mt-6">
-      <h2 className="mb-4 font-medium text-content">{t('adminTemplateGroup.settings')}</h2>
-
+    <Card className="mb-6">
       <form onSubmit={handleSubmit} className="space-y-4">
         {/* Renaming a group the bundled catalogue installs into is refused, and
             the message explains that the next resynchronisation would recreate
@@ -277,144 +361,83 @@ function GroupSettingsCard({ group }: { group: TemplateGroupSummary }) {
           />
         </Field>
 
-        <div className="flex items-center gap-3">
-          <Button type="submit" variant="primary" disabled={save.isPending}>
-            {save.isPending ? t('common.saving') : t('common.save')}
-          </Button>
-          {saved && !save.error ? (
-            <span className="text-sm text-content-muted">{t('common.saved')}</span>
-          ) : null}
-        </div>
+        <Button type="submit" variant="primary" disabled={save.isPending}>
+          {save.isPending ? t('common.saving') : t('common.save')}
+        </Button>
       </form>
     </Card>
   );
 }
 
 /**
- * Uploading a Pterodactyl egg.
+ * What an import left behind.
  *
- * Promised by the documentation since the importer was written — "From
- * Administration → Templates, upload the egg's JSON file" — and there has never
- * been anywhere to upload one. The importer itself has been reachable only over
- * HTTP, which meant the feature the README advertises was, in the interface, an
- * instruction to use curl.
- *
- * The warnings are the point of showing a result at all. An import that
- * succeeds still routinely drops something the egg declared — a `file` parser
- * whose semantics differ here, a `{{config.*}}` token nothing on this side can
- * resolve — and the list is the only place that says so before the first
- * server built from it fails to start.
+ * Rendered only once there is something to say, so the page carries nothing
+ * about importing until an egg has actually been picked. The warnings are the
+ * reason a *successful* import is worth reporting at all: one routinely drops
+ * something the egg declared, and this list is the only notice before the
+ * first server built from it fails to start.
  */
-function ImportEggCard({ group, onImported }: { group: string; onImported: () => void }) {
+function ImportOutcome({
+  unreadable,
+  error,
+  result,
+}: {
+  unreadable: string | null;
+  error: unknown;
+  result: { template: TemplateSummary; warnings: string[] } | undefined;
+}) {
   const { t } = useTranslation();
-  const input = useRef<HTMLInputElement>(null);
-  const [unreadable, setUnreadable] = useState<string | null>(null);
 
-  const upload = useMutation({
-    mutationFn: (egg: unknown) =>
-      api.post<{ template: TemplateSummary; warnings: string[] }>('/api/admin/templates/import', {
-        egg,
-        group,
-      }),
-    onSuccess: onImported,
-  });
+  if (unreadable) {
+    return (
+      <div className="mb-6">
+        <Alert>{unreadable}</Alert>
+      </div>
+    );
+  }
 
-  async function handleFile(file: File): Promise<void> {
-    setUnreadable(null);
-    upload.reset();
+  if (error instanceof ApiError) {
+    return (
+      <div className="mb-6">
+        <Alert>
+          {error.message}
+          {/* The importer returns the field-by-field reasons, and without them
+              "the egg is invalid" is not something anyone can act on. */}
+          {error.issues?.length ? (
+            <ul className="mt-2 list-inside list-disc font-mono text-xs">
+              {error.issues.map((issue) => (
+                <li key={`${issue.path}:${issue.message}`}>
+                  {issue.path}: {issue.message}
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </Alert>
+      </div>
+    );
+  }
 
-    let parsed: unknown;
-
-    try {
-      parsed = JSON.parse(await file.text());
-    } catch {
-      // Read here rather than posted: an egg exported from a browser tab and
-      // saved as HTML is the common mistake, and "unexpected token <" from the
-      // API says less than the file's own name does.
-      setUnreadable(t('adminTemplateGroup.notJson', { file: file.name }));
-      return;
-    }
-
-    upload.mutate(parsed);
+  if (!result) {
+    return null;
   }
 
   return (
-    <Card className="mb-6">
-      <h2 className="font-medium text-content">{t('adminTemplateGroup.importTitle')}</h2>
-      <p className="mt-1 text-sm text-content-muted">
-        {t('adminTemplateGroup.importHint', { group })}
-      </p>
+    <div className="mb-6">
+      <Alert tone="info">
+        <p>{t('adminTemplateGroup.imported', { name: result.template.name })}</p>
 
-      <input
-        ref={input}
-        type="file"
-        accept="application/json,.json"
-        className="hidden"
-        onChange={(event) => {
-          const file = event.target.files?.[0];
-
-          if (file) {
-            void handleFile(file);
-          }
-
-          // Cleared so that picking the same file twice fires a second change:
-          // correcting an egg and re-uploading it is the ordinary case.
-          event.target.value = '';
-        }}
-      />
-
-      <Button
-        className="mt-4"
-        variant="primary"
-        disabled={upload.isPending}
-        onClick={() => input.current?.click()}
-      >
-        {upload.isPending ? t('adminTemplateGroup.importing') : t('adminTemplateGroup.chooseFile')}
-      </Button>
-
-      {unreadable ? (
-        <div className="mt-4">
-          <Alert>{unreadable}</Alert>
-        </div>
-      ) : null}
-
-      {upload.error instanceof ApiError ? (
-        <div className="mt-4">
-          <Alert>
-            {upload.error.message}
-            {/* The importer returns the field-by-field reasons, and without
-                them "the egg is invalid" is not something anyone can act on. */}
-            {upload.error.issues?.length ? (
-              <ul className="mt-2 list-inside list-disc font-mono text-xs">
-                {upload.error.issues.map((issue) => (
-                  <li key={`${issue.path}:${issue.message}`}>
-                    {issue.path}: {issue.message}
-                  </li>
-                ))}
-              </ul>
-            ) : null}
-          </Alert>
-        </div>
-      ) : null}
-
-      {upload.data ? (
-        <div className="mt-4">
-          <Alert tone="info">
-            <p>{t('adminTemplateGroup.imported', { name: upload.data.template.name })}</p>
-
-            {upload.data.warnings.length > 0 ? (
-              <>
-                <p className="mt-2 font-medium">{t('adminTemplateGroup.warnings')}</p>
-                <ul className="mt-1 list-inside list-disc text-xs">
-                  {upload.data.warnings.map((warning) => (
-                    <li key={warning}>{warning}</li>
-                  ))}
-                </ul>
-              </>
-            ) : null}
-          </Alert>
-        </div>
-      ) : null}
-    </Card>
+        {result.warnings.length > 0 ? (
+          <>
+            <p className="mt-2 font-medium">{t('adminTemplateGroup.warnings')}</p>
+            <ul className="mt-1 list-inside list-disc text-xs">
+              {result.warnings.map((warning) => (
+                <li key={warning}>{warning}</li>
+              ))}
+            </ul>
+          </>
+        ) : null}
+      </Alert>
+    </div>
   );
 }
