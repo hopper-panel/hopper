@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useState, type FormEvent } from 'react';
+import { useState } from 'react';
+import { FormDialog } from '../../components/FormDialog';
 import { PageHeader } from '../../components/PageHeader';
 import { Alert, Badge, Button, Card, Field, Input, Spinner } from '../../components/ui';
 import { ApiError, api, type Paginated, type UserSummary } from '../../lib/api';
@@ -56,14 +57,15 @@ export function AdminUsersPage() {
         title={t('adminUsers.title')}
         description={t('adminUsers.count', { count: data?.meta.total ?? 0 })}
         action={
-          <Button variant="primary" onClick={() => setCreating((value) => !value)}>
-            {creating ? t('common.cancel') : t('adminUsers.create')}
+          <Button variant="primary" onClick={() => setCreating(true)}>
+            {t('adminUsers.create')}
           </Button>
         }
       />
 
       {creating ? (
-        <CreateUserForm
+        <CreateUserDialog
+          onClose={() => setCreating(false)}
           onSubmit={(body) => createMutation.mutate(body)}
           pending={createMutation.isPending}
           error={createMutation.error}
@@ -147,11 +149,13 @@ export function AdminUsersPage() {
   );
 }
 
-function CreateUserForm({
+function CreateUserDialog({
+  onClose,
   onSubmit,
   pending,
   error,
 }: {
+  onClose: () => void;
   onSubmit: (body: Record<string, unknown>) => void;
   pending: boolean;
   error: unknown;
@@ -159,69 +163,65 @@ function CreateUserForm({
   const { t } = useTranslation();
   const [form, setForm] = useState({ email: '', username: '', password: '', role: 'USER' });
 
-  function handleSubmit(event: FormEvent): void {
-    event.preventDefault();
-
-    // Empty password: the field is optional, and sending it empty would fail
-    // validation instead of triggering the mail invitation.
-    onSubmit({
-      ...form,
-      password: form.password === '' ? undefined : form.password,
-    });
-  }
-
   return (
-    <Card className="mb-6">
-      <form onSubmit={handleSubmit} className="space-y-4">
-        {error instanceof ApiError ? <Alert>{error.message}</Alert> : null}
+    <FormDialog
+      title={t('adminUsers.create')}
+      formId="create-user"
+      onClose={onClose}
+      onSubmit={() =>
+        // Empty password: the field is optional, and sending it empty would
+        // fail validation instead of triggering the mail invitation.
+        onSubmit({ ...form, password: form.password === '' ? undefined : form.password })
+      }
+      submit={t('common.create')}
+      submitting={t('common.saving')}
+      pending={pending}
+      disabled={form.email.trim() === '' || form.username.trim() === ''}
+      error={error}
+    >
+      <div className="grid gap-4 sm:grid-cols-2">
+        <Field label={t('adminUsers.email')}>
+          <Input
+            type="email"
+            value={form.email}
+            onChange={(event) => setForm({ ...form, email: event.target.value })}
+            autoFocus
+            required
+          />
+        </Field>
 
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Field label={t('adminUsers.email')}>
-            <Input
-              type="email"
-              value={form.email}
-              onChange={(event) => setForm({ ...form, email: event.target.value })}
-              required
-            />
-          </Field>
+        <Field label={t('adminUsers.username')} hint={t('adminUsers.usernameHint')}>
+          <Input
+            value={form.username}
+            onChange={(event) => setForm({ ...form, username: event.target.value })}
+            pattern="[a-zA-Z0-9_-]+"
+            minLength={3}
+            maxLength={32}
+            required
+          />
+        </Field>
 
-          <Field label={t('adminUsers.username')} hint={t('adminUsers.usernameHint')}>
-            <Input
-              value={form.username}
-              onChange={(event) => setForm({ ...form, username: event.target.value })}
-              pattern="[a-zA-Z0-9_-]+"
-              minLength={3}
-              maxLength={32}
-              required
-            />
-          </Field>
+        <Field label={t('adminUsers.password')} hint={t('adminUsers.passwordHint')}>
+          <Input
+            type="password"
+            value={form.password}
+            onChange={(event) => setForm({ ...form, password: event.target.value })}
+            minLength={12}
+            placeholder={t('adminUsers.passwordPlaceholder')}
+          />
+        </Field>
 
-          <Field label={t('adminUsers.password')} hint={t('adminUsers.passwordHint')}>
-            <Input
-              type="password"
-              value={form.password}
-              onChange={(event) => setForm({ ...form, password: event.target.value })}
-              minLength={12}
-              placeholder={t('adminUsers.passwordPlaceholder')}
-            />
-          </Field>
-
-          <Field label={t('adminUsers.role')} hint={t('adminUsers.roleHint')}>
-            <select
-              value={form.role}
-              onChange={(event) => setForm({ ...form, role: event.target.value })}
-              className="w-full rounded-lg border border-border-subtle bg-surface px-3 py-2 text-sm text-content focus:border-accent focus:outline-none"
-            >
-              <option value="USER">{t('adminUsers.roleUser')}</option>
-              <option value="ADMIN">{t('adminUsers.roleAdmin')}</option>
-            </select>
-          </Field>
-        </div>
-
-        <Button type="submit" variant="primary" disabled={pending}>
-          {pending ? t('common.saving') : t('common.create')}
-        </Button>
-      </form>
-    </Card>
+        <Field label={t('adminUsers.role')} hint={t('adminUsers.roleHint')}>
+          <select
+            value={form.role}
+            onChange={(event) => setForm({ ...form, role: event.target.value })}
+            className="w-full rounded-lg border border-border-subtle bg-surface px-3 py-2 text-sm text-content focus:border-accent focus:outline-none"
+          >
+            <option value="USER">{t('adminUsers.roleUser')}</option>
+            <option value="ADMIN">{t('adminUsers.roleAdmin')}</option>
+          </select>
+        </Field>
+      </div>
+    </FormDialog>
   );
 }

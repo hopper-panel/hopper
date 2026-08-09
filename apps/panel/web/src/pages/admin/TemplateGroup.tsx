@@ -1,7 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useRef, useState, type FormEvent } from 'react';
+import { useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { DownloadIcon } from '../../components/icons';
+import { FormDialog } from '../../components/FormDialog';
 import { PageHeader } from '../../components/PageHeader';
 import { Alert, Badge, Button, Card, EmptyState, Field, Input, Spinner } from '../../components/ui';
 import { useTranslation } from '../../i18n';
@@ -129,9 +130,7 @@ export function AdminTemplateGroupPage() {
         }
         action={
           <div className="flex gap-2">
-            <Button onClick={() => setEditing((value) => !value)}>
-              {editing ? t('common.cancel') : t('common.edit')}
-            </Button>
+            <Button onClick={() => setEditing(true)}>{t('common.edit')}</Button>
             <Button disabled={upload.isPending} onClick={() => picker.current?.click()}>
               {upload.isPending
                 ? t('adminTemplateGroup.importing')
@@ -165,7 +164,7 @@ export function AdminTemplateGroupPage() {
         }}
       />
 
-      {editing ? <GroupSettingsCard group={group} onSaved={() => setEditing(false)} /> : null}
+      {editing ? <GroupSettingsDialog group={group} onClose={() => setEditing(false)} /> : null}
 
       <ImportOutcome unreadable={unreadable} error={upload.error} result={upload.data} />
 
@@ -285,23 +284,22 @@ export function ExportButton({ uuid, templateKey }: { uuid: string; templateKey:
 }
 
 /**
- * The group's own three fields, behind the header's Edit.
+ * The group's own three fields.
  *
- * It used to sit open below the templates, between them and the delete card,
- * on every visit — a form nobody had asked for, under a heading that repeated
- * the page title, offering to rename the thing the reader had just navigated
- * into. Reading a group is the common case and editing one is rare, so the
- * rare one now costs a click and the common one costs nothing.
+ * It sat open below the templates on every visit, then behind an Edit button,
+ * and is now the same dialog as creating one a screen up — the two edit the
+ * same three columns and there was no reason for them to feel different.
  *
- * Not deleted outright: `author` exists as a column for this form and nowhere
- * else, and the only description a group will ever have is the one typed here.
+ * Not deleted, which was the other way to read "remove that": `author` is a
+ * column that exists for this form and nowhere else, and the only description a
+ * group will ever have is the one typed here.
  */
-function GroupSettingsCard({
+function GroupSettingsDialog({
   group,
-  onSaved,
+  onClose,
 }: {
   group: TemplateGroupSummary;
-  onSaved: () => void;
+  onClose: () => void;
 }) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
@@ -315,57 +313,50 @@ function GroupSettingsCard({
     mutationFn: () => api.patch(`/api/admin/templates/groups/${group.uuid}`, form),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['admin', 'template-groups'] });
-      // Closed on success, so the page returns to what it is for. A refusal
-      // keeps it open, because the message belongs next to the field.
-      onSaved();
+      onClose();
     },
   });
 
-  function handleSubmit(event: FormEvent): void {
-    event.preventDefault();
-    save.mutate();
-  }
-
   return (
-    <Card className="mb-6">
-      <form onSubmit={handleSubmit} className="space-y-4">
-        {/* Renaming a group the bundled catalogue installs into is refused, and
-            the message explains that the next resynchronisation would recreate
-            it and split the group in two. */}
-        {save.error instanceof ApiError ? <Alert>{save.error.message}</Alert> : null}
+    <FormDialog
+      title={t('common.edit')}
+      formId="edit-template-group"
+      onClose={onClose}
+      onSubmit={() => save.mutate()}
+      submit={t('common.save')}
+      submitting={t('common.saving')}
+      pending={save.isPending}
+      disabled={form.name.trim() === ''}
+      /* Renaming a group the bundled catalogue installs into is refused, and
+         the message explains that the next resynchronisation would recreate it
+         and split the group in two. The dialog stays open to show it. */
+      error={save.error}
+    >
+      <Field label={t('adminTemplates.groupName')}>
+        <Input
+          value={form.name}
+          onChange={(event) => setForm({ ...form, name: event.target.value })}
+          maxLength={100}
+          autoFocus
+        />
+      </Field>
 
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Field label={t('adminTemplates.groupName')}>
-            <Input
-              value={form.name}
-              onChange={(event) => setForm({ ...form, name: event.target.value })}
-              maxLength={100}
-              required
-            />
-          </Field>
+      <Field label={t('adminTemplates.groupAuthor')} hint={t('adminTemplates.groupAuthorHint')}>
+        <Input
+          value={form.author}
+          onChange={(event) => setForm({ ...form, author: event.target.value })}
+          maxLength={100}
+        />
+      </Field>
 
-          <Field label={t('adminTemplates.groupAuthor')} hint={t('adminTemplates.groupAuthorHint')}>
-            <Input
-              value={form.author}
-              onChange={(event) => setForm({ ...form, author: event.target.value })}
-              maxLength={100}
-            />
-          </Field>
-        </div>
-
-        <Field label={t('adminTemplates.groupDescription')}>
-          <Input
-            value={form.description}
-            onChange={(event) => setForm({ ...form, description: event.target.value })}
-            maxLength={1000}
-          />
-        </Field>
-
-        <Button type="submit" variant="primary" disabled={save.isPending}>
-          {save.isPending ? t('common.saving') : t('common.save')}
-        </Button>
-      </form>
-    </Card>
+      <Field label={t('adminTemplates.groupDescription')}>
+        <Input
+          value={form.description}
+          onChange={(event) => setForm({ ...form, description: event.target.value })}
+          maxLength={1000}
+        />
+      </Field>
+    </FormDialog>
   );
 }
 

@@ -1,7 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useState, type FormEvent } from 'react';
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { PageHeader } from '../../components/PageHeader';
+import { FormDialog } from '../../components/FormDialog';
 import { Alert, Button, Card, EmptyState, Field, Input, Spinner } from '../../components/ui';
 import { useTranslation } from '../../i18n';
 import { ApiError, api, type TemplateGroupSummary } from '../../lib/api';
@@ -84,8 +85,8 @@ export function AdminTemplatesPage() {
             <Button onClick={() => sync.mutate()} disabled={sync.isPending}>
               {sync.isPending ? t('adminTemplates.resyncing') : t('adminTemplates.resync')}
             </Button>
-            <Button variant="primary" onClick={() => setCreating((value) => !value)}>
-              {creating ? t('common.cancel') : t('adminTemplates.addGroup')}
+            <Button variant="primary" onClick={() => setCreating(true)}>
+              {t('adminTemplates.addGroup')}
             </Button>
           </div>
         }
@@ -104,7 +105,8 @@ export function AdminTemplatesPage() {
       ) : null}
 
       {creating ? (
-        <CreateGroupForm
+        <GroupDialog
+          onClose={() => setCreating(false)}
           onSubmit={(body) => create.mutate(body)}
           pending={create.isPending}
           error={create.error}
@@ -143,11 +145,19 @@ export function AdminTemplatesPage() {
   );
 }
 
-function CreateGroupForm({
+/**
+ * Creating a group.
+ *
+ * Rendered behind a condition rather than with an `open` prop, which is what
+ * makes a dismissed dialog reopen empty — see {@link FormDialog}.
+ */
+function GroupDialog({
+  onClose,
   onSubmit,
   pending,
   error,
 }: {
+  onClose: () => void;
   onSubmit: (body: Record<string, unknown>) => void;
   pending: boolean;
   error: unknown;
@@ -155,48 +165,43 @@ function CreateGroupForm({
   const { t } = useTranslation();
   const [form, setForm] = useState({ name: '', description: '', author: '' });
 
-  function handleSubmit(event: FormEvent): void {
-    event.preventDefault();
-    onSubmit(form);
-  }
-
   return (
-    <Card className="mb-6">
-      <form onSubmit={handleSubmit} className="space-y-4">
-        {error instanceof ApiError ? <Alert>{error.message}</Alert> : null}
+    <FormDialog
+      title={t('adminTemplates.addGroup')}
+      formId="create-template-group"
+      onClose={onClose}
+      onSubmit={() => onSubmit(form)}
+      submit={t('adminTemplates.createGroup')}
+      submitting={t('adminTemplates.creating')}
+      pending={pending}
+      disabled={form.name.trim() === ''}
+      error={error}
+    >
+      <Field label={t('adminTemplates.groupName')}>
+        <Input
+          value={form.name}
+          onChange={(event) => setForm({ ...form, name: event.target.value })}
+          placeholder="Rust"
+          maxLength={100}
+          autoFocus
+        />
+      </Field>
 
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Field label={t('adminTemplates.groupName')}>
-            <Input
-              value={form.name}
-              onChange={(event) => setForm({ ...form, name: event.target.value })}
-              placeholder="Rust"
-              maxLength={100}
-              required
-            />
-          </Field>
+      <Field label={t('adminTemplates.groupAuthor')} hint={t('adminTemplates.groupAuthorHint')}>
+        <Input
+          value={form.author}
+          onChange={(event) => setForm({ ...form, author: event.target.value })}
+          maxLength={100}
+        />
+      </Field>
 
-          <Field label={t('adminTemplates.groupAuthor')} hint={t('adminTemplates.groupAuthorHint')}>
-            <Input
-              value={form.author}
-              onChange={(event) => setForm({ ...form, author: event.target.value })}
-              maxLength={100}
-            />
-          </Field>
-        </div>
-
-        <Field label={t('adminTemplates.groupDescription')}>
-          <Input
-            value={form.description}
-            onChange={(event) => setForm({ ...form, description: event.target.value })}
-            maxLength={1000}
-          />
-        </Field>
-
-        <Button type="submit" variant="primary" disabled={pending}>
-          {pending ? t('adminTemplates.creating') : t('adminTemplates.createGroup')}
-        </Button>
-      </form>
-    </Card>
+      <Field label={t('adminTemplates.groupDescription')}>
+        <Input
+          value={form.description}
+          onChange={(event) => setForm({ ...form, description: event.target.value })}
+          maxLength={1000}
+        />
+      </Field>
+    </FormDialog>
   );
 }

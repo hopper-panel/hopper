@@ -1,10 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useState, type FormEvent } from 'react';
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
+import { FormDialog } from '../../components/FormDialog';
 import { PageHeader } from '../../components/PageHeader';
-import { Alert, Badge, Button, Card, EmptyState, Field, Input, Spinner } from '../../components/ui';
+import { Badge, Button, Card, EmptyState, Field, Input, Spinner } from '../../components/ui';
 import { useTranslation } from '../../i18n';
-import { ApiError, api, type NodeSummary, type Paginated } from '../../lib/api';
+import { api, type NodeSummary, type Paginated } from '../../lib/api';
 import { formatBytes } from '../../lib/format';
 
 const GIB = 1024 ** 3;
@@ -44,8 +45,8 @@ export function AdminNodesPage() {
         title={t('adminNodes.title')}
         description={t('adminNodes.subtitle')}
         action={
-          <Button variant="primary" onClick={() => setCreating((value) => !value)}>
-            {creating ? t('common.cancel') : t('adminNodes.add')}
+          <Button variant="primary" onClick={() => setCreating(true)}>
+            {t('adminNodes.add')}
           </Button>
         }
       />
@@ -56,6 +57,7 @@ export function AdminNodesPage() {
 
       {creating ? (
         <CreateNodeForm
+          onClose={() => setCreating(false)}
           onSubmit={(body) => createMutation.mutate(body)}
           pending={createMutation.isPending}
           error={createMutation.error}
@@ -116,10 +118,12 @@ function NodeRow({ node }: { node: NodeSummary }) {
 }
 
 function CreateNodeForm({
+  onClose,
   onSubmit,
   pending,
   error,
 }: {
+  onClose: () => void;
   onSubmit: (body: Record<string, unknown>) => void;
   pending: boolean;
   error: unknown;
@@ -134,8 +138,7 @@ function CreateNodeForm({
     diskGib: 200,
   });
 
-  function handleSubmit(event: FormEvent): void {
-    event.preventDefault();
+  function submit(): void {
     onSubmit({
       name: form.name,
       fqdn: form.fqdn,
@@ -147,77 +150,79 @@ function CreateNodeForm({
   }
 
   return (
-    <Card className="mb-6">
-      <form onSubmit={handleSubmit} className="space-y-4">
-        {error instanceof ApiError ? <Alert>{error.message}</Alert> : null}
+    <FormDialog
+      title={t('adminNodes.add')}
+      formId="create-node"
+      onClose={onClose}
+      onSubmit={submit}
+      submit={t('adminNodes.create')}
+      submitting={t('adminNodes.creating')}
+      pending={pending}
+      disabled={form.name.trim() === '' || form.fqdn.trim() === ''}
+      error={error}
+    >
+      <div className="grid gap-4 sm:grid-cols-2">
+        <Field label={t('adminNodes.name')}>
+          <Input
+            value={form.name}
+            onChange={(event) => setForm({ ...form, name: event.target.value })}
+            placeholder="node-paris-1"
+            required
+          />
+        </Field>
 
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Field label={t('adminNodes.name')}>
-            <Input
-              value={form.name}
-              onChange={(event) => setForm({ ...form, name: event.target.value })}
-              placeholder="node-paris-1"
-              required
-            />
-          </Field>
+        <Field label={t('adminNodes.fqdn')} hint={t('adminNodes.fqdnHint')}>
+          <Input
+            value={form.fqdn}
+            onChange={(event) => setForm({ ...form, fqdn: event.target.value })}
+            placeholder="node1.example.com"
+            required
+          />
+        </Field>
 
-          <Field label={t('adminNodes.fqdn')} hint={t('adminNodes.fqdnHint')}>
-            <Input
-              value={form.fqdn}
-              onChange={(event) => setForm({ ...form, fqdn: event.target.value })}
-              placeholder="node1.example.com"
-              required
-            />
-          </Field>
+        <Field label={t('adminNodes.daemonPort')}>
+          <Input
+            type="number"
+            value={form.port}
+            onChange={(event) => setForm({ ...form, port: Number(event.target.value) })}
+            min={1}
+            max={65535}
+            required
+          />
+        </Field>
 
-          <Field label={t('adminNodes.daemonPort')}>
-            <Input
-              type="number"
-              value={form.port}
-              onChange={(event) => setForm({ ...form, port: Number(event.target.value) })}
-              min={1}
-              max={65535}
-              required
-            />
-          </Field>
+        <Field label={t('adminNodes.scheme')} hint={t('adminNodes.schemeHint')}>
+          <select
+            value={form.scheme}
+            onChange={(event) => setForm({ ...form, scheme: event.target.value })}
+            className="w-full rounded-lg border border-border-subtle bg-surface px-3 py-2 text-sm text-content focus:border-accent focus:outline-none"
+          >
+            <option value="https">https</option>
+            <option value="http">http</option>
+          </select>
+        </Field>
 
-          <Field label={t('adminNodes.scheme')} hint={t('adminNodes.schemeHint')}>
-            <select
-              value={form.scheme}
-              onChange={(event) => setForm({ ...form, scheme: event.target.value })}
-              className="w-full rounded-lg border border-border-subtle bg-surface px-3 py-2 text-sm text-content focus:border-accent focus:outline-none"
-            >
-              <option value="https">https</option>
-              <option value="http">http</option>
-            </select>
-          </Field>
+        <Field label={t('adminNodes.memory')} hint={t('adminNodes.capacityHint')}>
+          <Input
+            type="number"
+            value={form.memoryGib}
+            onChange={(event) => setForm({ ...form, memoryGib: Number(event.target.value) })}
+            min={0}
+            required
+          />
+        </Field>
 
-          <Field label={t('adminNodes.memory')} hint={t('adminNodes.capacityHint')}>
-            <Input
-              type="number"
-              value={form.memoryGib}
-              onChange={(event) => setForm({ ...form, memoryGib: Number(event.target.value) })}
-              min={0}
-              required
-            />
-          </Field>
-
-          <Field label={t('adminNodes.disk')}>
-            <Input
-              type="number"
-              value={form.diskGib}
-              onChange={(event) => setForm({ ...form, diskGib: Number(event.target.value) })}
-              min={0}
-              required
-            />
-          </Field>
-        </div>
-
-        <Button type="submit" variant="primary" disabled={pending}>
-          {pending ? t('adminNodes.creating') : t('adminNodes.create')}
-        </Button>
-      </form>
-    </Card>
+        <Field label={t('adminNodes.disk')}>
+          <Input
+            type="number"
+            value={form.diskGib}
+            onChange={(event) => setForm({ ...form, diskGib: Number(event.target.value) })}
+            min={0}
+            required
+          />
+        </Field>
+      </div>
+    </FormDialog>
   );
 }
 
