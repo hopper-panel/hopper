@@ -1,6 +1,6 @@
 {
   "name": "@hopper/shared",
-  "version": "0.9.0",
+  "version": "0.10.0",
   "private": true,
   "license": "AGPL-3.0-or-later",
   "description": "Shared contract between the Hopper panel and daemon (Zod schemas, permissions, types)",
