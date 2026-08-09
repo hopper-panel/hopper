@@ -14,10 +14,10 @@ import { CryptoService } from '../../common/crypto/crypto.service.js';
 import type { Environment } from '../../config/environment.js';
 import type { PrismaService } from '../../prisma/prisma.service.js';
 import { scopeAllows } from '../api-keys/api-key.js';
-import type { AuditService } from '../audit/audit.service.js';
+import { AUDIT_EVENTS, type AuditService } from '../audit/audit.service.js';
 import type { NodesService } from '../nodes/nodes.service.js';
 import { ConsoleController } from '../servers/console.controller.js';
-import { AuthService } from './auth.service.js';
+import { AuthService, ROTATION_GRACE_MS } from './auth.service.js';
 import type { PasswordService } from './password.service.js';
 import type { RequestServer, RequestUser } from './request-user.js';
 import {
@@ -1180,6 +1180,17 @@ describe('refresh rotation and replay', () => {
           if (found) found.revokedAt = data.revokedAt;
           return Promise.resolve(found);
         }),
+        count: vi.fn(
+          ({ where }: { where: { family: string; revokedAt: null; expiresAt: { gt: Date } } }) =>
+            Promise.resolve(
+              sessions.filter(
+                (s) =>
+                  s.family === where.family &&
+                  s.revokedAt === null &&
+                  s.expiresAt > where.expiresAt.gt,
+              ).length,
+            ),
+        ),
         updateMany: vi.fn(
           ({ where, data }: { where: { family: string }; data: { revokedAt: Date } }) => {
             let count = 0;
@@ -1208,6 +1219,7 @@ describe('refresh rotation and replay', () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     vi.restoreAllMocks();
   });
 
@@ -1258,6 +1270,12 @@ describe('refresh rotation and replay', () => {
     const stolen = seed('doomed');
     const rotated = await auth.refresh(stolen, CONTEXT);
 
+    // Past the window a racing tab is given. Only `Date` is faked: faking the
+    // timers wholesale would take the microtask queue with it and the awaits
+    // below would never settle.
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(Date.now() + ROTATION_GRACE_MS + 1_000);
+
     await expect(auth.refresh(stolen, CONTEXT)).rejects.toThrow(/revoked/i);
 
     // The token the honest client obtained is dead too.
@@ -1269,6 +1287,69 @@ describe('refresh rotation and replay', () => {
     expect(record).toHaveBeenCalledWith(
       expect.objectContaining({ metadata: { family: 'doomed' } }),
     );
+  });
+
+  /**
+   * Two tabs, one cookie jar, one refresh token.
+   *
+   * The access cookie's `maxAge` is the access token's own lifetime, so every
+   * tab of the same browser loses it at the same second. Each then sees a 401
+   * and refreshes — and `api.ts` only de-duplicates that *within a tab*, because
+   * its in-flight promise is a module variable. So one tab rotates, the other's
+   * request arrives holding the token that rotation just revoked, the family
+   * burns, and both tabs are signed out. Every fifteen minutes, for anybody who
+   * works with the panel open twice.
+   *
+   * The replay is real; what it is not is theft. A racing tab presents the old
+   * token within milliseconds of its rotation and the family is still alive; a
+   * stolen token turns up long afterwards, or after the family has been signed
+   * out. Those two are told apart below, and only the second one burns.
+   */
+  it('does not sign everybody out when two tabs refresh at the same moment', async () => {
+    const shared = seed('two-tabs');
+
+    const first = await auth.refresh(shared, CONTEXT);
+    const second = await auth.refresh(shared, CONTEXT);
+
+    // Both tabs hold a working session, and neither has been revoked.
+    expect(
+      sessions.find((s) => s.tokenHash === crypto.hashToken(first.refreshToken))?.revokedAt,
+    ).toBeNull();
+    expect(
+      sessions.find((s) => s.tokenHash === crypto.hashToken(second.refreshToken))?.revokedAt,
+    ).toBeNull();
+
+    // And nothing was reported as an attack, because nothing was one.
+    expect(record).not.toHaveBeenCalledWith(
+      expect.objectContaining({ event: AUDIT_EVENTS.TOKEN_REUSE_DETECTED }),
+    );
+  });
+
+  /**
+   * The other half of the race test, and the one that keeps it honest.
+   *
+   * Signing out revokes every session in the family and creates no successor,
+   * so a token replayed straight afterwards is inside the grace window and must
+   * still be refused. Without this, "was it revoked recently?" would be the
+   * whole test and a token picked out of a shared machine seconds after its
+   * owner signed out would open the session back up.
+   */
+  it('still refuses a token replayed a second after signing out', async () => {
+    const token = seed('signed-out');
+    await auth.logout(token, CONTEXT);
+
+    await expect(auth.refresh(token, CONTEXT)).rejects.toThrow(/revoked/i);
+  });
+
+  it('burns the family for a replay just past the window', async () => {
+    const stolen = seed('late');
+    await auth.refresh(stolen, CONTEXT);
+
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(Date.now() + ROTATION_GRACE_MS + 1);
+
+    await expect(auth.refresh(stolen, CONTEXT)).rejects.toThrow(/revoked/i);
+    expect(sessions.filter((s) => s.family === 'late' && s.revokedAt === null)).toHaveLength(0);
   });
 
   it('refuses an unknown token without saying whether it ever existed', async () => {

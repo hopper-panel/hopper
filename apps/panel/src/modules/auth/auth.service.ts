@@ -19,6 +19,17 @@ import { TotpService } from './totp.service.js';
 const LOGIN_ATTEMPT_LIMIT = 5;
 const LOGIN_WINDOW_SECONDS = 15 * 60;
 
+/**
+ * How long a refresh token stays tolerated after the rotation that revoked it.
+ *
+ * Sized for a browser losing a race, not for a user: the tabs that collide do
+ * so within milliseconds of each other, because they lose the same cookie at
+ * the same second. Thirty seconds is room for a throttled background tab to
+ * wake up and still be recognised as the straggler it is, and it is the whole
+ * width of the hole this opens — see {@link AuthService.refresh}.
+ */
+export const ROTATION_GRACE_MS = 30_000;
+
 export interface RequestContext {
   ip: string;
   userAgent?: string;
@@ -157,9 +168,31 @@ export class AuthService {
    * Exchanges a refresh token for a fresh pair of tokens.
    *
    * Rotation is systematic and the old token is kept in the database, revoked.
-   * Presenting it again signals it was stolen: the whole session family is then
-   * revoked, which signs out the attacker and the legitimate user alike. That
-   * is intended — a re-login beats a session quietly plundered.
+   * Presenting it again long afterwards signals it was stolen: the whole session
+   * family is then revoked, which signs out the attacker and the legitimate user
+   * alike. That is intended — a re-login beats a session quietly plundered.
+   *
+   * **Presenting it a moment afterwards signals nothing of the kind**, and
+   * treating the two the same made the panel unusable. The access cookie's
+   * `maxAge` is the access token's own lifetime, so every tab of one browser
+   * loses it in the same second; each then meets a 401 and refreshes, and the
+   * client only de-duplicates that within a tab, its in-flight promise being a
+   * module variable. One tab rotated, the other's request arrived carrying the
+   * token that rotation had just revoked, and the family burned. Every fifteen
+   * minutes, for anybody who keeps the panel open twice.
+   *
+   * So a replay inside {@link ROTATION_GRACE_MS} of the rotation that revoked
+   * it, on a family that is still alive, is read as the race it is and rotates
+   * again. Everything else still burns the family — including a replay after a
+   * sign-out, because logging out revokes every session in the family and
+   * leaves none alive for this to find.
+   *
+   * The cost is stated rather than hidden: a token stolen and replayed *within
+   * that window*, while the honest client is still signed in, is no longer
+   * caught. Nothing can tell those two apart — both are the same token arriving
+   * twice, seconds apart, from a family in use — so the only lever is the width
+   * of the window, and thirty seconds is far more than a browser needs to lose
+   * a race and far less than a stolen token waits.
    */
   async refresh(
     refreshToken: string,
@@ -176,7 +209,7 @@ export class AuthService {
       throw new UnauthorizedException('Unknown or expired session.');
     }
 
-    if (session.revokedAt) {
+    if (session.revokedAt && !(await this.isRotationRace(session))) {
       this.logger.warn(
         `Reuse of a revoked refresh token (user ${session.user.uuid}): revoking family ${session.family}`,
       );
@@ -217,6 +250,38 @@ export class AuthService {
       refreshToken: rotated.refreshToken,
       user: this.toAuthenticatedUser(session.user),
     };
+  }
+
+  /**
+   * Was this revoked token presented by a client that lost a rotation race?
+   *
+   * Two conditions, and each rules out a different thing the reuse detector is
+   * there to catch.
+   *
+   * **Recently revoked**, because a race is measured in milliseconds. A token
+   * replayed an hour later is not a tab that was slow, whatever else it is.
+   *
+   * **On a family that still has a live session**, because that is what says
+   * the revocation was a *rotation* rather than an ending. Signing out revokes
+   * every session in the family at once and creates no successor, and so does
+   * the reuse branch above and a password change; in all three there is nothing
+   * live left, and a token turning up afterwards is refused as it always was.
+   * Only rotation leaves exactly this shape behind — one session revoked, its
+   * successor alive.
+   */
+  private async isRotationRace(session: {
+    family: string;
+    revokedAt: Date | null;
+  }): Promise<boolean> {
+    if (!session.revokedAt || Date.now() - session.revokedAt.getTime() > ROTATION_GRACE_MS) {
+      return false;
+    }
+
+    const live = await this.prisma.session.count({
+      where: { family: session.family, revokedAt: null, expiresAt: { gt: new Date() } },
+    });
+
+    return live > 0;
   }
 
   async logout(refreshToken: string, context: RequestContext): Promise<void> {
