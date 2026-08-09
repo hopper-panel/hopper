@@ -327,9 +327,20 @@ model TemplateGroup {
   name        String @unique
   description String @default("")
 
+  /// Who to ask about the templates in this group.
+  ///
+  /// Free text and empty by default, because it is answering a question the
+  /// interchange format cannot: a Pterodactyl egg carries an `author` of its
+  /// own but says nothing whatsoever about its parent — across the 274 eggs of
+  /// the public corpus the string `"nest"` does not appear once. So a group's
+  /// author is never imported and never exported; it is a note the operator
+  /// writes for the next operator, which is the only thing it can honestly be.
+  author String @default("")
+
   templates Template[]
 
   createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@map("template_groups")
 }
@@ -459,6 +470,7 @@ model Template {
   variables TemplateVariable[]
   servers   Server[]
 
+  @@unique([groupId, name])
   @@index([groupId])
   @@map("templates")
 }
@@ -483,7 +495,24 @@ model TemplateVariable {
   /// Validation rules, e.g. `required|string|max:20`.
   rules String @default("nullable|string")
 
+  /// Where this variable sits on the Startup page, low first.
+  ///
+  /// Without it the order is whatever Postgres hands back, which is stable
+  /// enough to look deliberate and changes the day a row is updated. That is
+  /// tolerable for a catalogue nobody edits and not for a form an author fills
+  /// in: an egg puts the version above the jar file above the flags because
+  /// that is the order somebody fills them in, and a list that reshuffles
+  /// itself on save reads as a bug in the editor.
+  ///
+  /// Not unique, and deliberately: an editor that renumbers a whole list has to
+  /// be able to write `0,1,2,3` over `0,1,2,3` without colliding with itself
+  /// halfway through. Ties fall back to `id`, so a template whose variables all
+  /// sit at 0 — every row that predates this column — keeps the order it has
+  /// today rather than acquiring a new arbitrary one.
+  sort Int @default(0)
+
   @@unique([templateId, envVariable])
+  @@index([templateId, sort])
   @@map("template_variables")
 }
 

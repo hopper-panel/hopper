@@ -3,16 +3,36 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   HttpStatus,
   Param,
+  Patch,
   Post,
+  Req,
 } from '@nestjs/common';
 import { z } from 'zod';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe.js';
+import type { RequestContext } from '../auth/auth.service.js';
 import { AdminOnly } from '../auth/decorators.js';
+import { CurrentUser, type AuthenticatedRequest, type RequestUser } from '../auth/request-user.js';
+import {
+  TemplateEditorService,
+  type TemplateDetailView,
+  type TemplateGroupView,
+} from './template-editor.service.js';
 import { TemplateSyncService, type SyncOutcome } from './template-sync.service.js';
+import {
+  createTemplateGroupSchema,
+  createTemplateSchema,
+  updateTemplateGroupSchema,
+  updateTemplateSchema,
+  type CreateTemplateDto,
+  type CreateTemplateGroupDto,
+  type UpdateTemplateDto,
+  type UpdateTemplateGroupDto,
+} from './templates.dto.js';
 import { TemplatesService, type TemplateView } from './templates.service.js';
 
 const importEggSchema = z.object({
@@ -35,12 +55,47 @@ type ImportEggDto = z.infer<typeof importEggSchema>;
 export class TemplatesController {
   constructor(
     private readonly templates: TemplatesService,
+    private readonly editor: TemplateEditorService,
     private readonly sync: TemplateSyncService,
   ) {}
+
+  // The group routes are declared before the `:uuid` ones on purpose: `groups`
+  // is a literal segment that would otherwise be a plausible template uuid, and
+  // route precedence is not something to leave to the router's tie-breaking.
 
   @Get('groups')
   listGroups() {
     return this.templates.listGroups();
+  }
+
+  @Post('groups')
+  @HttpCode(HttpStatus.CREATED)
+  createGroup(
+    @Body(new ZodValidationPipe(createTemplateGroupSchema)) body: CreateTemplateGroupDto,
+    @CurrentUser() actor: RequestUser,
+    @Req() request: AuthenticatedRequest,
+  ): Promise<TemplateGroupView> {
+    return this.editor.createGroup(body, actor.id, contextOf(request));
+  }
+
+  @Patch('groups/:uuid')
+  updateGroup(
+    @Param('uuid') uuid: string,
+    @Body(new ZodValidationPipe(updateTemplateGroupSchema)) body: UpdateTemplateGroupDto,
+    @CurrentUser() actor: RequestUser,
+    @Req() request: AuthenticatedRequest,
+  ): Promise<TemplateGroupView> {
+    return this.editor.updateGroup(uuid, body, actor.id, contextOf(request));
+  }
+
+  @Delete('groups/:uuid')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  removeGroup(
+    @Param('uuid') uuid: string,
+    @CurrentUser() actor: RequestUser,
+    @Req() request: AuthenticatedRequest,
+  ): Promise<void> {
+    return this.editor.removeGroup(uuid, actor.id, contextOf(request));
   }
 
   @Get()
@@ -51,6 +106,50 @@ export class TemplatesController {
   @Get(':uuid')
   find(@Param('uuid') uuid: string): Promise<TemplateView> {
     return this.templates.findByUuid(uuid);
+  }
+
+  /**
+   * The same template, as its author edits it.
+   *
+   * A route of its own rather than a wider `GET :uuid`, because the read view
+   * above feeds the create-server page: it hides the variables an operator
+   * picking a template has no business changing, and every install and stop
+   * column with them. Widening it would have published the install script to
+   * that page to save one endpoint here.
+   */
+  @Get(':uuid/detail')
+  findDetail(@Param('uuid') uuid: string): Promise<TemplateDetailView> {
+    return this.editor.findDetailByUuid(uuid);
+  }
+
+  @Post()
+  @HttpCode(HttpStatus.CREATED)
+  create(
+    @Body(new ZodValidationPipe(createTemplateSchema)) body: CreateTemplateDto,
+    @CurrentUser() actor: RequestUser,
+    @Req() request: AuthenticatedRequest,
+  ): Promise<TemplateDetailView> {
+    return this.editor.create(body, actor.id, contextOf(request));
+  }
+
+  @Patch(':uuid')
+  update(
+    @Param('uuid') uuid: string,
+    @Body(new ZodValidationPipe(updateTemplateSchema)) body: UpdateTemplateDto,
+    @CurrentUser() actor: RequestUser,
+    @Req() request: AuthenticatedRequest,
+  ): Promise<TemplateDetailView> {
+    return this.editor.update(uuid, body, actor.id, contextOf(request));
+  }
+
+  @Delete(':uuid')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  remove(
+    @Param('uuid') uuid: string,
+    @CurrentUser() actor: RequestUser,
+    @Req() request: AuthenticatedRequest,
+  ): Promise<void> {
+    return this.editor.remove(uuid, actor.id, contextOf(request));
   }
 
   /**
@@ -94,4 +193,8 @@ export class TemplatesController {
       throw error;
     }
   }
+}
+
+function contextOf(request: AuthenticatedRequest): RequestContext {
+  return { ip: request.ip, userAgent: request.headers['user-agent'] };
 }

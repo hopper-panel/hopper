@@ -60,14 +60,18 @@ export class TemplateSyncService {
       select: { id: true, modifiedByAdmin: true },
     });
 
-    const data = this.toPrismaData(definition, group.id);
+    const data = templateColumns(definition, group.id);
 
     if (!existing) {
       await this.prisma.template.create({
         data: {
           ...data,
           key: definition.key,
-          variables: { create: definition.variables.map(toVariableData) },
+          variables: {
+            create: definition.variables.map((variable, index) =>
+              templateVariableColumns(variable, index),
+            ),
+          },
         },
       });
 
@@ -86,8 +90,8 @@ export class TemplateSyncService {
       // code than it is worth.
       this.prisma.templateVariable.deleteMany({ where: { templateId: existing.id } }),
       this.prisma.templateVariable.createMany({
-        data: definition.variables.map((variable) => ({
-          ...toVariableData(variable),
+        data: definition.variables.map((variable, index) => ({
+          ...templateVariableColumns(variable, index),
           templateId: existing.id,
         })),
       }),
@@ -95,58 +99,80 @@ export class TemplateSyncService {
 
     return 'updated';
   }
-
-  private toPrismaData(
-    definition: TemplateDefinition,
-    groupId: number,
-  ): Omit<Prisma.TemplateUncheckedCreateInput, 'key' | 'variables'> {
-    return {
-      groupId,
-      name: definition.name,
-      description: definition.description,
-      author: definition.author,
-      dockerImages: definition.dockerImages,
-      startup: definition.startup,
-      stopCommand: definition.stopCommand,
-      // Same `Prisma.DbNull` reasoning as `readiness` below, and the stakes are
-      // higher: a template that dropped its structured stop while the column
-      // kept the old one would go on being stopped over a transport its author
-      // has removed — over RCON to a port they no longer name, which fails and,
-      // by design, refuses the stop outright.
-      stop: definition.stop ?? Prisma.DbNull,
-      // Plain `null` and not `DbNull`: an ordinary nullable column takes one,
-      // and it says the same thing — this template names no timeout, so the
-      // panel supplies the contract's default.
-      stopTimeoutSeconds: definition.stopTimeoutSeconds ?? null,
-      startupDetection: definition.startupDetection ?? null,
-      // `Prisma.DbNull` and not `undefined`: on an update, an undefined field
-      // means "leave the column alone", so a template that dropped its
-      // readiness would keep the old strategy for ever with nothing in the
-      // catalogue declaring it. Not a bare `null` either — Prisma refuses one
-      // on a nullable Json column, since it cannot tell SQL NULL from the JSON
-      // value `null`. SQL NULL is what every row predating the column holds,
-      // and therefore what "declares nothing" has to mean.
-      readiness: definition.readiness ?? Prisma.DbNull,
-      configFiles: definition.configFiles,
-      fileDenylist: definition.fileDenylist,
-      installContainer: definition.installContainer,
-      installEntrypoint: definition.installEntrypoint,
-      installScript: definition.installScript,
-      // The two install guards, and plain nulls for the same reason as
-      // `stopTimeoutSeconds` above: ordinary nullable columns, on which null
-      // says "this template names no figure" and the daemon supplies its own.
-      // Written on every sync rather than left undefined so that a template
-      // which *drops* a figure has the row forget it too — a stale inactivity
-      // window would go on stopping installations its author has decided are
-      // allowed to take longer.
-      installInactivityTimeoutMs: definition.installInactivityTimeoutMs ?? null,
-      installRequiredDiskBytes: definition.installRequiredDiskBytes ?? null,
-      importedFromEgg: definition.importedFromEgg ?? null,
-    };
-  }
 }
 
-function toVariableData(variable: TemplateDefinition['variables'][number]) {
+/**
+ * A definition's columns, minus the ones only the caller knows.
+ *
+ * A free function, and exported, because the template editor writes the same
+ * columns from the same shape and every one of the `DbNull` decisions below is
+ * a rule about what a *template* means rather than about what a
+ * synchronisation does. A second copy of them in the editor would be a second
+ * answer: the seed already keeps a copy of this mapping, and
+ * `template-sync.service.spec.ts` exists largely to catch the two drifting.
+ */
+export function templateColumns(
+  definition: TemplateDefinition,
+  groupId: number,
+): Omit<Prisma.TemplateUncheckedCreateInput, 'key' | 'variables'> {
+  return {
+    groupId,
+    name: definition.name,
+    description: definition.description,
+    author: definition.author,
+    dockerImages: definition.dockerImages,
+    startup: definition.startup,
+    stopCommand: definition.stopCommand,
+    // Same `Prisma.DbNull` reasoning as `readiness` below, and the stakes are
+    // higher: a template that dropped its structured stop while the column
+    // kept the old one would go on being stopped over a transport its author
+    // has removed — over RCON to a port they no longer name, which fails and,
+    // by design, refuses the stop outright.
+    stop: definition.stop ?? Prisma.DbNull,
+    // Plain `null` and not `DbNull`: an ordinary nullable column takes one,
+    // and it says the same thing — this template names no timeout, so the
+    // panel supplies the contract's default.
+    stopTimeoutSeconds: definition.stopTimeoutSeconds ?? null,
+    startupDetection: definition.startupDetection ?? null,
+    // `Prisma.DbNull` and not `undefined`: on an update, an undefined field
+    // means "leave the column alone", so a template that dropped its
+    // readiness would keep the old strategy for ever with nothing in the
+    // catalogue declaring it. Not a bare `null` either — Prisma refuses one
+    // on a nullable Json column, since it cannot tell SQL NULL from the JSON
+    // value `null`. SQL NULL is what every row predating the column holds,
+    // and therefore what "declares nothing" has to mean.
+    readiness: definition.readiness ?? Prisma.DbNull,
+    configFiles: definition.configFiles,
+    fileDenylist: definition.fileDenylist,
+    installContainer: definition.installContainer,
+    installEntrypoint: definition.installEntrypoint,
+    installScript: definition.installScript,
+    // The two install guards, and plain nulls for the same reason as
+    // `stopTimeoutSeconds` above: ordinary nullable columns, on which null
+    // says "this template names no figure" and the daemon supplies its own.
+    // Written on every write rather than left undefined so that a template
+    // which *drops* a figure has the row forget it too — a stale inactivity
+    // window would go on stopping installations its author has decided are
+    // allowed to take longer.
+    installInactivityTimeoutMs: definition.installInactivityTimeoutMs ?? null,
+    installRequiredDiskBytes: definition.installRequiredDiskBytes ?? null,
+    importedFromEgg: definition.importedFromEgg ?? null,
+  };
+}
+
+/**
+ * A variable's columns, its place in the list included.
+ *
+ * `sort` comes from the position in the array rather than from the definition,
+ * because no definition carries one: the order a template author wrote the
+ * variables in *is* the order, and it is the only statement of intent there is.
+ * Written here too and not only by the editor, so that a resynchronised
+ * template and an edited one are ordered by the same column.
+ */
+export function templateVariableColumns(
+  variable: TemplateDefinition['variables'][number],
+  sort = 0,
+) {
   return {
     name: variable.name,
     description: variable.description,
@@ -155,5 +181,6 @@ function toVariableData(variable: TemplateDefinition['variables'][number]) {
     userViewable: variable.userViewable,
     userEditable: variable.userEditable,
     rules: variable.rules,
+    sort,
   };
 }
