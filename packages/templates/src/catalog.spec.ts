@@ -104,14 +104,146 @@ describe('catalogue de templates', () => {
    * documentation: the invariant has to hold for the tenth template as well as
    * for the first, and nobody rereads a note.
    */
+  /**
+   * The two templates that host somebody else's code.
+   *
+   * Nothing about them is a game, so none of the engine-wide checks above
+   * applies. What they have instead is a pair of contracts that span two
+   * strings each, and a pair is exactly what drifts: one half is edited, the
+   * other is not, and the failure lands at a first start with nothing pointing
+   * back at the edit.
+   */
+  describe('the Discord bot templates', () => {
+    const python = TEMPLATE_CATALOG.find((template) => template.key === 'discord-bot-python');
+    const node = TEMPLATE_CATALOG.find((template) => template.key === 'discord-bot-node');
+
+    it('are both in the catalogue', () => {
+      expect(python).toBeDefined();
+      expect(node).toBeDefined();
+    });
+
+    /**
+     * The half of the package contract that lives in a variable, against the
+     * half that lives in the install script.
+     *
+     * `pip install --target` writes to the volume through `/mnt/server`; the
+     * bot reads it through `/home/container`, because that is where the same
+     * volume is mounted at runtime. Two strings, one directory. Moving either
+     * without the other gives a bot that starts and dies on its first import.
+     */
+    it('point Python at the directory the install script fills', () => {
+      const path = python?.variables.find((variable) => variable.envVariable === 'PYTHONPATH');
+
+      expect(path?.defaultValue).toBe('/home/container/.python-deps');
+      expect(python?.installScript).toContain('--target /mnt/server/.python-deps');
+      expect(path?.defaultValue.replace('/home/container', '/mnt/server')).toBe(
+        '/mnt/server/.python-deps',
+      );
+    });
+
+    it('do not let an operator edit that path', () => {
+      const path = python?.variables.find((variable) => variable.envVariable === 'PYTHONPATH');
+
+      // Not a setting: it is the second half of the contract above, and the
+      // panel would otherwise offer it beside the bot's own token.
+      expect(path?.userEditable).toBe(false);
+      expect(path?.userViewable).toBe(false);
+    });
+
+    /**
+     * `-u`, whose absence is invisible until somebody opens the console.
+     *
+     * CPython buffers stdout in blocks whenever it is not a terminal, and the
+     * console is a pipe. Without the flag a bot that logs "ready" and then
+     * idles shows nothing at all — indistinguishable from one that hung.
+     */
+    it('run Python unbuffered', () => {
+      expect(python?.startup).toContain('python -u ');
+    });
+
+    it('stop with the signal that unwinds the interpreter', () => {
+      // SIGTERM kills CPython where it stands; SIGINT raises KeyboardInterrupt,
+      // so `finally` runs and the gateway connection is closed rather than
+      // dropped.
+      expect(python?.stopCommand).toBe('signal:SIGINT');
+      expect(node?.stopCommand).toBe('signal:SIGINT');
+    });
+
+    it('demand a token and ship none', () => {
+      for (const template of [python, node]) {
+        const token = template?.variables.find(
+          (variable) => variable.envVariable === 'DISCORD_TOKEN',
+        );
+
+        expect(token?.rules).toContain('required');
+        // A default here would be a credential in the repository.
+        expect(token?.defaultValue).toBe('');
+        expect(token?.userEditable).toBe(true);
+      }
+    });
+
+    /**
+     * The entry point is a path the operator types, and it reaches `python` as
+     * argv. The class is what keeps `..` out of it.
+     */
+    it.each([
+      ['../../etc/passwd', false],
+      ['bot.py', true],
+      ['src/main.py', true],
+      ['bot.py; rm -rf /', false],
+      ['', false],
+    ])('reads %j as a bot file: %s', (value, accepted) => {
+      const rules = python?.variables.find((variable) => variable.envVariable === 'PY_FILE')?.rules;
+      const pattern = /regex:\/(.+)\/$/.exec(rules ?? '');
+
+      expect(pattern).not.toBeNull();
+      expect(new RegExp(pattern![1]!).test(value)).toBe(accepted);
+    });
+
+    it('claim no disk they cannot know', () => {
+      // The field refuses an installation. What a dependency tree weighs is
+      // whatever its author put in requirements.txt, so a figure here would
+      // refuse installs that would have worked.
+      expect(python?.installRequiredDiskBytes).toBeUndefined();
+      expect(node?.installRequiredDiskBytes).toBeUndefined();
+    });
+  });
+
   describe('every template that declares a readiness strategy', () => {
     const withReadiness = TEMPLATE_CATALOG.filter((template) => template.readiness).map(
       (template) => [template.name, template] as const,
     );
 
-    it.each(withReadiness)('%s still declares a startupDetection', (_name, template) => {
-      expect(template.startupDetection).toBeTruthy();
-    });
+    /**
+     * Every strategy except the one an old daemon already implements.
+     *
+     * The fallback a missing `startupDetection` leaves behind is "running as
+     * soon as the container is", which is not a degradation of `immediate` —
+     * it *is* `immediate`. A template that declares it and nothing else
+     * therefore behaves identically on a node that has never heard of the
+     * readiness union and on one that has, and demanding a console pattern
+     * from it would mean inventing a line the process is not known to print.
+     *
+     * The combination is not new here either: the egg importer emits exactly
+     * it for the eggs that declare no marker at all. What is new is a shipped
+     * template doing so, which is what turned the rule from "always" into
+     * "wherever the two answers differ".
+     */
+    it.each(withReadiness.filter(([, template]) => template.readiness?.type !== 'immediate'))(
+      '%s still declares a startupDetection',
+      (_name, template) => {
+        expect(template.startupDetection).toBeTruthy();
+      },
+    );
+
+    it.each(withReadiness.filter(([, template]) => template.readiness?.type === 'immediate'))(
+      '%s declares no console pattern, because there is none to declare',
+      (_name, template) => {
+        // Asserted rather than merely skipped: a pattern appearing here later
+        // would mean the template had grown an opinion the strategy contradicts.
+        expect(template.startupDetection).toBeUndefined();
+      },
+    );
 
     // A pattern is only ever exercised by a running server, and a broken one
     // does not fail loudly: the server sits in `starting` until its deadline
@@ -439,14 +571,68 @@ describe('catalogue de templates', () => {
       expect(garrysMod).toBeDefined();
     });
 
-    it('joins the group Factorio is in rather than inventing one', () => {
-      // A group name is stored as `TemplateGroup.name` and that column is the
-      // upsert key: a group cannot be renamed later, only duplicated. "Other
-      // games" was named for the category precisely so that the second
-      // non-Minecraft template needs no new one.
+    /**
+     * It used to share Factorio's group, and this test used to say so.
+     *
+     * The reasoning then was that "Other games" had been named for the category
+     * precisely so a second non-Minecraft template would need no new group —
+     * true, and it stopped being the right call once the engine had two
+     * templates of its own. `srcds_run`, `-norestart`, the console on standard
+     * input, the anonymous depot and the Steam-login marker are shared by every
+     * game here and by none of Factorio's; that is a family, not a one-entry
+     * section.
+     *
+     * A group name is the upsert key, so this move is what a resynchronisation
+     * performs on an existing installation: the group is created, the templates
+     * are moved into it, and "Other games" keeps Factorio.
+     */
+    it('is in a group named for the engine, which Factorio is not in', () => {
       const factorio = TEMPLATE_CATALOG.find((template) => template.key === 'factorio');
 
-      expect(garrysMod?.group).toBe(factorio?.group);
+      expect(garrysMod?.group).toBe('Source engine');
+      expect(factorio?.group).not.toBe(garrysMod?.group);
+    });
+
+    /**
+     * Everything the engine decides, asserted across every game on it.
+     *
+     * These four are the ones a new Source template is most likely to get wrong
+     * by writing them out again instead of sharing them, and each has a failure
+     * that does not look like its cause: without `-norestart` every stop is a
+     * SIGKILL thirty seconds after a server that already restarted; without
+     * `+force_install_dir` the depot lands in a container layer and the volume
+     * comes up empty; a stop over anything but standard input needs a password
+     * this template has nowhere to keep.
+     */
+    describe.each(
+      TEMPLATE_CATALOG.filter((template) => template.group === 'Source engine').map(
+        (template) => [template.name, template] as const,
+      ),
+    )('%s, on the shared engine', (_name, template) => {
+      it('stops by typing quit on the console', () => {
+        expect(template.stopCommand).toBe('command:quit');
+      });
+
+      it('passes -norestart, without which every stop is a kill', () => {
+        expect(template.startup).toContain('-norestart');
+      });
+
+      it('installs into the volume rather than into the container', () => {
+        expect(template.installScript).toContain('+force_install_dir /mnt/server');
+        expect(template.installScript).toContain('validate');
+      });
+
+      it('waits for the Steam login rather than for the container', () => {
+        expect(template.readiness?.type).toBe('log');
+        expect(template.startupDetection).toBe('gameserver Steam ID');
+      });
+
+      it('asks for twice what its depot unpacks to', () => {
+        // The figure is a refusal, so it is checked for being present and large
+        // rather than for a value: an install allowed onto a node that cannot
+        // hold it fills the disk for every server on the machine.
+        expect(template.installRequiredDiskBytes ?? 0).toBeGreaterThan(6 * 1024 ** 3);
+      });
     });
 
     /**

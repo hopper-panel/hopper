@@ -174,6 +174,24 @@ describe('a template group', () => {
      * written — "From Administration → Templates, upload the egg's JSON file"
      * — and which existed only over HTTP until now.
      */
+    /**
+     * One click, one dialog.
+     *
+     * The button used to unfold a panel whose only content was a second button
+     * saying "Choose a file" — two clicks and a paragraph to do the thing the
+     * first button already named.
+     */
+    it('opens the file dialog straight from the header', async () => {
+      const clicks = vi.spyOn(HTMLInputElement.prototype, 'click').mockImplementation(() => {});
+      const { container } = mount(() => undefined);
+
+      fireEvent.click(await screen.findByRole('button', { name: 'Import an egg' }));
+
+      expect(clicks).toHaveBeenCalledTimes(1);
+      expect(container.querySelector('input[type="file"]')).toBeTruthy();
+      expect(screen.queryByRole('button', { name: 'Choose a file' })).toBeNull();
+    });
+
     it('posts the parsed file into this group and shows what was dropped', async () => {
       const { fetch, container } = mount((input, init) =>
         input === '/api/admin/templates/import' && init?.method === 'POST'
@@ -318,5 +336,55 @@ describe('exporting a template', () => {
 
     // Still on the group page: the click was stopped from following the row.
     expect(screen.getByText('Vanilla')).toBeTruthy();
+  });
+});
+
+/**
+ * The group's own fields, which used to sit open on every visit.
+ *
+ * Reading a group is the common case and editing one is rare, so the form is
+ * behind the header's Edit. It is still there — `author` is a column that
+ * exists for this form and nowhere else.
+ */
+describe('editing the group', () => {
+  it('shows no form until it is asked for', async () => {
+    mount(() => undefined);
+
+    expect(await screen.findByText('Paper')).toBeTruthy();
+    expect(screen.queryByDisplayValue('Minecraft: Java Edition')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+
+    expect(screen.getByDisplayValue('Minecraft: Java Edition')).toBeTruthy();
+  });
+
+  it('saves the three fields and closes', async () => {
+    const { fetch } = mount((input, init) =>
+      input === `/api/admin/templates/groups/${GROUP_UUID}` && init?.method === 'PATCH'
+        ? json({ ...GROUPS[0], author: 'Julien' })
+        : undefined,
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit' }));
+    fireEvent.change(screen.getByDisplayValue('Minecraft: Java Edition'), {
+      target: { value: 'Minecraft' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => {
+      const sent = fetch.mock.calls.find(([, init]) => init?.method === 'PATCH');
+
+      expect(sent).toBeTruthy();
+      expect(JSON.parse(sent?.[1]?.body as string)).toEqual({
+        name: 'Minecraft',
+        description: '',
+        author: '',
+      });
+    });
+
+    // Closed on success: the page goes back to what it is for.
+    await waitFor(() => {
+      expect(screen.queryByRole('button', { name: 'Save' })).toBeNull();
+    });
   });
 });

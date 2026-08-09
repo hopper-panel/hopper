@@ -1,4 +1,5 @@
 import { TEMPLATE_GROUPS, type TemplateDefinition } from '../definition.js';
+import { steamInstallScript } from './source-install.js';
 
 /**
  * The Source engine, and Garry's Mod as its first template.
@@ -63,6 +64,44 @@ import { TEMPLATE_GROUPS, type TemplateDefinition } from '../definition.js';
  */
 const STEAM_LOGIN_MARKER = 'gameserver Steam ID';
 
+/**
+ * The line srcds prints immediately after the login above.
+ *
+ * A second wording of the same moment rather than an independent signal — see
+ * the readiness block on {@link garrysMod} — so it insures against Valve
+ * rewording one of them between builds, not against Steam being unreachable.
+ */
+const VAC_MARKER = 'VAC secure mode is activated';
+
+/**
+ * The configuration file seeded into a fresh Garry's Mod volume.
+ *
+ * Only when the install finds nothing there — see `steamInstallScript`, which
+ * greps for one non-whitespace character rather than testing that the file
+ * exists, because this depot ships a four-byte one.
+ */
+const GARRYS_MOD_SERVER_CFG = [
+  "// Garry's Mod server configuration.",
+  '//',
+  '// Hopper wrote this file during an installation that found nothing in it -',
+  '// the game ships an empty one - and will not write over anything you put',
+  '// here, not even the reinstall that updates the game. It is yours to edit.',
+  '//',
+  '// The gamemode, the map and the player limit are deliberately NOT here.',
+  '// They are startup variables in the panel because they are command-line',
+  '// arguments, and a command-line argument wins over this file at every',
+  '// start - setting them here would look like it worked and change nothing.',
+  '',
+  'hostname "A Garry\'s Mod server"',
+  'sv_password ""',
+  '',
+  '// RCON is not configured, and setting rcon_password here is a bigger',
+  '// decision than it looks: it opens the remote console on the TCP half of',
+  "// this server's port, with the password in plain text in a file the file",
+  '// manager displays. Hopper has nowhere to keep a secret yet, so it will not',
+  '// invent one for you and will not pretend this line is harmless.',
+].join('\n');
+
 export const garrysMod: TemplateDefinition = {
   key: 'garrys-mod',
   /**
@@ -75,7 +114,7 @@ export const garrysMod: TemplateDefinition = {
    * precisely so the second and the tenth non-Minecraft template could join it
    * without a migration.
    */
-  group: TEMPLATE_GROUPS.OTHER_GAMES,
+  group: TEMPLATE_GROUPS.SOURCE,
   name: "Garry's Mod",
   description:
     "Garry's Mod, installed from Steam as an anonymous user — around six gigabytes, and Reinstall is how it is updated. Gamemode, map and player limit are startup variables; everything else lives in garrysmod/cfg/server.cfg, and garrysmod/addons is yours. Ships without Workshop, a Steam game-server login token and RCON.",
@@ -253,7 +292,7 @@ export const garrysMod: TemplateDefinition = {
      * whichever arrives first, so listing the earlier marker first is what
      * decides the ordinary case.
      */
-    patterns: [STEAM_LOGIN_MARKER, 'VAC secure mode is activated'],
+    patterns: [STEAM_LOGIN_MARKER, VAC_MARKER],
     /**
      * Ten minutes, where Factorio takes five, and the difference is what an
      * operator is allowed to put in the volume.
@@ -308,248 +347,19 @@ export const garrysMod: TemplateDefinition = {
    */
   installContainer: 'debian:bookworm-slim',
   installEntrypoint: '/bin/bash',
-  installScript: [
-    '#!/bin/bash',
-    '# set -e: a failing step has to stop the installation. An install that',
-    '# reports success over half a depot produces a server that exits a second',
-    '# after every start, with nothing in the console to connect that back to the',
-    '# download.',
-    'set -euo pipefail',
-    '',
-    '# ---------------------------------------------------------------------',
-    '# What runs this',
-    '# ---------------------------------------------------------------------',
-    '# Nothing below switches user, because nothing below wants another uid: the',
-    '# apt-get needs root, SteamCMD runs perfectly well as root when its HOME is',
-    '# writable, and the volume it writes into is chowned by the daemon after',
-    '# this container is gone.',
-    '#',
-    '# This comment used to say something stronger and false — that su *cannot*',
-    '# work here, because the install container is handed seven capabilities',
-    '# (apps/daemon/src/server/installer.ts) and AUDIT_WRITE is not one of them.',
-    '# It does work: "su steam -c ..." returns 0 under exactly that set. The one',
-    '# thing still unmeasured is a host with auditd actually running, where the',
-    '# kernel could refuse the login record; docs/templates.md carries the full',
-    '# correction. A script that does want another uid is better off with',
-    '# "runuser -u steam --" or "setpriv --reuid=... --regid=... --" anyway,',
-    '# since those need only the granted SETUID and SETGID and so cannot depend',
-    "# on the node's audit configuration at all.",
-    '',
-    '# i386, and the dpkg line is load-bearing rather than ceremonial: without it',
-    '# apt fetches no i386 package lists at all and the install below fails with',
-    '# "Unable to locate package". SteamCMD ships a 32-bit bootstrap binary, so a',
-    '# 64-bit Debian cannot execute it until the second architecture exists.',
-    '# libstdc++6:i386 pulls libgcc-s1:i386 and libc6:i386 in with it, which is',
-    "# the whole of the 32-bit runtime SteamCMD needs — the game's own 32-bit",
-    "# libraries are the runtime image's problem, not this container's.",
-    'dpkg --add-architecture i386',
-    'apt-get update',
-    'apt-get install -y --no-install-recommends ca-certificates curl tar libstdc++6:i386',
-    '',
-    '# In this container, not in the volume. The community scripts unpack',
-    '# SteamCMD into /mnt/server/steamcmd, which leaves fifty megabytes of client',
-    "# in the operator's file manager, counted against their disk quota, for a",
-    '# tool the runtime image cannot run anyway. Here it is discarded with the',
-    '# container and the volume holds the game alone.',
-    'STEAMCMD_DIR=/opt/steamcmd',
-    'mkdir -p "${STEAMCMD_DIR}"',
-    '',
-    '# --fail, because without it curl writes an HTTP error page into the file',
-    '# and exits 0, and tar then fails on something that is not an archive with a',
-    '# message about the archive rather than about the download.',
-    'curl -sSL --fail -o /tmp/steamcmd.tar.gz \\',
-    '  "https://steamcdn-a.akamaihd.net/client/installer/steamcmd_linux.tar.gz"',
-    'tar -xzf /tmp/steamcmd.tar.gz -C "${STEAMCMD_DIR}"',
-    'rm -f /tmp/steamcmd.tar.gz',
-    '',
-    'if [ ! -x "${STEAMCMD_DIR}/steamcmd.sh" ]; then',
-    '  echo "What was downloaded is not a SteamCMD archive." >&2',
-    '  exit 1',
-    'fi',
-    '',
-    '# ---------------------------------------------------------------------',
-    '# The depot',
-    '# ---------------------------------------------------------------------',
-    '# A long-standing SteamCMD failure: with no steamapps/ under the install',
-    '# directory it reports a disk write error instead of creating one. Every',
-    '# community Steam install script creates it in advance for that reason, and',
-    '# one mkdir is cheaper than an error message that blames the disk.',
-    'mkdir -p /mnt/server/steamapps',
-    '',
-    'cd "${STEAMCMD_DIR}"',
-    '',
-    '# +force_install_dir BEFORE +app_update, and it is not optional.',
-    '#',
-    '# SteamCMD applies it to the commands that follow and not to the ones',
-    '# already run, and left unsaid it installs into a directory of its own under',
-    "# this container's filesystem — the layer that is deleted the moment the",
-    '# installation ends. The depot would download to completion, this script',
-    '# would exit 0, and the server would start on an empty volume. It is also',
-    "# the directory nothing measured: the daemon's disk preflight measures the",
-    '# filesystem holding the volume and names no other, so the figure declared',
-    '# in installRequiredDiskBytes would have been checked against a disk the',
-    '# download never touched.',
-    '#',
-    "# +login anonymous: app 4020 is the public Garry's Mod dedicated server and",
-    '# needs no account. Nothing in this template can hold a Steam password.',
-    '#',
-    '# The app id is written here rather than taken from a variable. One template',
-    '# per game is the point: the readiness marker, the -game directory, the',
-    "# gamemode variable and the disk figure below are all this app's, and a",
-    '# variable app id would make every one of them a lie for whatever else was',
-    '# typed into it.',
-    '#',
-    '# validate re-checks every file against the manifest and re-downloads what',
-    '# does not match. That is what makes a reinstall a repair rather than a',
-    '# gamble, and it is the whole update mechanism for this server.',
-    './steamcmd.sh +force_install_dir /mnt/server +login anonymous \\',
-    '  +app_update 4020 validate +quit',
-    '',
-    '# ---------------------------------------------------------------------',
-    '# The Steam client library, and what it is really insuring against',
-    '# ---------------------------------------------------------------------',
-    '# This copy is a fallback that app 4020 does not reach, and the comment that',
-    '# used to sit here claimed the opposite: that without it "the server starts',
-    '# and runs and simply never completes the login". It was never true for this',
-    '# game. Measured, with /mnt/server/.steam masked out entirely: the server',
-    '# logs in anonymously, is assigned its gameserver Steam ID and turns VAC on,',
-    '# exactly as with the copy in place.',
-    '#',
-    '# The reason is in the depot and in the wrapper. app 4020 ships its own',
-    '# steamclient.so at the install root, 45 MiB of it, and srcds_run exports',
-    '# LD_LIBRARY_PATH=".:bin:..." before exec-ing the binary, so SteamAPI_Init',
-    '# finds that one first and says so: "Loaded local \'steamclient.so\' OK".',
-    '#',
-    '# The fallback is real, though, and that is why the copy stays. Masking the',
-    '# depot\'s own copy makes srcds print "dlopen failed trying to load:',
-    '# steamclient.so" and then "Loaded \'/home/container/.steam/sdk32/',
-    "# steamclient.so' OK. (First tried local 'steamclient.so')\" — it logs in",
-    '# either way. 47 MiB of the volume buys a login that cannot be lost to one',
-    '# file at the root of the game tree, on the only game whose Steam login is',
-    '# also its readiness marker.',
-    '#',
-    '# sdk64 is deliberately NOT written beside it. srcds_run picks its binary in',
-    '# detectcpu(), which on Linux is "HL=./srcds_linux" with no 64-bit branch at',
-    '# all, so the startup command in this template can only ever start the',
-    '# 32-bit server — and the depot ships linux64/steamclient.so next to the',
-    '# 64-bit binary for whoever starts that one directly. A second 44 MiB copy in',
-    "# the operator's volume for a path nothing here takes is not insurance, it",
-    '# is weight.',
-    '#',
-    '# HOME is /home/container in the runtime image, and the volume is mounted',
-    '# there, so ~/.steam here is /mnt/server/.steam. That equivalence is the',
-    '# reason the image pins HOME at all, and .github/workflows/source-image.yml',
-    '# asserts it on every build.',
-    'if [ ! -f "${STEAMCMD_DIR}/linux32/steamclient.so" ]; then',
-    '  echo "SteamCMD left no linux32/steamclient.so to install." >&2',
-    '  exit 1',
-    'fi',
-    '',
-    '# The path written out rather than assembled, because this string is a',
-    '# contract with the runtime image — where the volume is mounted, and what',
-    '# HOME is set to — and a contract is worth being able to grep for.',
-    'mkdir -p /mnt/server/.steam/sdk32',
-    'cp -f "${STEAMCMD_DIR}/linux32/steamclient.so" /mnt/server/.steam/sdk32/steamclient.so',
-    '',
-    '# ---------------------------------------------------------------------',
-    '# What the startup command is going to need',
-    '# ---------------------------------------------------------------------',
-    '# Checked rather than trusted, for the same reason Factorio checks for its',
-    '# binary: set -e catches a steamcmd that failed, and cannot catch one that',
-    '# succeeded somewhere other than where the startup command will look. This',
-    '# is the only place those two paths can be compared, and they have to agree.',
-    'cd /mnt/server',
-    '',
-    'if [ ! -x srcds_run ]; then',
-    '  echo "SteamCMD reported success but left no executable srcds_run in" >&2',
-    '  echo "/mnt/server. The startup command names ./srcds_run and would fail" >&2',
-    '  echo "at the first start." >&2',
-    '  exit 1',
-    'fi',
-    '',
-    'if [ ! -d garrysmod ]; then',
-    '  echo "SteamCMD reported success but left no garrysmod/ directory, which" >&2',
-    '  echo "is what -game garrysmod names." >&2',
-    '  exit 1',
-    'fi',
-    '',
-    '# ---------------------------------------------------------------------',
-    "# The operator's own files",
-    '# ---------------------------------------------------------------------',
-    '# Everything from here down runs only when it finds nothing worth keeping,',
-    '# and that rule is what makes this script safe to run again. It has to be:',
-    '# a reinstall is the only way to update a Steam server, so an operator who',
-    '# keeps their server current runs this on a volume full of their work every',
-    '# few weeks. app_update leaves files it does not own alone, so',
-    '# garrysmod/addons, garrysmod/data and anything uploaded survive by',
-    '# themselves; what needs the guard is anything this script writes.',
-    '#',
-    "# The published Garry's Mod egg gets this wrong in a way worth naming, since",
-    '# it is the script most people arrive here having used: it truncates',
-    '# garrysmod/cfg/server.cfg and garrysmod/lua/autorun/server/workshop.lua on',
-    '# every run. Under a panel where reinstalling *is* updating, that silently',
-    '# throws away the hostname, the password and every custom line the operator',
-    '# has added, at the moment they were being careful.',
-    'SERVER_CFG=garrysmod/cfg/server.cfg',
-    '',
-    '# "Has content", not "exists", and the difference is the whole guard. The',
-    '# depot ships garrysmod/cfg/server.cfg itself — four bytes, CR LF CR LF —',
-    '# so a test for the file alone matched on a *fresh* install and this block',
-    '# never ran once: every server came up on an empty config, and the console',
-    '# said it was keeping an existing file the operator had never written. grep',
-    "# for one non-whitespace character is what tells the depot's placeholder",
-    '# from a file somebody has edited.',
-    '#',
-    '# Seeding it is safe against the update path, which is the thing worth',
-    '# checking before writing into a file the manifest owns: an edited',
-    '# server.cfg was put through a full "+app_update 4020 validate" — 6.87 GB',
-    '# re-verified, "Success! App \'4020\' fully installed" — and came back',
-    '# untouched, as did a .cfg the depot has never heard of and a directory under',
-    '# garrysmod/addons.',
-    'if [ -f "${SERVER_CFG}" ] && grep -q "[^[:space:]]" "${SERVER_CFG}"; then',
-    '  echo "Keeping the existing ${SERVER_CFG}."',
-    'else',
-    '  mkdir -p garrysmod/cfg',
-    '',
-    '  # A quoted heredoc: nothing in the body is expanded, so the file lands',
-    '  # exactly as written even where it contains characters a shell would read.',
-    '  cat > "${SERVER_CFG}" <<\'CFG\'',
-    "// Garry's Mod server configuration.",
-    '//',
-    '// Hopper wrote this file during an installation that found nothing in it —',
-    '// the game ships an empty one — and will not write over anything you put',
-    '// here, not even the reinstall that updates the game. It is yours to edit.',
-    '//',
-    '// The gamemode, the map and the player limit are deliberately NOT here.',
-    '// They are startup variables in the panel because they are command-line',
-    '// arguments, and a command-line argument wins over this file at every',
-    '// start — setting them here would look like it worked and change nothing.',
-    '',
-    'hostname "A Garry\'s Mod server"',
-    'sv_password ""',
-    '',
-    '// RCON is not configured, and setting rcon_password here is a bigger',
-    '// decision than it looks: it opens the remote console on the TCP half of',
-    "// this server's port, with the password in plain text in a file the file",
-    '// manager displays. Hopper has nowhere to keep a secret yet, so it will not',
-    '// invent one for you and will not pretend this line is harmless.',
-    'CFG',
-    '',
-    '  echo "Seeded ${SERVER_CFG} with a hostname you should change."',
-    'fi',
-    '',
-    'echo "Garry\'s Mod installed."',
-    'echo "Update it by reinstalling: that re-runs app_update 4020 validate,"',
-    'echo "which repairs the game files and leaves garrysmod/addons,"',
-    'echo "garrysmod/cfg and garrysmod/data untouched."',
-    'echo ""',
-    'echo "Gamemode, map and player limit are on the Startup page. Everything"',
-    'echo "else — hostname, password, sandbox limits — is ${SERVER_CFG}."',
-    'echo ""',
-    'echo "This server has no Workshop collection, no Steam game-server login"',
-    'echo "token and no RCON: all three need a credential the panel cannot yet"',
-    'echo "store out of sight. It logs in to Steam anonymously, which works."',
-  ].join('\n'),
+  installScript: steamInstallScript({
+    appId: 4020,
+    gameDir: 'garrysmod',
+    gameName: "Garry's Mod",
+    serverCfg: GARRYS_MOD_SERVER_CFG,
+    epilogue: [
+      'Gamemode, map and player limit are on the Startup page. Everything else',
+      '- hostname, password, sandbox limits - is garrysmod/cfg/server.cfg.',
+      'garrysmod/addons is yours; nothing here writes into it.',
+      'No Workshop collection: that needs a Steam API key the panel cannot yet',
+      'store out of sight.',
+    ],
+  }),
 
   /**
    * Steam's rule of thumb applied to a measured tree, and the arithmetic is
@@ -678,4 +488,137 @@ export const garrysMod: TemplateDefinition = {
   ],
 };
 
-export const SOURCE_TEMPLATES: TemplateDefinition[] = [garrysMod];
+/**
+ * The configuration file seeded into a fresh Team Fortress 2 volume.
+ *
+ * Whether this depot ships one of its own is not known here, and does not need
+ * to be: the install greps for content rather than testing for the file, so an
+ * empty placeholder is seeded over and an operator's file is kept, either way.
+ */
+const TEAM_FORTRESS_2_SERVER_CFG = [
+  '// Team Fortress 2 server configuration.',
+  '//',
+  '// Hopper wrote this file during an installation that found nothing in it,',
+  '// and will not write over anything you put here - not even the reinstall',
+  '// that updates the game. It is yours to edit.',
+  '//',
+  '// The map and the player limit are deliberately NOT here. They are startup',
+  '// variables in the panel because they are command-line arguments, and a',
+  '// command-line argument wins over this file at every start - setting them',
+  '// here would look like it worked and change nothing.',
+  '',
+  'hostname "A Team Fortress 2 server"',
+  'sv_password ""',
+  '',
+  '// Without a Steam game-server login token this server does not appear in',
+  '// the in-game browser and cannot be joined through matchmaking; it is',
+  '// reachable by address. A token needs a credential the panel cannot yet',
+  '// store out of sight, so this template does not pretend to set one.',
+].join('\n');
+
+/**
+ * Team Fortress 2, the second game on this engine.
+ *
+ * Deliberately short, because the file above it is the point: everything that
+ * makes a Source server work under a panel — `-norestart`, `quit` on standard
+ * input, the Steam-login readiness marker, the anonymous depot, the `sdk32`
+ * fallback — was written once for Garry's Mod and is shared. What is here is
+ * what is genuinely Team Fortress 2's.
+ *
+ * The two facts worth having measured rather than assumed:
+ *
+ *  • **App 232250**, the dedicated server, not 440 which is the client. Its
+ *    public Linux depots total 14 908 968 403 bytes — 13.89 GiB — read out of
+ *    Steam's own manifest with `app_info_print` rather than off a store page.
+ *    The same method puts Garry's Mod at 6.40 GiB against the 6.44 GiB that
+ *    template measured on disk, so it is good to within a percent.
+ *  • **`-game tf`**, which is the directory the depot lays down and the one the
+ *    install script refuses to finish without.
+ *
+ * What is *not* measured here, and is the honest gap: no server built from this
+ * template has been started. The readiness markers, the stop and the flags are
+ * the engine's and are exercised by Garry's Mod; the app id, the game directory
+ * and the disk figure are this game's and come from Steam. A first start is
+ * still a first start.
+ */
+export const teamFortress2: TemplateDefinition = {
+  key: 'team-fortress-2',
+  group: TEMPLATE_GROUPS.SOURCE,
+  name: 'Team Fortress 2',
+  description:
+    'Team Fortress 2, installed from Steam as an anonymous user - around fourteen gigabytes, and Reinstall is how it is updated. Map and player limit are startup variables; everything else lives in tf/cfg/server.cfg. Ships without a Steam game-server login token, so it is joinable by address but does not appear in the in-game browser.',
+  author: 'Hopper',
+
+  dockerImages: [{ name: 'Source engine', image: 'ghcr.io/hopper-panel/source:1' }],
+
+  startup:
+    './srcds_run -game tf -console -norestart -port {{SERVER_PORT}} ' +
+    '+maxplayers {{MAX_PLAYERS}} +map {{SRCDS_MAP}}',
+
+  /** The engine's, not the game's: see {@link garrysMod} for why it is not RCON. */
+  stopCommand: 'command:quit',
+
+  startupDetection: STEAM_LOGIN_MARKER,
+
+  readiness: {
+    type: 'log',
+    patterns: [STEAM_LOGIN_MARKER, VAC_MARKER],
+  },
+
+  configFiles: [],
+  fileDenylist: [],
+
+  installContainer: 'debian:bookworm-slim',
+  installEntrypoint: '/bin/bash',
+  installScript: steamInstallScript({
+    appId: 232250,
+    gameDir: 'tf',
+    gameName: 'Team Fortress 2',
+    serverCfg: TEAM_FORTRESS_2_SERVER_CFG,
+    epilogue: [
+      'Map and player limit are on the Startup page. Everything else -',
+      'hostname, password, class limits - is tf/cfg/server.cfg.',
+      'tf/addons and tf/custom are yours; nothing here writes into them.',
+    ],
+  }),
+
+  /**
+   * Steam's rule of thumb over a measured tree, the same arithmetic Garry's Mod
+   * sets out at length: SteamCMD stages a depot into `steamapps/downloading`
+   * inside `+force_install_dir`, so the chunks and the files they become occupy
+   * the volume at once, and twice the unpacked size is what an install needs.
+   * Twice 13.89 GiB is 27.78, so the figure is twenty-eight.
+   *
+   * It is a large number and it will refuse installations on small nodes. That
+   * is the intended behaviour and the reason it is not shaved: being under does
+   * not fail this server, it fills the node's disk and takes down every server
+   * on the machine.
+   */
+  installRequiredDiskBytes: 28 * 1024 ** 3,
+
+  variables: [
+    {
+      name: 'Map',
+      description:
+        'The map the server starts on, without the .bsp extension. ctf_2fort, cp_dustbowl and pl_upward ship with the game; anything else has to be in tf/maps first.',
+      envVariable: 'SRCDS_MAP',
+      defaultValue: 'ctf_2fort',
+      userViewable: true,
+      userEditable: true,
+      /** A path component under `tf/maps`; see {@link garrysMod} for the reasoning. */
+      rules: 'required|string|regex:/^[A-Za-z0-9_-]{1,64}$/',
+    },
+    {
+      name: 'Player limit',
+      description:
+        'Player slots. The engine allocates them at start, so raising it needs a restart. Twenty-four is the figure Valve servers use; thirty-two is the ceiling before SourceTV.',
+      envVariable: 'MAX_PLAYERS',
+      defaultValue: '24',
+      userViewable: true,
+      userEditable: true,
+      rules: 'required|integer|min:1|max:32|regex:/^[0-9]{1,2}$/',
+    },
+  ],
+};
+
+export const SOURCE_TEMPLATES: TemplateDefinition[] = [garrysMod, teamFortress2];
