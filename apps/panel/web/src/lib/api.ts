@@ -1,3 +1,5 @@
+import type { ConfigFile, Readiness, StopConfiguration } from '@hopper/shared';
+
 /**
  * The panel's HTTP client.
  *
@@ -187,3 +189,94 @@ export interface AllocationSummary {
 export type NodeHealth =
   | { reachable: true; latencyMs: number; system: { version: string; cpuCount: number } }
   | { reachable: false; latencyMs: number; reason: string };
+
+/**
+ * Templates, as the three administration screens read them.
+ *
+ * Declared here rather than in each page, and that is not tidying: the reason
+ * the "edited" badge never appeared on any installation is that the catalogue
+ * page declared a shape of its own, TypeScript checked the JSX against that
+ * declaration, and the fields it named were never in the response. A single
+ * declaration cannot drift from itself.
+ *
+ * `stop`, `readiness` and `configFiles` are taken from `@hopper/shared`, which
+ * is the same contract the daemon parses — so the editor cannot describe a
+ * template a node could not read.
+ */
+export interface TemplateGroupSummary {
+  uuid: string;
+  name: string;
+  description: string;
+  author: string;
+  templateCount: number;
+}
+
+export interface TemplateSummary {
+  uuid: string;
+  key: string;
+  name: string;
+  description: string;
+  author: string;
+  modifiedByAdmin: boolean;
+  serverCount: number;
+  group: { uuid: string; name: string };
+  dockerImages: { name: string; image: string }[];
+  startup: string;
+  /**
+   * Only the variables a server's own users may see — the read view filters
+   * the rest out, and the editor's `TemplateDetail` below carries them all.
+   *
+   * Here because the create-server form fills its variable fields from this
+   * very response: both screens share the `['admin', 'templates']` cache, and
+   * they described it two different ways until this declaration was the only
+   * one.
+   */
+  variables: Omit<TemplateVariableDetail, 'userViewable'>[];
+}
+
+export interface TemplateVariableDetail {
+  name: string;
+  description: string;
+  envVariable: string;
+  defaultValue: string;
+  /** A non-viewable variable is hidden from the server's own Startup tab. */
+  userViewable: boolean;
+  userEditable: boolean;
+  rules: string;
+}
+
+export interface TemplateDetail {
+  uuid: string;
+  key: string;
+  group: { uuid: string; name: string };
+  name: string;
+  description: string;
+  author: string;
+  modifiedByAdmin: boolean;
+
+  dockerImages: { name: string; image: string }[];
+  startup: string;
+
+  stopCommand: string;
+  stop: StopConfiguration | null;
+  stopTimeoutSeconds: number | null;
+  startupDetection: string | null;
+  readiness: Readiness | null;
+
+  configFiles: ConfigFile[];
+  fileDenylist: string[];
+
+  installContainer: string;
+  installEntrypoint: string;
+  installScript: string;
+  installInactivityTimeoutMs: number | null;
+  installRequiredDiskBytes: number | null;
+
+  importedFromEgg: string | null;
+  /** How many servers stand in the way of deleting it. */
+  serverCount: number;
+  variables: TemplateVariableDetail[];
+
+  createdAt: string;
+  updatedAt: string;
+}

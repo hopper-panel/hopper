@@ -23,6 +23,7 @@ export const en = {
   'common.loading': 'Loading…',
   'common.never': 'never',
   'common.unlimited': 'unlimited',
+  'common.saved': 'Saved',
   'common.copy': 'copy',
   'common.copied': 'copied',
   'common.retry': 'Try again',
@@ -749,9 +750,143 @@ export const en = {
   'adminTemplates.resyncFailed': 'Could not synchronise.',
   'adminTemplates.resynced':
     '{created} created, {updated} updated, {kept} kept because an administrator edited them.',
-  'adminTemplates.empty': 'No templates',
-  'adminTemplates.emptyHint': 'Resynchronise to install the catalogue shipped with the panel.',
+  'adminTemplates.empty': 'No groups',
+  'adminTemplates.emptyHint':
+    'Resynchronise to install the catalogue shipped with the panel, or create a group of your own.',
   'adminTemplates.modified': 'edited',
+  'adminTemplates.templates': 'Templates',
+  'adminTemplates.servers': 'Servers',
+  'adminTemplates.addGroup': 'New group',
+  'adminTemplates.createGroup': 'Create the group',
+  'adminTemplates.creating': 'Creating…',
+  'adminTemplates.groupName': 'Name',
+  'adminTemplates.groupDescription': 'Description',
+  'adminTemplates.groupAuthor': 'Author',
+  'adminTemplates.groupAuthorHint':
+    'Who to ask about the templates in this group. Never imported and never exported.',
+
+  'adminTemplateGroup.back': 'Templates',
+  'adminTemplateGroup.missing': 'Group not found',
+  'adminTemplateGroup.missingHint': 'It may have been deleted since this page was opened.',
+  'adminTemplateGroup.empty': 'No templates in this group',
+  'adminTemplateGroup.emptyHint': 'Write one, or import a Pterodactyl egg into it.',
+  'adminTemplateGroup.newTemplate': 'New template',
+  'adminTemplateGroup.settings': 'Group',
+  'adminTemplateGroup.deleteTitle': 'Delete this group',
+  'adminTemplateGroup.deleteHint': 'Only possible once it holds no templates.',
+  'adminTemplateGroup.deleteConfirm': 'Delete the group “{name}”?',
+  'adminTemplateGroup.importEgg': 'Import an egg',
+  'adminTemplateGroup.importTitle': 'Import a Pterodactyl egg',
+  'adminTemplateGroup.importHint':
+    'The egg’s JSON file, as exported from Pterodactyl. It lands in “{group}”.',
+  'adminTemplateGroup.chooseFile': 'Choose a file',
+  'adminTemplateGroup.importing': 'Importing…',
+  'adminTemplateGroup.notJson': '“{file}” is not JSON. Export the egg again from Pterodactyl.',
+  'adminTemplateGroup.imported': '“{name}” imported.',
+  'adminTemplateGroup.warnings': 'Read these before creating a server from it:',
+
+  'adminTemplate.newTitle': 'New template',
+  'adminTemplate.missing': 'Template not found',
+  'adminTemplate.tabGeneral': 'General',
+  'adminTemplate.tabProcess': 'Process',
+  'adminTemplate.tabFiles': 'Files',
+  'adminTemplate.tabInstall': 'Installation',
+  'adminTemplate.tabVariables': 'Variables',
+  'adminTemplate.draftInvalid': 'Something on another tab is not valid. The fields are marked.',
+  'adminTemplate.importedFromEgg': 'imported egg',
+  'adminTemplate.serverCount': '{count} server(s)',
+  'adminTemplate.liveWarning':
+    'The stop, the readiness, the configuration files and the install block are read live: saving reaches every existing server. The startup command and the Docker image are copies taken when each server was created and are not touched — change those on the server’s own Startup tab.',
+  'adminTemplate.deleteTitle': 'Delete this template',
+  'adminTemplate.deleteHint': 'Only possible once no server was built from it.',
+  'adminTemplate.deleteConfirm': 'Delete the template “{name}”?',
+
+  'adminTemplate.name': 'Name',
+  'adminTemplate.key': 'Key',
+  'adminTemplate.keyHint':
+    'Lowercase letters, digits and dashes. Identifies the template for ever: renaming it does not create a second one.',
+  'adminTemplate.author': 'Author',
+  'adminTemplate.group': 'Group',
+  'adminTemplate.groupHint': 'Moving a template does not move the servers built from it.',
+  'adminTemplate.description': 'Description',
+  'adminTemplate.images': 'Docker images',
+  'adminTemplate.imagesHint':
+    'Offered when a server is created. The first is the default; an existing server keeps the one it was created with.',
+  'adminTemplate.imageName': 'Java 21',
+  'adminTemplate.defaultImage': 'default',
+  'adminTemplate.addImage': 'Add an image',
+  'adminTemplate.startup': 'Startup command',
+  'adminTemplate.startupHint':
+    'Copied onto each server when it is created. Editing it changes what the next server runs, not the ones running now.',
+
+  'adminTemplate.stopTitle': 'Stopping',
+  'adminTemplate.stopHint':
+    'How a server is asked to shut down before it is killed. Read live: saving reaches every existing server.',
+  'adminTemplate.stopType': 'Transport',
+  'adminTemplate.stopNone': 'From the stop command below',
+  'adminTemplate.stopCommandType': 'Type a command on the console',
+  'adminTemplate.stopSignalType': 'Send a signal',
+  'adminTemplate.stopRconType': 'Send a command over RCON',
+  'adminTemplate.stopCommand': 'Stop command',
+  'adminTemplate.stopCommandHint':
+    '“command:stop”, or “signal:SIGTERM”, “signal:SIGINT”, “signal:SIGKILL”. Anything else is refused — it used to be read as SIGTERM in silence.',
+  'adminTemplate.stopWhatToType': 'What to type',
+  'adminTemplate.stopSignal': 'Signal',
+  'adminTemplate.rconCommand': 'Command',
+  'adminTemplate.rconCommandHint': 'The game’s own, sent as written: “quit”, “DoExit”, “/quit”.',
+  'adminTemplate.rconRole': 'Port name',
+  'adminTemplate.rconRoleHint':
+    'The name given to the RCON port in the server’s Network tab. Empty means the game port.',
+  'adminTemplate.rconSecret': 'Password variable',
+  'adminTemplate.rconSecretHint': 'The variable holding the password — never the password.',
+  'adminTemplate.stopTimeout': 'Shutdown grace (seconds)',
+  'adminTemplate.stopTimeoutHint':
+    'Empty leaves the daemon’s thirty seconds, which is a Minecraft figure. Raise it for a game that writes its world on shutdown.',
+
+  'adminTemplate.readyTitle': 'Ready',
+  'adminTemplate.readyHint': 'How a server announces it is up rather than merely started.',
+  'adminTemplate.startupDetection': 'Console pattern',
+  'adminTemplate.startupDetectionHint':
+    'A regular expression. Used when no strategy below is declared.',
+  'adminTemplate.readiness': 'Readiness strategy (JSON)',
+  'adminTemplate.readinessHint':
+    'Empty falls back to the pattern above. One of: log, port, rcon, immediate. Checked against the contract before it is sent.',
+
+  'adminTemplate.configFiles': 'Configuration files (JSON)',
+  'adminTemplate.configFilesHint':
+    'What the daemon rewrites in the server’s own files on every start. Parsers: properties, yaml, json, ini, xml, file. Read live, and an entry the contract cannot read takes every server on this template off its node — so it is checked here before it is sent.',
+  'adminTemplate.fileDenylist': 'Protected files',
+  'adminTemplate.fileDenylistHint':
+    'One path per line, relative to the server root. The file manager refuses to edit or delete them.',
+
+  'adminTemplate.installContainer': 'Install image',
+  'adminTemplate.installContainerHint':
+    'The one-off container that puts the game on disk. Not the image the server runs in.',
+  'adminTemplate.installEntrypoint': 'Entrypoint',
+  'adminTemplate.installTimeout': 'Inactivity timeout (ms)',
+  'adminTemplate.installTimeoutHint':
+    'How long the installation may do nothing at all — not how long it may take. Empty leaves the daemon’s fifteen minutes.',
+  'adminTemplate.installDisk': 'Disk required (bytes)',
+  'adminTemplate.installDiskHint':
+    'Checked before the install container is created, and a shortfall is refused. Leave empty when the size is not knowable.',
+  'adminTemplate.installScript': 'Install script',
+  'adminTemplate.installScriptHint':
+    'Runs as root in the image above, with the server’s volume mounted at /mnt/server.',
+
+  'adminTemplate.variablesHint':
+    'The environment the container is given. The order here is the order they appear on a server’s Startup tab.',
+  'adminTemplate.varName': 'Label',
+  'adminTemplate.varEnv': 'Variable',
+  'adminTemplate.varEnvHint': 'POSIX name: letters, digits and underscores.',
+  'adminTemplate.varDefault': 'Default value',
+  'adminTemplate.varDescription': 'Description',
+  'adminTemplate.varRules': 'Validation rules',
+  'adminTemplate.varRulesHint': 'Laravel syntax, e.g. “required|string|max:20”.',
+  'adminTemplate.varViewable': 'Visible to the server’s users',
+  'adminTemplate.varEditable': 'They may change it',
+  'adminTemplate.moveUp': 'Up',
+  'adminTemplate.moveDown': 'Down',
+  'adminTemplate.addVariable': 'Add a variable',
 
   'adminOverview.noNodes': 'No nodes declared.',
   'adminOverview.noNodesHint': 'Add one to host servers.',

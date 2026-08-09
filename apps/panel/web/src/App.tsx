@@ -29,6 +29,8 @@ import { AdminOverviewPage } from './pages/admin/Overview';
 import { AdminServerDetailPage } from './pages/admin/ServerDetail';
 import { AdminServersPage } from './pages/admin/Servers';
 import { AdminSettingsPage } from './pages/admin/Settings';
+import { AdminTemplateEditorPage } from './pages/admin/TemplateEditor';
+import { AdminTemplateGroupPage } from './pages/admin/TemplateGroup';
 import { AdminTemplatesPage } from './pages/admin/Templates';
 import { AdminUsersPage } from './pages/admin/Users';
 
@@ -100,7 +102,13 @@ export function App() {
           <Route path="users" element={<AdminUsersPage />} />
           <Route path="database-hosts" element={<AdminDatabaseHostsPage />} />
           <Route path="settings" element={<AdminSettingsPage />} />
+          {/* `groups` is a literal segment and React Router ranks it above the
+              `:uuid` below it, the same precedence the API's own controller
+              relies on for the very same two routes. */}
           <Route path="templates" element={<AdminTemplatesPage />} />
+          <Route path="templates/groups/:uuid" element={<AdminTemplateGroupPage />} />
+          <Route path="templates/groups/:groupUuid/new" element={<AdminTemplateEditorPage />} />
+          <Route path="templates/:uuid" element={<AdminTemplateEditorPage />} />
         </Route>
 
         <Route path="*" element={<Navigate to="/" replace />} />

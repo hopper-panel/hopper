@@ -13,11 +13,44 @@ an imported egg.
 **Administration → Templates → Resynchronise** reinstalls it after a Hopper update; a template
 edited by hand is flagged "edited" and is not overwritten.
 
+## Groups, and writing a template by hand
+
+**Administration → Templates** lists the groups — Pterodactyl calls them nests — and a group holds
+its templates. Both are editable: a group has a name, a description and an author, and a template
+opens into a five-tab editor covering everything it is. A group cannot be deleted while it holds
+templates, and a template cannot be deleted while a server was built from it; both refusals say how
+many are in the way.
+
+One group cannot be renamed: one the shipped catalogue installs into. Its name is what the
+catalogue upserts on, so renaming it splits it — the next resynchronisation recreates it under the
+old name and pulls the untouched templates back, leaving two groups where you asked for one. Create
+the group you want and move the templates into it.
+
+**What an edit does to the servers already running on the template** is the thing to know before
+using the editor, and the screen says it too:
+
+- The **startup command** and the **Docker image** are copies taken when each server was created.
+  Editing them changes what the _next_ server runs and nothing about the ones running now — change
+  those on the server's own Startup tab, one server at a time.
+- The **stop**, the **readiness**, the **configuration files**, the **protected files** and the whole
+  **install block** are read live, on every configuration build. Saving reaches every existing
+  server the moment its daemon next fetches.
+- **Adding a variable** backfills a row on every existing server, at the template's default, so the
+  value the panel shows is the value the container has. **Removing one does not** remove those rows:
+  the environment is those rows, and deleting them would erase per-server licence keys and passwords
+  the template never owned. Rotate the secret instead; the audit entry names what was dropped.
+
+The `configFiles` and `readiness` blocks are typed as JSON, and checked against the daemon's own
+contract before anything is sent — an entry the contract cannot read does not fail politely, it
+takes every server on the template off its node until it is fixed.
+
 ## Importing a Pterodactyl egg
 
-From **Administration → Templates**, upload the egg's JSON file. The importer translates the fields,
-keeps the variables and their validation rules, and remembers the original egg's UUID so it is not
-imported twice.
+From **Administration → Templates**, open the group it should land in and choose **Import an egg**:
+the egg's JSON file, as Pterodactyl exports it. The importer translates the fields, keeps the
+variables and their validation rules, and remembers the original egg's UUID so it is not imported
+twice. What it could not carry across comes back with the result, as a list to read before the first
+server is created from it.
 
 Two differences worth knowing:
 
