@@ -12,14 +12,17 @@ import { TemplatesService } from './templates.service.js';
 
 const templateRow = (readiness: unknown) => ({
   uuid: '6f1c2f4a-8f43-4d31-9d1b-9e2b7c2f0f11',
+  key: 'paper',
   name: 'Paper',
   description: '',
   author: 'Hopper',
+  modifiedByAdmin: true,
   startup: 'java -jar server.jar',
   dockerImages: [{ name: 'Java 21', image: 'eclipse-temurin:21-jre-noble' }],
   readiness,
   group: { uuid: 'c4b6a5c8-2a1e-4c8f-9a52-2c2b0d5f7e10', name: 'Minecraft: Java Edition' },
   variables: [],
+  _count: { servers: 3 },
 });
 
 const serviceFor = (readiness: unknown) =>
@@ -28,6 +31,28 @@ const serviceFor = (readiness: unknown) =>
   } as unknown as PrismaService);
 
 describe('TemplatesService template view', () => {
+  /**
+   * The three fields the catalogue page renders and never received.
+   *
+   * Asserted together because they failed together and for one reason: the
+   * page declared a `Template` interface of its own listing `key`,
+   * `modifiedByAdmin` and `servers`, TypeScript checked the JSX against *that*,
+   * and the fields simply arrived `undefined`. The "edited" badge — the only
+   * thing anywhere that says which templates a resynchronisation will skip —
+   * therefore never rendered on any installation.
+   *
+   * `serverCount` is the third because the listing is where a deletion starts:
+   * the API refuses one while servers exist, and a page that cannot show the
+   * count can only offer a button and then explain the refusal afterwards.
+   */
+  it('carries the key, the edited flag and the server count', async () => {
+    const view = await serviceFor(null).findByUuid('6f1c2f4a-8f43-4d31-9d1b-9e2b7c2f0f11');
+
+    expect(view.key).toBe('paper');
+    expect(view.modifiedByAdmin).toBe(true);
+    expect(view.serverCount).toBe(3);
+  });
+
   it('shows the strategy the template declares', async () => {
     const view = await serviceFor({ type: 'port', protocol: 'tcp', delayMs: 5000 }).findByUuid(
       '6f1c2f4a-8f43-4d31-9d1b-9e2b7c2f0f11',

@@ -18,6 +18,7 @@ export const fr: Partial<Messages> = {
   'common.loading': 'Chargement…',
   'common.never': 'jamais',
   'common.unlimited': 'illimité',
+  'common.saved': 'Enregistré',
   'common.copy': 'copier',
   'common.copied': 'copié',
   'common.retry': 'Réessayer',
@@ -757,9 +758,148 @@ export const fr: Partial<Messages> = {
   'adminTemplates.resyncFailed': 'Synchronisation impossible.',
   'adminTemplates.resynced':
     '{created} créé(s), {updated} mis à jour, {kept} conservé(s) car modifiés par un administrateur.',
-  'adminTemplates.empty': 'Aucun template',
-  'adminTemplates.emptyHint': 'Resynchronisez pour installer le catalogue livré avec le panel.',
+  'adminTemplates.empty': 'Aucun groupe',
+  'adminTemplates.emptyHint':
+    'Resynchronisez pour installer le catalogue livré avec le panel, ou créez votre propre groupe.',
   'adminTemplates.modified': 'modifié',
+  'adminTemplates.templates': 'Templates',
+  'adminTemplates.servers': 'Serveurs',
+  'adminTemplates.addGroup': 'Nouveau groupe',
+  'adminTemplates.createGroup': 'Créer le groupe',
+  'adminTemplates.creating': 'Création…',
+  'adminTemplates.groupName': 'Nom',
+  'adminTemplates.groupDescription': 'Description',
+  'adminTemplates.groupAuthor': 'Auteur',
+  'adminTemplates.groupAuthorHint':
+    'À qui s’adresser à propos des templates de ce groupe. Jamais importé ni exporté.',
+
+  'adminTemplateGroup.back': 'Templates',
+  'adminTemplateGroup.missing': 'Groupe introuvable',
+  'adminTemplateGroup.missingHint': 'Il a peut-être été supprimé depuis l’ouverture de la page.',
+  'adminTemplateGroup.empty': 'Aucun template dans ce groupe',
+  'adminTemplateGroup.emptyHint': 'Écrivez-en un, ou importez-y un egg Pterodactyl.',
+  'adminTemplateGroup.newTemplate': 'Nouveau template',
+  'adminTemplateGroup.settings': 'Groupe',
+  'adminTemplateGroup.deleteTitle': 'Supprimer ce groupe',
+  'adminTemplateGroup.deleteHint': 'Possible uniquement lorsqu’il ne contient plus de template.',
+  'adminTemplateGroup.deleteConfirm': 'Supprimer le groupe « {name} » ?',
+  'adminTemplateGroup.importEgg': 'Importer un egg',
+  'adminTemplateGroup.importTitle': 'Importer un egg Pterodactyl',
+  'adminTemplateGroup.importHint':
+    'Le fichier JSON de l’egg, tel qu’exporté depuis Pterodactyl. Il arrivera dans « {group} ».',
+  'adminTemplateGroup.chooseFile': 'Choisir un fichier',
+  'adminTemplateGroup.importing': 'Import…',
+  'adminTemplateGroup.notJson':
+    '« {file} » n’est pas du JSON. Réexportez l’egg depuis Pterodactyl.',
+  'adminTemplateGroup.imported': '« {name} » importé.',
+  'adminTemplateGroup.warnings': 'À lire avant de créer un serveur à partir de ce template :',
+
+  'adminTemplate.newTitle': 'Nouveau template',
+  'adminTemplate.missing': 'Template introuvable',
+  'adminTemplate.tabGeneral': 'Général',
+  'adminTemplate.tabProcess': 'Processus',
+  'adminTemplate.tabFiles': 'Fichiers',
+  'adminTemplate.tabInstall': 'Installation',
+  'adminTemplate.tabVariables': 'Variables',
+  'adminTemplate.draftInvalid':
+    'Quelque chose n’est pas valide dans un autre onglet. Les champs sont signalés.',
+  'adminTemplate.importedFromEgg': 'egg importé',
+  'adminTemplate.serverCount': '{count} serveur(s)',
+  'adminTemplate.liveWarning':
+    'L’arrêt, la détection de démarrage, les fichiers de configuration et le bloc d’installation sont lus en direct : enregistrer atteint tous les serveurs existants. La commande de démarrage et l’image Docker sont des copies faites à la création de chaque serveur et ne sont pas touchées — modifiez-les depuis l’onglet Démarrage du serveur.',
+  'adminTemplate.deleteTitle': 'Supprimer ce template',
+  'adminTemplate.deleteHint': 'Possible uniquement lorsqu’aucun serveur n’en est issu.',
+  'adminTemplate.deleteConfirm': 'Supprimer le template « {name} » ?',
+
+  'adminTemplate.name': 'Nom',
+  'adminTemplate.key': 'Clé',
+  'adminTemplate.keyHint':
+    'Minuscules, chiffres et tirets. Identifie le template pour toujours : le renommer n’en crée pas un second.',
+  'adminTemplate.author': 'Auteur',
+  'adminTemplate.group': 'Groupe',
+  'adminTemplate.groupHint': 'Déplacer un template ne déplace pas les serveurs qui en sont issus.',
+  'adminTemplate.description': 'Description',
+  'adminTemplate.images': 'Images Docker',
+  'adminTemplate.imagesHint':
+    'Proposées à la création d’un serveur. La première est celle par défaut ; un serveur existant garde celle avec laquelle il a été créé.',
+  'adminTemplate.imageName': 'Java 21',
+  'adminTemplate.defaultImage': 'par défaut',
+  'adminTemplate.addImage': 'Ajouter une image',
+  'adminTemplate.startup': 'Commande de démarrage',
+  'adminTemplate.startupHint':
+    'Copiée sur chaque serveur à sa création. La modifier change ce que lancera le prochain serveur, pas ceux qui tournent.',
+
+  'adminTemplate.stopTitle': 'Arrêt',
+  'adminTemplate.stopHint':
+    'Comment on demande au serveur de s’arrêter avant de le tuer. Lu en direct : enregistrer atteint tous les serveurs existants.',
+  'adminTemplate.stopType': 'Transport',
+  'adminTemplate.stopNone': 'Depuis la commande d’arrêt ci-dessous',
+  'adminTemplate.stopCommandType': 'Taper une commande dans la console',
+  'adminTemplate.stopSignalType': 'Envoyer un signal',
+  'adminTemplate.stopRconType': 'Envoyer une commande en RCON',
+  'adminTemplate.stopCommand': 'Commande d’arrêt',
+  'adminTemplate.stopCommandHint':
+    '« command:stop », ou « signal:SIGTERM », « signal:SIGINT », « signal:SIGKILL ». Tout le reste est refusé — c’était auparavant lu comme SIGTERM en silence.',
+  'adminTemplate.stopWhatToType': 'Ce qu’il faut taper',
+  'adminTemplate.stopSignal': 'Signal',
+  'adminTemplate.rconCommand': 'Commande',
+  'adminTemplate.rconCommandHint':
+    'Celle du jeu, envoyée telle quelle : « quit », « DoExit », « /quit ».',
+  'adminTemplate.rconRole': 'Nom du port',
+  'adminTemplate.rconRoleHint':
+    'Le nom donné au port RCON dans l’onglet Réseau du serveur. Vide signifie le port du jeu.',
+  'adminTemplate.rconSecret': 'Variable du mot de passe',
+  'adminTemplate.rconSecretHint':
+    'La variable qui contient le mot de passe — jamais le mot de passe.',
+  'adminTemplate.stopTimeout': 'Délai d’arrêt (secondes)',
+  'adminTemplate.stopTimeoutHint':
+    'Vide laisse les trente secondes du daemon, qui sont un chiffre Minecraft. Augmentez-le pour un jeu qui écrit son monde à l’arrêt.',
+
+  'adminTemplate.readyTitle': 'Prêt',
+  'adminTemplate.readyHint':
+    'Comment un serveur annonce qu’il est en ligne, et pas seulement démarré.',
+  'adminTemplate.startupDetection': 'Motif console',
+  'adminTemplate.startupDetectionHint':
+    'Une expression régulière. Utilisée lorsqu’aucune stratégie ci-dessous n’est déclarée.',
+  'adminTemplate.readiness': 'Stratégie de disponibilité (JSON)',
+  'adminTemplate.readinessHint':
+    'Vide retombe sur le motif ci-dessus. Au choix : log, port, rcon, immediate. Vérifiée contre le contrat avant envoi.',
+
+  'adminTemplate.configFiles': 'Fichiers de configuration (JSON)',
+  'adminTemplate.configFilesHint':
+    'Ce que le daemon réécrit dans les fichiers du serveur à chaque démarrage. Parsers : properties, yaml, json, ini, xml, file. Lu en direct, et une entrée que le contrat ne sait pas lire sort tous les serveurs de ce template de leur node — elle est donc vérifiée ici avant envoi.',
+  'adminTemplate.fileDenylist': 'Fichiers protégés',
+  'adminTemplate.fileDenylistHint':
+    'Un chemin par ligne, relatif à la racine du serveur. Le gestionnaire de fichiers refuse de les modifier ou de les supprimer.',
+
+  'adminTemplate.installContainer': 'Image d’installation',
+  'adminTemplate.installContainerHint':
+    'Le conteneur unique qui met le jeu sur le disque. Pas l’image dans laquelle le serveur tourne.',
+  'adminTemplate.installEntrypoint': 'Point d’entrée',
+  'adminTemplate.installTimeout': 'Délai d’inactivité (ms)',
+  'adminTemplate.installTimeoutHint':
+    'Combien de temps l’installation peut ne rien faire du tout — pas combien de temps elle peut durer. Vide laisse les quinze minutes du daemon.',
+  'adminTemplate.installDisk': 'Disque requis (octets)',
+  'adminTemplate.installDiskHint':
+    'Vérifié avant la création du conteneur d’installation, et un manque est refusé. Laissez vide quand la taille n’est pas connaissable.',
+  'adminTemplate.installScript': 'Script d’installation',
+  'adminTemplate.installScriptHint':
+    'Exécuté en root dans l’image ci-dessus, le volume du serveur monté sur /mnt/server.',
+
+  'adminTemplate.variablesHint':
+    'L’environnement donné au conteneur. L’ordre ici est celui de l’onglet Démarrage d’un serveur.',
+  'adminTemplate.varName': 'Libellé',
+  'adminTemplate.varEnv': 'Variable',
+  'adminTemplate.varEnvHint': 'Nom POSIX : lettres, chiffres et tirets bas.',
+  'adminTemplate.varDefault': 'Valeur par défaut',
+  'adminTemplate.varDescription': 'Description',
+  'adminTemplate.varRules': 'Règles de validation',
+  'adminTemplate.varRulesHint': 'Syntaxe Laravel, par exemple « required|string|max:20 ».',
+  'adminTemplate.varViewable': 'Visible par les utilisateurs du serveur',
+  'adminTemplate.varEditable': 'Ils peuvent la modifier',
+  'adminTemplate.moveUp': 'Monter',
+  'adminTemplate.moveDown': 'Descendre',
+  'adminTemplate.addVariable': 'Ajouter une variable',
 
   'adminOverview.noNodes': 'Aucun node déclaré.',
   'adminOverview.noNodesHint': 'Ajoutez-en un pour héberger des serveurs.',

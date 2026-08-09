@@ -54,6 +54,7 @@ Hopper aims for the middle:
 | 📊 **Resources**         | CPU, RAM, disk and network in real time                          |
 | 📦 **One-click install** | Paper, Purpur, Vanilla, Fabric, NeoForge, Velocity, BungeeCord   |
 | 🥚 **Egg import**        | Reuse the hundreds of existing Pterodactyl eggs                  |
+| ✏️ **Template editor**   | Write your own, in groups, from the administration               |
 | 📁 **File manager**      | In-browser editing, upload, archives — behind a strict path jail |
 | 🔌 **Built-in SFTP**     | Sign in with your panel credentials, permissions honoured        |
 | 💾 **Backups**           | Compressed archives on the node, one-click restore               |

@@ -63,9 +63,34 @@ export interface DockerImageOption {
 
 export interface TemplateView {
   uuid: string;
+  /**
+   * The upsert key, and the three things the listing needs it for: telling two
+   * templates of the same name apart, addressing one in a support thread, and
+   * showing an author which of their keys are taken before they pick another.
+   *
+   * The catalogue page has rendered this field since it was written and it has
+   * never once arrived — the page declared it on an interface of its own and
+   * TypeScript checked the components against that declaration rather than
+   * against this one. Same for `modifiedByAdmin` below, which is the whole
+   * point of the badge beside the name: a template the operator has edited is
+   * skipped by every later resynchronisation, and until now nothing anywhere
+   * said which ones those were.
+   */
+  key: string;
   name: string;
   description: string;
   author: string;
+  /** True once an administrator has edited it; catalogue syncs then skip it. */
+  modifiedByAdmin: boolean;
+  /**
+   * How many servers were built from it.
+   *
+   * Shown so that the refusal is predictable rather than discovered: deleting a
+   * template with servers on it is a `ConflictException`, and the count is the
+   * only thing that tells an operator whether the button in front of them will
+   * work.
+   */
+  serverCount: number;
   group: { uuid: string; name: string };
   /** Ordered: the first is the default. */
   dockerImages: DockerImageOption[];
@@ -117,7 +142,7 @@ export class TemplatesService {
 
   async list(): Promise<TemplateView[]> {
     const templates = await this.prisma.template.findMany({
-      include: { group: true, variables: true },
+      include: { group: true, variables: true, _count: { select: { servers: true } } },
       orderBy: [{ group: { name: 'asc' } }, { name: 'asc' }],
     });
 
@@ -127,7 +152,7 @@ export class TemplatesService {
   async findByUuid(uuid: string): Promise<TemplateView> {
     const template = await this.prisma.template.findUnique({
       where: { uuid },
-      include: { group: true, variables: true },
+      include: { group: true, variables: true, _count: { select: { servers: true } } },
     });
 
     if (!template) {
@@ -141,7 +166,7 @@ export class TemplatesService {
   async findByKey(key: string): Promise<TemplateView> {
     const template = await this.prisma.template.findUnique({
       where: { key },
-      include: { group: true, variables: true },
+      include: { group: true, variables: true, _count: { select: { servers: true } } },
     });
 
     if (!template) {
@@ -153,13 +178,16 @@ export class TemplatesService {
 
   private toView(template: {
     uuid: string;
+    key: string;
     name: string;
     description: string;
     author: string;
+    modifiedByAdmin: boolean;
     startup: string;
     dockerImages: unknown;
     readiness: unknown;
     group: { uuid: string; name: string };
+    _count: { servers: number };
     variables: {
       name: string;
       description: string;
@@ -172,9 +200,12 @@ export class TemplatesService {
   }): TemplateView {
     return {
       uuid: template.uuid,
+      key: template.key,
       name: template.name,
       description: template.description,
       author: template.author,
+      modifiedByAdmin: template.modifiedByAdmin,
+      serverCount: template._count.servers,
       group: { uuid: template.group.uuid, name: template.group.name },
       dockerImages: parseImageOptions(template.dockerImages),
       startup: template.startup,

@@ -10,20 +10,13 @@ import {
   type NodeSummary,
   type Paginated,
   type ServerSummary,
+  type TemplateSummary,
   type UserSummary,
 } from '../../lib/api';
 import { useTranslation } from '../../i18n';
 import { describeStatus, formatAddress, formatBytes } from '../../lib/format';
 
 const GIB = 1024 ** 3;
-
-interface TemplateSummary {
-  uuid: string;
-  name: string;
-  group: { name: string };
-  dockerImages: { name: string; image: string }[];
-  variables: { name: string; envVariable: string; defaultValue: string; userEditable: boolean }[];
-}
 
 export function AdminServersPage() {
   const { t } = useTranslation();
