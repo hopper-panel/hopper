@@ -104,6 +104,53 @@ describe('the template groups page', () => {
     );
   });
 
+  /**
+   * A dialog, not a panel unfolding above the list.
+   *
+   * The form used to push every group down the page and turn the button that
+   * opened it into "Cancel", so the field to fill in appeared under the button
+   * just clicked rather than in front of the reader. Six other screens in this
+   * panel create things in a dialog; this is the same gesture.
+   */
+  it('opens the form in a dialog, over a list that stays put', async () => {
+    mount(() => undefined);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'New group' }));
+
+    expect(screen.getByRole('dialog')).toBeTruthy();
+    // The list is still there behind it rather than displaced.
+    expect(screen.getByText('Minecraft: Java Edition')).toBeTruthy();
+  });
+
+  it('forgets what was typed when the dialog is dismissed', async () => {
+    mount(() => undefined);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'New group' }));
+    fireEvent.change(screen.getByPlaceholderText('Rust'), { target: { value: 'Half-finished' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+
+    expect(screen.queryByRole('dialog')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: 'New group' }));
+
+    // Reopened empty. The state lives in a component that does not exist while
+    // the dialog is closed, which is what makes this true without an effect.
+    expect(screen.getByPlaceholderText('Rust')).toHaveProperty('value', '');
+  });
+
+  it('will not create a group with no name', async () => {
+    mount(() => undefined);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'New group' }));
+
+    // The footer button is outside the form, so `required` cannot stop it: the
+    // guard has to be the disabled state.
+    expect(screen.getByRole('button', { name: 'Create the group' })).toHaveProperty(
+      'disabled',
+      true,
+    );
+  });
+
   it('creates a group', async () => {
     const fetch = mount((input, init) =>
       input === '/api/admin/templates/groups' && init?.method === 'POST'
