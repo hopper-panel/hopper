@@ -18,10 +18,19 @@ interface ConsoleCredentials {
 
 export type ConnectionStatus = 'connecting' | 'connected' | 'reconnecting' | 'failed';
 
+/**
+ * RFC 6455's "policy violation", and the daemon's answer to a socket it will
+ * never accept — an origin absent from `api.allowedOrigins`. Distinguished
+ * from every other close because it is the one that cannot be waited out.
+ */
+const POLICY_VIOLATION = 1008;
+
 export interface ConsoleController {
   status: ConnectionStatus;
   state: ServerState;
   permissions: Permission[];
+  /** The reason the far end refused, when the close carried one. */
+  failure: string | null;
   /**
    * Subscribes to resource samples. Returns the unsubscribe function.
    *
@@ -71,6 +80,8 @@ export function useConsole(serverUuid: string): ConsoleController {
   const [status, setStatus] = useState<ConnectionStatus>('connecting');
   const [state, setState] = useState<ServerState>('offline');
   const [permissions, setPermissions] = useState<Permission[]>([]);
+  /** What the far end said when it refused, when it said anything. */
+  const [failure, setFailure] = useState<string | null>(null);
 
   const socketRef = useRef<WebSocket | null>(null);
   const lineHandlerRef = useRef<(line: string) => void>(() => undefined);
@@ -236,10 +247,34 @@ export function useConsole(serverUuid: string): ConsoleController {
           }
         };
 
-        connection.onclose = () => {
+        connection.onclose = (event) => {
           socketRef.current = null;
 
           if (!active) {
+            return;
+          }
+
+          /*
+           * A refusal is not a dropped connection, and retrying it is not
+           * patience — it is a loop that never ends.
+           *
+           * 1008 is what the daemon closes with when it will not accept this
+           * socket at all: an origin that is not on its list, which is what a
+           * panel reached by an address the node has never been told about
+           * looks like. Reconnecting every thirty seconds produced exactly
+           * that in the daemon's log, for ever, while the page showed a
+           * console that was merely empty — and the input under it said the
+           * reader lacked permission, because permissions arrive on a
+           * connection that had never been made.
+           *
+           * So it stops, and `failed` is what the page reports. The reason the
+           * daemon gave travels with it: the operator can read "Origin not
+           * allowed." and go to the address their node knows, which is the one
+           * piece of information that ends this.
+           */
+          if (event.code === POLICY_VIOLATION) {
+            setStatus('failed');
+            setFailure(event.reason || null);
             return;
           }
 
@@ -285,7 +320,17 @@ export function useConsole(serverUuid: string): ConsoleController {
     };
   }, [serverUuid, emit]);
 
-  return { status, state, permissions, onLine, onUsage, getHistory, sendCommand, setPower };
+  return {
+    status,
+    state,
+    permissions,
+    failure,
+    onLine,
+    onUsage,
+    getHistory,
+    sendCommand,
+    setPower,
+  };
 }
 
 /**
