@@ -211,6 +211,22 @@ You have nothing to set for the following — it is the default behaviour:
 
 - **An audit log** of every sensitive action, readable per server.
 - **Rate limiting** on authentication, on 2FA and on SFTP.
+- **Refresh tokens rotate on every use**, and each is kept, revoked, after the rotation that
+  replaced it. A revoked token turning up again is how a stolen session is caught: the whole family
+  is revoked, which signs out the thief and the legitimate user together, and an
+  `auth.token.reuse-detected` entry says when.
+
+  **Except within thirty seconds of the rotation, on a family that is still signed in.** That is a
+  browser losing a race, not a theft, and treating the two alike made the panel unusable: the access
+  cookie lasts exactly as long as the access token, so every tab of one browser loses it in the same
+  second, each refreshes, and the one that arrives second is holding a token the first has just
+  revoked. Every fifteen minutes, for anybody working with the panel open twice. Inside the window
+  the replay rotates again instead. Outside it — or once the family has been signed out, which
+  leaves nothing alive for the check to find — it still burns everything.
+
+  The hole this leaves is exactly its width: a token stolen _and_ replayed within thirty seconds,
+  while its owner is still signed in, is not caught. Nothing can tell that apart from the tab race —
+  both are one token arriving twice, seconds apart, on a family in use.
 
 ## What Hopper does not protect: the disk an installation writes
 
