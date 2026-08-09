@@ -6,6 +6,7 @@ import { templateDefinitionSchema, type TemplateDefinition } from './definition.
 
 export * from './definition.js';
 export * from './pterodactyl-importer.js';
+export * from './pterodactyl-exporter.js';
 export { JAVA_TEMPLATES } from './catalog/java.js';
 export { PROXY_TEMPLATES } from './catalog/proxy.js';
 export { FACTORIO_TEMPLATES } from './catalog/factorio.js';

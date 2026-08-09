@@ -259,3 +259,64 @@ describe('a template group', () => {
     });
   });
 });
+
+/**
+ * Downloading a template as an egg.
+ *
+ * Two things worth a browser: that the button does not follow the row's link on
+ * the way — a button that exports *and* navigates away from the list is one
+ * nobody presses twice — and that the file is named the way Pterodactyl names
+ * its own, so a file from either panel looks like the other's in a downloads
+ * folder.
+ */
+describe('exporting a template', () => {
+  function stubDownload(): { clicked: HTMLAnchorElement[] } {
+    const clicked: HTMLAnchorElement[] = [];
+
+    // jsdom implements neither, and `click()` on a real anchor would ask it to
+    // navigate.
+    vi.stubGlobal('URL', {
+      ...URL,
+      createObjectURL: () => 'blob:egg',
+      revokeObjectURL: () => undefined,
+    });
+
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (
+      this: HTMLAnchorElement,
+    ) {
+      clicked.push(this);
+    });
+
+    return { clicked };
+  }
+
+  it('fetches the egg and saves it under the key', async () => {
+    const { clicked } = stubDownload();
+
+    const { fetch } = mount((input) =>
+      input === `/api/admin/templates/${TEMPLATES[0]!.uuid}/export`
+        ? json({ name: 'Paper', hopper: { version: 1, key: 'paper' } })
+        : undefined,
+    );
+
+    const buttons = await screen.findAllByRole('button', {
+      name: 'Export as a Pterodactyl egg',
+    });
+
+    fireEvent.click(buttons[0]!);
+
+    await waitFor(() => {
+      expect(clicked).toHaveLength(1);
+      expect(clicked[0]?.download).toBe('egg-paper.json');
+    });
+
+    expect(
+      fetch.mock.calls.some(
+        ([path]) => path === `/api/admin/templates/${TEMPLATES[0]!.uuid}/export`,
+      ),
+    ).toBe(true);
+
+    // Still on the group page: the click was stopped from following the row.
+    expect(screen.getByText('Vanilla')).toBeTruthy();
+  });
+});

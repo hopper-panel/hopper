@@ -1,9 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRef, useState, type FormEvent } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
+import { DownloadIcon } from '../../components/icons';
 import { PageHeader } from '../../components/PageHeader';
 import { Alert, Badge, Button, Card, EmptyState, Field, Input, Spinner } from '../../components/ui';
 import { useTranslation } from '../../i18n';
+import { downloadJson } from '../../lib/download';
 import { ApiError, api, type TemplateGroupSummary, type TemplateSummary } from '../../lib/api';
 
 /**
@@ -127,10 +129,14 @@ export function AdminTemplateGroupPage() {
                     </p>
                   </div>
 
-                  <dl className="text-xs">
-                    <dt className="text-content-muted">{t('adminTemplates.servers')}</dt>
-                    <dd className="mt-0.5 text-content">{template.serverCount}</dd>
-                  </dl>
+                  <div className="flex items-center gap-4">
+                    <dl className="text-xs">
+                      <dt className="text-content-muted">{t('adminTemplates.servers')}</dt>
+                      <dd className="mt-0.5 text-content">{template.serverCount}</dd>
+                    </dl>
+
+                    <ExportButton uuid={template.uuid} templateKey={template.key} />
+                  </div>
                 </div>
               </Card>
             </Link>
@@ -170,6 +176,43 @@ export function AdminTemplateGroupPage() {
         ) : null}
       </Card>
     </>
+  );
+}
+
+/**
+ * Downloading one template as a Pterodactyl egg.
+ *
+ * Inside the row's `<Link>`, so the click has to be stopped from following it:
+ * a button that both exports the template and navigates away from the list is a
+ * button nobody presses twice.
+ */
+export function ExportButton({ uuid, templateKey }: { uuid: string; templateKey: string }) {
+  const { t } = useTranslation();
+
+  const download = useMutation({
+    mutationFn: async () => {
+      const egg = await api.get<unknown>(`/api/admin/templates/${uuid}/export`);
+
+      // `egg-<key>.json` is what Pterodactyl names its own exports, so a file
+      // from either panel lands in a downloads folder looking like the other's.
+      downloadJson(`egg-${templateKey}.json`, egg);
+    },
+  });
+
+  return (
+    <Button
+      variant="ghost"
+      title={t('adminTemplate.export')}
+      aria-label={t('adminTemplate.export')}
+      disabled={download.isPending}
+      onClick={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        download.mutate();
+      }}
+    >
+      <DownloadIcon className="size-4" />
+    </Button>
   );
 }
 

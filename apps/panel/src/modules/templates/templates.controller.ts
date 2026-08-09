@@ -1,4 +1,4 @@
-import { EggImportError, importPterodactylEgg } from '@hopper/templates';
+import { EggImportError, importPterodactylEgg, type PterodactylEggExport } from '@hopper/templates';
 import {
   BadRequestException,
   Body,
@@ -120,6 +120,20 @@ export class TemplatesController {
   @Get(':uuid/detail')
   findDetail(@Param('uuid') uuid: string): Promise<TemplateDetailView> {
     return this.editor.findDetailByUuid(uuid);
+  }
+
+  /**
+   * The template as a Pterodactyl egg, for moving it somewhere else.
+   *
+   * Plain JSON rather than a `Content-Disposition` attachment, and the browser
+   * makes the file. A download served by this route would have to be reached by
+   * a link rather than by the panel's HTTP client, and that client is what
+   * silently renews an expired access token: the operator whose token had just
+   * lapsed would download a file containing a 401.
+   */
+  @Get(':uuid/export')
+  exportEgg(@Param('uuid') uuid: string): Promise<PterodactylEggExport> {
+    return this.editor.exportEgg(uuid);
   }
 
   @Post()

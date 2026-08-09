@@ -785,6 +785,7 @@ export const en = {
   'adminTemplateGroup.imported': '“{name}” imported.',
   'adminTemplateGroup.warnings': 'Read these before creating a server from it:',
 
+  'adminTemplate.export': 'Export as a Pterodactyl egg',
   'adminTemplate.newTitle': 'New template',
   'adminTemplate.missing': 'Template not found',
   'adminTemplate.tabGeneral': 'General',

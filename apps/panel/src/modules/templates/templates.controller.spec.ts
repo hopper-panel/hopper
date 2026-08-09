@@ -82,6 +82,10 @@ const ROUTES = [
   { method: 'GET' as const, url: '/api/admin/templates' },
   { method: 'GET' as const, url: `/api/admin/templates/${TEMPLATE_UUID}` },
   { method: 'GET' as const, url: `/api/admin/templates/${TEMPLATE_UUID}/detail` },
+  // The export carries the install script and every variable's default value,
+  // so it belongs behind the same door as the detail view above rather than
+  // being a download anybody signed in could fetch.
+  { method: 'GET' as const, url: `/api/admin/templates/${TEMPLATE_UUID}/export` },
   { method: 'POST' as const, url: '/api/admin/templates', body: templateBody },
   { method: 'PATCH' as const, url: `/api/admin/templates/${TEMPLATE_UUID}`, body: {} },
   { method: 'DELETE' as const, url: `/api/admin/templates/${TEMPLATE_UUID}` },

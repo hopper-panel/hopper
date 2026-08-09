@@ -794,6 +794,7 @@ export const fr: Partial<Messages> = {
   'adminTemplateGroup.imported': '« {name} » importé.',
   'adminTemplateGroup.warnings': 'À lire avant de créer un serveur à partir de ce template :',
 
+  'adminTemplate.export': 'Exporter en egg Pterodactyl',
   'adminTemplate.newTitle': 'Nouveau template',
   'adminTemplate.missing': 'Template introuvable',
   'adminTemplate.tabGeneral': 'Général',

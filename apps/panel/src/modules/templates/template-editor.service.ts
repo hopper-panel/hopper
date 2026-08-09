@@ -5,7 +5,13 @@ import {
   type Readiness,
   type StopConfiguration,
 } from '@hopper/shared';
-import { TEMPLATE_CATALOG, catalogGroups, type TemplateDefinition } from '@hopper/templates';
+import {
+  TEMPLATE_CATALOG,
+  catalogGroups,
+  exportPterodactylEgg,
+  type PterodactylEggExport,
+  type TemplateDefinition,
+} from '@hopper/templates';
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { AUDIT_EVENTS, AuditService } from '../audit/audit.service.js';
@@ -191,6 +197,40 @@ export class TemplateEditorService {
 
   async findDetailByUuid(uuid: string): Promise<TemplateDetailView> {
     return toDetailView(await this.requireTemplate(uuid));
+  }
+
+  /**
+   * The template as a file somebody else can read.
+   *
+   * A Pterodactyl egg with a `hopper` block beside it — see
+   * `pterodactyl-exporter.ts` for what goes where and why. The definition it
+   * exports is built by `mergedDefinition` with an empty patch, which is the
+   * same row-to-definition mapping every edit already goes through: a second
+   * mapper written for this route would be a second place for a new column to
+   * be forgotten, and the one that drifts is always the one used once.
+   *
+   * The variables are put back afterwards because `mergedDefinition` leaves
+   * them empty by design — an update writes them as rows of its own, in a
+   * transaction — and they arrive from `requireTemplate` in `sort` order, which
+   * is the order the export has to preserve.
+   */
+  async exportEgg(uuid: string): Promise<PterodactylEggExport> {
+    const row = await this.requireTemplate(uuid);
+
+    const definition: TemplateDefinition = {
+      ...mergedDefinition(row, {}, row.key, row.group.name),
+      variables: row.variables.map((variable) => ({
+        name: variable.name,
+        description: variable.description,
+        envVariable: variable.envVariable,
+        defaultValue: variable.defaultValue,
+        userViewable: variable.userViewable,
+        userEditable: variable.userEditable,
+        rules: variable.rules,
+      })),
+    };
+
+    return exportPterodactylEgg(definition, { exportedAt: new Date().toISOString() });
   }
 
   async create(

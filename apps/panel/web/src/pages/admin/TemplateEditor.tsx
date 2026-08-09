@@ -12,6 +12,7 @@ import {
   type DraftError,
   type TemplateDraft,
 } from '../../lib/template-draft';
+import { ExportButton } from './TemplateGroup';
 import { FilesTab, GeneralTab, InstallTab, ProcessTab, VariablesTab } from './TemplateEditorTabs';
 
 /**
@@ -194,6 +195,10 @@ function TemplateForm({
             {saved && !save.error ? (
               <span className="text-sm text-content-muted">{t('common.saved')}</span>
             ) : null}
+            {/* The template as it is stored, not as the form currently holds
+                it: an export of unsaved edits would be a file describing a
+                template that exists nowhere. */}
+            {template ? <ExportButton uuid={template.uuid} templateKey={template.key} /> : null}
             <Button variant="primary" onClick={submit} disabled={save.isPending}>
               {save.isPending ? t('common.saving') : t('common.save')}
             </Button>

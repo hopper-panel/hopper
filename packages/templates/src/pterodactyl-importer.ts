@@ -1,5 +1,6 @@
 import type { ConfigFile, ConfigParser, readinessSchema } from '@hopper/shared';
 import { z } from 'zod';
+import { HOPPER_BLOCK_VERSION } from './pterodactyl-exporter.js';
 import {
   JAVA_IMAGES,
   templateDefinitionSchema,
@@ -36,6 +37,42 @@ const eggSchema = z.object({
   image: z.string().optional(),
 
   startup: z.string().optional(),
+
+  /**
+   * Files the panel refuses to edit or delete.
+   *
+   * Read at last. Every one of the 274 eggs in the public corpus carries this
+   * key and the importer wrote `[]` regardless — which was harmless for the 272
+   * that leave it empty and quietly wrong for the two that do not: Palworld
+   * protects `PalServer.sh` and Forgejo protects `forgejo`, and those are the
+   * binaries their own install scripts write. An operator with the file manager
+   * open could delete either and then wonder why the server would not start.
+   */
+  file_denylist: z.array(z.string()).optional(),
+
+  /**
+   * Hopper's own block, on a file Hopper wrote.
+   *
+   * Everything an egg has no field for, and it is applied on top of what the
+   * egg said rather than beside it — see `pterodactyl-exporter.ts` for why the
+   * block is an overlay. Typed loosely here and validated by
+   * `templateDefinitionSchema` at the end like every other field, because this
+   * file arrives from wherever an administrator got it and being written by
+   * Hopper is a claim it makes about itself, not a fact.
+   */
+  hopper: z
+    .object({
+      version: z.number().optional(),
+      key: z.string().optional(),
+      startupDetection: z.string().optional(),
+      readiness: z.unknown().optional(),
+      stop: z.unknown().optional(),
+      stopTimeoutSeconds: z.number().optional(),
+      configFiles: z.unknown().optional(),
+      installInactivityTimeoutMs: z.number().optional(),
+      installRequiredDiskBytes: z.number().optional(),
+    })
+    .optional(),
 
   config: z
     .object({
@@ -586,8 +623,26 @@ export function importPterodactylEgg(raw: unknown, options: ImportOptions): EggI
   // an administrator reads are in the order they were pushed.
   const { startupDetection, readiness } = convertReadiness(egg.config?.startup, warnings);
 
+  // Applied over the egg rather than instead of it, and last, so that every
+  // field the egg format *can* carry is read from the egg exactly as it always
+  // was — a file Hopper wrote and a file Pterodactyl wrote follow the same path
+  // through this function until here. `templateDefinitionSchema.parse` below
+  // validates the result whatever its provenance: the block is a claim the file
+  // makes about itself.
+  const block = egg.hopper;
+
+  if (block && (block.version ?? 1) > HOPPER_BLOCK_VERSION) {
+    warnings.push(
+      `This file was written by a newer Hopper (block revision ${block.version}). What this version understands has been read; anything added since has not.`,
+    );
+  }
+
   const template = templateDefinitionSchema.parse({
-    key: options.key ?? slugify(egg.name),
+    key: options.key ?? block?.key ?? slugify(egg.name),
+    // Not `block.group`, though the block carries one: where a template lands
+    // is the choice of whoever is importing it, made in the interface, and a
+    // file that could redirect itself into another group would be a surprise
+    // rather than a convenience.
     group: options.group,
     name: egg.name,
     description: egg.description ?? '',
@@ -595,10 +650,19 @@ export function importPterodactylEgg(raw: unknown, options: ImportOptions): EggI
     dockerImages,
     startup: egg.startup.trim(),
     stopCommand,
-    startupDetection,
-    readiness,
-    configFiles,
-    fileDenylist: [],
+    // Absolute rather than `??`, and this is the one place the difference
+    // matters: a block that carries no `readiness` means the template declared
+    // none, not "fall back to what the egg said". The importer derives a `log`
+    // strategy from any marker it finds, so `??` gave every exported template
+    // whose author had only ever set `startupDetection` a `readiness` on the way
+    // back — the same behaviour, said twice, in a template that no longer
+    // matched the one exported. `configFiles` keeps the fallback: the exporter
+    // always writes the key, so its absence means a hand-trimmed file rather
+    // than a template with no configuration files.
+    startupDetection: block ? block.startupDetection : startupDetection,
+    readiness: block ? block.readiness : readiness,
+    configFiles: block?.configFiles ?? configFiles,
+    fileDenylist: egg.file_denylist ?? [],
     installContainer: installation.container ?? 'debian:bookworm-slim',
     installEntrypoint: installation.entrypoint ?? '/bin/bash',
     // Pterodactyl mounts the volume on /mnt/server, as Hopper does: the
@@ -606,6 +670,10 @@ export function importPterodactylEgg(raw: unknown, options: ImportOptions): EggI
     installScript: installation.script,
     variables: convertVariables(egg, warnings),
     importedFromEgg: egg.uuid,
+    stop: block?.stop,
+    stopTimeoutSeconds: block?.stopTimeoutSeconds,
+    installInactivityTimeoutMs: block?.installInactivityTimeoutMs,
+    installRequiredDiskBytes: block?.installRequiredDiskBytes,
   });
 
   return { template, warnings };
