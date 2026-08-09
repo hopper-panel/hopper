@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useState, type FormEvent } from 'react';
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
+import { FormDialog } from '../../components/FormDialog';
 import { PageHeader } from '../../components/PageHeader';
 import { Alert, Badge, Button, Card, EmptyState, Field, Input, Spinner } from '../../components/ui';
 import {
@@ -50,14 +51,15 @@ export function AdminServersPage() {
         title={t('adminServers.title')}
         description={t('adminServers.count', { count: data?.meta.total ?? 0 })}
         action={
-          <Button variant="primary" onClick={() => setCreating((value) => !value)}>
-            {creating ? t('common.cancel') : t('adminServers.create')}
+          <Button variant="primary" onClick={() => setCreating(true)}>
+            {t('adminServers.create')}
           </Button>
         }
       />
 
       {creating ? (
         <CreateServerForm
+          onClose={() => setCreating(false)}
           onSubmit={(body) => createMutation.mutate(body)}
           pending={createMutation.isPending}
           error={createMutation.error}
@@ -114,10 +116,12 @@ export function AdminServersPage() {
 }
 
 function CreateServerForm({
+  onClose,
   onSubmit,
   pending,
   error,
 }: {
+  onClose: () => void;
   onSubmit: (body: Record<string, unknown>) => void;
   pending: boolean;
   error: unknown;
@@ -163,8 +167,7 @@ function CreateServerForm({
   const template = templates?.find((entry) => entry.uuid === form.templateUuid);
   const freeAllocations = allocations?.data.filter((entry) => entry.assignedTo === null) ?? [];
 
-  function handleSubmit(event: FormEvent): void {
-    event.preventDefault();
+  function submit(): void {
     onSubmit({
       name: form.name,
       ownerUuid: form.ownerUuid,
@@ -178,131 +181,139 @@ function CreateServerForm({
   }
 
   return (
-    <Card className="mb-6">
-      <form onSubmit={handleSubmit} className="space-y-4">
-        {error instanceof ApiError ? <Alert>{error.message}</Alert> : null}
+    <FormDialog
+      title={t('adminServers.create')}
+      formId="create-server"
+      onClose={onClose}
+      onSubmit={submit}
+      submit={t('adminServers.submit')}
+      submitting={t('common.saving')}
+      pending={pending}
+      disabled={
+        form.name.trim() === '' ||
+        form.ownerUuid === '' ||
+        form.nodeUuid === '' ||
+        form.templateUuid === '' ||
+        form.allocationId === ''
+      }
+      error={error}
+    >
+      {error instanceof ApiError ? <Alert>{error.message}</Alert> : null}
 
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Field label={t('adminServers.name')}>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <Field label={t('adminServers.name')}>
+          <Input
+            value={form.name}
+            onChange={(event) => setForm({ ...form, name: event.target.value })}
+            placeholder={t('adminServers.namePlaceholder')}
+            required
+          />
+        </Field>
+
+        <Select
+          label={t('adminServers.owner')}
+          value={form.ownerUuid}
+          onChange={(value) => setForm({ ...form, ownerUuid: value })}
+          options={(users?.data ?? []).map((user) => ({
+            value: user.uuid,
+            label: `${user.username} (${user.email})`,
+          }))}
+        />
+
+        <Select
+          label={t('adminServers.node')}
+          value={form.nodeUuid}
+          onChange={(value) => setForm({ ...form, nodeUuid: value, allocationId: '' })}
+          options={(nodes?.data ?? []).map((node) => ({
+            value: node.uuid,
+            label: node.maintenance ? `${node.name} (${t('adminServers.maintenance')})` : node.name,
+          }))}
+        />
+
+        <Select
+          label={t('adminServers.port')}
+          value={form.allocationId}
+          onChange={(value) => setForm({ ...form, allocationId: value })}
+          options={freeAllocations.map((allocation) => ({
+            value: String(allocation.id),
+            label: `${allocation.ip}:${allocation.port}`,
+          }))}
+          hint={
+            form.nodeUuid === ''
+              ? t('adminServers.chooseNode')
+              : freeAllocations.length === 0
+                ? t('adminServers.noFreePort')
+                : undefined
+          }
+        />
+
+        <Select
+          label={t('adminServers.template')}
+          value={form.templateUuid}
+          onChange={(value) => {
+            setForm({ ...form, templateUuid: value });
+            const selected = templates?.find((entry) => entry.uuid === value);
+            setVariables(
+              Object.fromEntries(
+                (selected?.variables ?? [])
+                  .filter((variable) => variable.userEditable)
+                  .map((variable) => [variable.envVariable, variable.defaultValue]),
+              ),
+            );
+          }}
+          options={(templates ?? []).map((entry) => ({
+            value: entry.uuid,
+            label: `${entry.group.name} — ${entry.name}`,
+          }))}
+        />
+
+        <div className="grid grid-cols-2 gap-4">
+          <Field label={t('adminServers.memoryGib')}>
             <Input
-              value={form.name}
-              onChange={(event) => setForm({ ...form, name: event.target.value })}
-              placeholder={t('adminServers.namePlaceholder')}
+              type="number"
+              value={form.memoryGib}
+              onChange={(event) => setForm({ ...form, memoryGib: Number(event.target.value) })}
+              min={0}
+              step={0.5}
               required
             />
           </Field>
+          <Field label={t('adminServers.diskGib')}>
+            <Input
+              type="number"
+              value={form.diskGib}
+              onChange={(event) => setForm({ ...form, diskGib: Number(event.target.value) })}
+              min={0}
+              required
+            />
+          </Field>
+        </div>
+      </div>
 
-          <Select
-            label={t('adminServers.owner')}
-            value={form.ownerUuid}
-            onChange={(value) => setForm({ ...form, ownerUuid: value })}
-            options={(users?.data ?? []).map((user) => ({
-              value: user.uuid,
-              label: `${user.username} (${user.email})`,
-            }))}
-          />
-
-          <Select
-            label={t('adminServers.node')}
-            value={form.nodeUuid}
-            onChange={(value) => setForm({ ...form, nodeUuid: value, allocationId: '' })}
-            options={(nodes?.data ?? []).map((node) => ({
-              value: node.uuid,
-              label: node.maintenance
-                ? `${node.name} (${t('adminServers.maintenance')})`
-                : node.name,
-            }))}
-          />
-
-          <Select
-            label={t('adminServers.port')}
-            value={form.allocationId}
-            onChange={(value) => setForm({ ...form, allocationId: value })}
-            options={freeAllocations.map((allocation) => ({
-              value: String(allocation.id),
-              label: `${allocation.ip}:${allocation.port}`,
-            }))}
-            hint={
-              form.nodeUuid === ''
-                ? t('adminServers.chooseNode')
-                : freeAllocations.length === 0
-                  ? t('adminServers.noFreePort')
-                  : undefined
-            }
-          />
-
-          <Select
-            label={t('adminServers.template')}
-            value={form.templateUuid}
-            onChange={(value) => {
-              setForm({ ...form, templateUuid: value });
-              const selected = templates?.find((entry) => entry.uuid === value);
-              setVariables(
-                Object.fromEntries(
-                  (selected?.variables ?? [])
-                    .filter((variable) => variable.userEditable)
-                    .map((variable) => [variable.envVariable, variable.defaultValue]),
-                ),
-              );
-            }}
-            options={(templates ?? []).map((entry) => ({
-              value: entry.uuid,
-              label: `${entry.group.name} — ${entry.name}`,
-            }))}
-          />
-
-          <div className="grid grid-cols-2 gap-4">
-            <Field label={t('adminServers.memoryGib')}>
-              <Input
-                type="number"
-                value={form.memoryGib}
-                onChange={(event) => setForm({ ...form, memoryGib: Number(event.target.value) })}
-                min={0}
-                step={0.5}
-                required
-              />
-            </Field>
-            <Field label={t('adminServers.diskGib')}>
-              <Input
-                type="number"
-                value={form.diskGib}
-                onChange={(event) => setForm({ ...form, diskGib: Number(event.target.value) })}
-                min={0}
-                required
-              />
-            </Field>
+      {/* Only editable variables are shown: the others feed the startup
+            command, and the API ignores any value sent for them. */}
+      {template && template.variables.some((variable) => variable.userEditable) ? (
+        <div className="border-t border-border-subtle pt-4">
+          <p className="mb-3 text-sm font-medium text-content">
+            {t('adminServers.templateOptions')}
+          </p>
+          <div className="grid gap-4 sm:grid-cols-2">
+            {template.variables
+              .filter((variable) => variable.userEditable)
+              .map((variable) => (
+                <Field key={variable.envVariable} label={variable.name}>
+                  <Input
+                    value={variables[variable.envVariable] ?? variable.defaultValue}
+                    onChange={(event) =>
+                      setVariables({ ...variables, [variable.envVariable]: event.target.value })
+                    }
+                  />
+                </Field>
+              ))}
           </div>
         </div>
-
-        {/* Only editable variables are shown: the others feed the startup
-            command, and the API ignores any value sent for them. */}
-        {template && template.variables.some((variable) => variable.userEditable) ? (
-          <div className="border-t border-border-subtle pt-4">
-            <p className="mb-3 text-sm font-medium text-content">
-              {t('adminServers.templateOptions')}
-            </p>
-            <div className="grid gap-4 sm:grid-cols-2">
-              {template.variables
-                .filter((variable) => variable.userEditable)
-                .map((variable) => (
-                  <Field key={variable.envVariable} label={variable.name}>
-                    <Input
-                      value={variables[variable.envVariable] ?? variable.defaultValue}
-                      onChange={(event) =>
-                        setVariables({ ...variables, [variable.envVariable]: event.target.value })
-                      }
-                    />
-                  </Field>
-                ))}
-            </div>
-          </div>
-        ) : null}
-
-        <Button type="submit" variant="primary" disabled={pending}>
-          {pending ? t('common.saving') : t('adminServers.submit')}
-        </Button>
-      </form>
-    </Card>
+      ) : null}
+    </FormDialog>
   );
 }
 

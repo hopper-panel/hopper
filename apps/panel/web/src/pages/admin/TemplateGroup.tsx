@@ -1,8 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useRef, useState, type FormEvent } from 'react';
+import { useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { DownloadIcon } from '../../components/icons';
-import { Modal } from '../../components/Modal';
+import { FormDialog } from '../../components/FormDialog';
 import { PageHeader } from '../../components/PageHeader';
 import { Alert, Badge, Button, Card, EmptyState, Field, Input, Spinner } from '../../components/ui';
 import { useTranslation } from '../../i18n';
@@ -284,13 +284,11 @@ export function ExportButton({ uuid, templateKey }: { uuid: string; templateKey:
 }
 
 /**
- * The group's own three fields, in a dialog.
+ * The group's own three fields.
  *
- * It used to sit open below the templates on every visit, which was noise; then
- * behind an Edit button, which was better but still slid the page. A dialog is
- * what the rest of the panel does for a form, and it is the same gesture as
- * creating a group one screen up — the two edit the same three columns and
- * there is no reason for them to feel different.
+ * It sat open below the templates on every visit, then behind an Edit button,
+ * and is now the same dialog as creating one a screen up — the two edit the
+ * same three columns and there was no reason for them to feel different.
  *
  * Not deleted, which was the other way to read "remove that": `author` is a
  * column that exists for this form and nowhere else, and the only description a
@@ -319,65 +317,46 @@ function GroupSettingsDialog({
     },
   });
 
-  function handleSubmit(event: FormEvent): void {
-    event.preventDefault();
-    save.mutate();
-  }
-
   return (
-    <Modal
-      open
+    <FormDialog
       title={t('common.edit')}
+      formId="edit-template-group"
       onClose={onClose}
-      footer={
-        <>
-          <Button variant="ghost" onClick={onClose}>
-            {t('common.cancel')}
-          </Button>
-          <Button
-            type="submit"
-            form="edit-template-group"
-            variant="primary"
-            disabled={save.isPending || form.name.trim() === ''}
-          >
-            {save.isPending ? t('common.saving') : t('common.save')}
-          </Button>
-        </>
-      }
+      onSubmit={() => save.mutate()}
+      submit={t('common.save')}
+      submitting={t('common.saving')}
+      pending={save.isPending}
+      disabled={form.name.trim() === ''}
+      /* Renaming a group the bundled catalogue installs into is refused, and
+         the message explains that the next resynchronisation would recreate it
+         and split the group in two. The dialog stays open to show it. */
+      error={save.error}
     >
-      <form id="edit-template-group" onSubmit={handleSubmit} className="space-y-4">
-        {/* Renaming a group the bundled catalogue installs into is refused, and
-            the message explains that the next resynchronisation would recreate
-            it and split the group in two. The dialog stays open to show it. */}
-        {save.error instanceof ApiError ? <Alert>{save.error.message}</Alert> : null}
+      <Field label={t('adminTemplates.groupName')}>
+        <Input
+          value={form.name}
+          onChange={(event) => setForm({ ...form, name: event.target.value })}
+          maxLength={100}
+          autoFocus
+        />
+      </Field>
 
-        <Field label={t('adminTemplates.groupName')}>
-          <Input
-            value={form.name}
-            onChange={(event) => setForm({ ...form, name: event.target.value })}
-            maxLength={100}
-            autoFocus
-            required
-          />
-        </Field>
+      <Field label={t('adminTemplates.groupAuthor')} hint={t('adminTemplates.groupAuthorHint')}>
+        <Input
+          value={form.author}
+          onChange={(event) => setForm({ ...form, author: event.target.value })}
+          maxLength={100}
+        />
+      </Field>
 
-        <Field label={t('adminTemplates.groupAuthor')} hint={t('adminTemplates.groupAuthorHint')}>
-          <Input
-            value={form.author}
-            onChange={(event) => setForm({ ...form, author: event.target.value })}
-            maxLength={100}
-          />
-        </Field>
-
-        <Field label={t('adminTemplates.groupDescription')}>
-          <Input
-            value={form.description}
-            onChange={(event) => setForm({ ...form, description: event.target.value })}
-            maxLength={1000}
-          />
-        </Field>
-      </form>
-    </Modal>
+      <Field label={t('adminTemplates.groupDescription')}>
+        <Input
+          value={form.description}
+          onChange={(event) => setForm({ ...form, description: event.target.value })}
+          maxLength={1000}
+        />
+      </Field>
+    </FormDialog>
   );
 }
 

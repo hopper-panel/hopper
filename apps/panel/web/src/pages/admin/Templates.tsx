@@ -1,8 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useState, type FormEvent } from 'react';
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { PageHeader } from '../../components/PageHeader';
-import { Modal } from '../../components/Modal';
+import { FormDialog } from '../../components/FormDialog';
 import { Alert, Button, Card, EmptyState, Field, Input, Spinner } from '../../components/ui';
 import { useTranslation } from '../../i18n';
 import { ApiError, api, type TemplateGroupSummary } from '../../lib/api';
@@ -104,13 +104,14 @@ export function AdminTemplatesPage() {
         </div>
       ) : null}
 
-      <GroupDialog
-        open={creating}
-        onClose={() => setCreating(false)}
-        onSubmit={(body) => create.mutate(body)}
-        pending={create.isPending}
-        error={create.error}
-      />
+      {creating ? (
+        <GroupDialog
+          onClose={() => setCreating(false)}
+          onSubmit={(body) => create.mutate(body)}
+          pending={create.isPending}
+          error={create.error}
+        />
+      ) : null}
 
       {list.length === 0 ? (
         <EmptyState title={t('adminTemplates.empty')} description={t('adminTemplates.emptyHint')} />
@@ -145,41 +146,12 @@ export function AdminTemplatesPage() {
 }
 
 /**
- * Creating a group, in a dialog rather than in the page.
+ * Creating a group.
  *
- * It used to unfold above the list: the primary button turned into "Cancel",
- * every group slid down the page, and the form the operator was about to fill
- * in appeared under the button they had just clicked rather than in front of
- * them. A dialog is what the rest of the panel already does for this — six
- * screens create things this way, `DatabaseHosts` among them — and it is what
- * "open a form" means everywhere else in the product.
- *
- * Remounted from scratch each time it opens, by the `open` guard below rather
- * than by an effect resetting the fields: a dialog dismissed halfway through
- * and reopened should be empty, and the cheapest way to guarantee that is for
- * the component holding the state not to exist in between.
+ * Rendered behind a condition rather than with an `open` prop, which is what
+ * makes a dismissed dialog reopen empty — see {@link FormDialog}.
  */
 function GroupDialog({
-  open,
-  onClose,
-  onSubmit,
-  pending,
-  error,
-}: {
-  open: boolean;
-  onClose: () => void;
-  onSubmit: (body: Record<string, unknown>) => void;
-  pending: boolean;
-  error: unknown;
-}) {
-  if (!open) {
-    return null;
-  }
-
-  return <GroupDialogBody onClose={onClose} onSubmit={onSubmit} pending={pending} error={error} />;
-}
-
-function GroupDialogBody({
   onClose,
   onSubmit,
   pending,
@@ -193,65 +165,43 @@ function GroupDialogBody({
   const { t } = useTranslation();
   const [form, setForm] = useState({ name: '', description: '', author: '' });
 
-  function handleSubmit(event: FormEvent): void {
-    event.preventDefault();
-    onSubmit(form);
-  }
-
   return (
-    <Modal
-      open
+    <FormDialog
       title={t('adminTemplates.addGroup')}
+      formId="create-template-group"
       onClose={onClose}
-      footer={
-        <>
-          <Button variant="ghost" onClick={onClose}>
-            {t('common.cancel')}
-          </Button>
-          {/* Submits the form by id rather than sitting inside it: the footer is
-              a sibling of the body in the dialog's layout, so a plain submit
-              button there would belong to no form at all. */}
-          <Button
-            type="submit"
-            form="create-template-group"
-            variant="primary"
-            disabled={pending || form.name.trim() === ''}
-          >
-            {pending ? t('adminTemplates.creating') : t('adminTemplates.createGroup')}
-          </Button>
-        </>
-      }
+      onSubmit={() => onSubmit(form)}
+      submit={t('adminTemplates.createGroup')}
+      submitting={t('adminTemplates.creating')}
+      pending={pending}
+      disabled={form.name.trim() === ''}
+      error={error}
     >
-      <form id="create-template-group" onSubmit={handleSubmit} className="space-y-4">
-        {error instanceof ApiError ? <Alert>{error.message}</Alert> : null}
+      <Field label={t('adminTemplates.groupName')}>
+        <Input
+          value={form.name}
+          onChange={(event) => setForm({ ...form, name: event.target.value })}
+          placeholder="Rust"
+          maxLength={100}
+          autoFocus
+        />
+      </Field>
 
-        <Field label={t('adminTemplates.groupName')}>
-          <Input
-            value={form.name}
-            onChange={(event) => setForm({ ...form, name: event.target.value })}
-            placeholder="Rust"
-            maxLength={100}
-            autoFocus
-            required
-          />
-        </Field>
+      <Field label={t('adminTemplates.groupAuthor')} hint={t('adminTemplates.groupAuthorHint')}>
+        <Input
+          value={form.author}
+          onChange={(event) => setForm({ ...form, author: event.target.value })}
+          maxLength={100}
+        />
+      </Field>
 
-        <Field label={t('adminTemplates.groupAuthor')} hint={t('adminTemplates.groupAuthorHint')}>
-          <Input
-            value={form.author}
-            onChange={(event) => setForm({ ...form, author: event.target.value })}
-            maxLength={100}
-          />
-        </Field>
-
-        <Field label={t('adminTemplates.groupDescription')}>
-          <Input
-            value={form.description}
-            onChange={(event) => setForm({ ...form, description: event.target.value })}
-            maxLength={1000}
-          />
-        </Field>
-      </form>
-    </Modal>
+      <Field label={t('adminTemplates.groupDescription')}>
+        <Input
+          value={form.description}
+          onChange={(event) => setForm({ ...form, description: event.target.value })}
+          maxLength={1000}
+        />
+      </Field>
+    </FormDialog>
   );
 }
