@@ -2,7 +2,13 @@ import { NODE_CAPABILITIES } from '@hopper/shared';
 import { ConflictException, ServiceUnavailableException } from '@nestjs/common';
 import { describe, expect, it, vi } from 'vitest';
 import type { NodeClientService } from '../nodes/node-client.service.js';
-import { assertStopTransportHonoured, declaresRconStop } from './stop-transport.js';
+import {
+  assertRconStopReachesEveryServer,
+  assertStopTransportHonoured,
+  assertStopTransportHonouredEverywhere,
+  declaresRconStop,
+  type RconStopPrerequisites,
+} from './stop-transport.js';
 
 /**
  * Keeping a server that stops over RCON off a node that has never heard of it.
@@ -124,5 +130,222 @@ describe('assertStopTransportHonoured', () => {
       expect.anything(),
       NODE_CAPABILITIES.rconStop,
     );
+  });
+});
+
+/**
+ * Editing a template is the one write where the template moves and the servers
+ * stay put, so there is no single node to ask — and the cost is the sum of
+ * them: one save can make every node hosting this template lose track of every
+ * server it has, including servers of other templates entirely.
+ */
+describe('assertStopTransportHonouredEverywhere', () => {
+  const nodes = (...names: string[]) => names.map((name) => ({ ...node(), name }));
+
+  it('allows the edit when every node announces the capability', async () => {
+    const client = clientAnnouncing([NODE_CAPABILITIES.rconStop]);
+
+    await expect(
+      assertStopTransportHonouredEverywhere(RCON_STOP, nodes('node-1', 'node-2'), client),
+    ).resolves.toBeUndefined();
+    expect(client.honoursCapability).toHaveBeenCalledTimes(2);
+  });
+
+  it('names the node standing in the way rather than the count of them', async () => {
+    // An operator told "some node is too old" has to go and find which. The
+    // first refusal stops the loop precisely so the message can carry a name.
+    await expect(
+      assertStopTransportHonouredEverywhere(
+        RCON_STOP,
+        nodes('node-1', 'node-2'),
+        clientAnnouncing([]),
+      ),
+    ).rejects.toThrow(/node-1/);
+  });
+
+  it('asks nothing of any node when the template has no servers left anywhere', async () => {
+    const client = clientAnnouncing([]);
+
+    await assertStopTransportHonouredEverywhere(RCON_STOP, [], client);
+
+    expect(client.honoursCapability).not.toHaveBeenCalled();
+  });
+
+  it('asks nothing of any node for a stop that is not RCON', async () => {
+    const client = clientAnnouncing([]);
+
+    await assertStopTransportHonouredEverywhere(
+      { type: 'command', value: 'stop' },
+      nodes('node-1', 'node-2'),
+      client,
+    );
+
+    expect(client.honoursCapability).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * The other two grounds the daemon refuses an RCON stop on, and the two the
+ * node knows nothing about: a port answering to the role, and a value behind
+ * the secret variable. Both belong to each server, and one template edit
+ * reaches every server at once.
+ *
+ * The consequence of getting this wrong is not a degraded stop. An RCON stop
+ * the daemon cannot deliver is refused outright, so Stop and Restart fail on
+ * every one of these servers and Kill — which ends the game before it has
+ * written its world — becomes the only way down. Mirrored from the daemon's
+ * `resolveRconTarget`, down to how the allocations are assembled: this is only
+ * worth anything while it looks at exactly what the daemon will be handed.
+ */
+describe('assertRconStopReachesEveryServer', () => {
+  const server = (overrides: Partial<RconStopPrerequisites> = {}): RconStopPrerequisites => ({
+    name: 'survival',
+    primaryAllocationId: 10,
+    allocations: [
+      { id: 10, ip: '10.0.0.1', port: 25565, role: null },
+      { id: 11, ip: '10.0.0.1', port: 25575, role: 'rcon' },
+    ],
+    variables: [{ envVariable: 'RCON_PASSWORD', value: 'hunter2' }],
+    ...overrides,
+  });
+
+  it('allows a server carrying both the named port and the password', () => {
+    expect(() => assertRconStopReachesEveryServer(RCON_STOP, [server()])).not.toThrow();
+  });
+
+  it('refuses a server on which no port answers to the role', () => {
+    // `ServersService` gives every server's primary allocation `role: null`, so
+    // a template edited to name one names a port that exists on no server
+    // anybody has created — until somebody names one by hand, in its Network
+    // tab, one server at a time.
+    expect(() =>
+      assertRconStopReachesEveryServer(RCON_STOP, [
+        server({ allocations: [{ id: 10, ip: '10.0.0.1', port: 25565, role: null }] }),
+      ]),
+    ).toThrow(/no port on it is named "rcon"/);
+  });
+
+  it('reads a name sitting on the primary port as no name at all', () => {
+    // The load-bearing detail. `ServerConfigurationService.build` hands the
+    // primary allocation over as `default` with its `role` column dropped, so a
+    // name that happens to sit on the primary reaches nothing on the daemon —
+    // and a check that scanned the rows instead of assembling the same shape
+    // would clear an edit the daemon then refuses.
+    expect(() =>
+      assertRconStopReachesEveryServer(RCON_STOP, [
+        server({ allocations: [{ id: 10, ip: '10.0.0.1', port: 25565, role: 'rcon' }] }),
+      ]),
+    ).toThrow(/no port on it is named "rcon"/);
+  });
+
+  it('refuses a server whose secret variable has no row', () => {
+    // The environment the daemon receives is built from `ServerVariable` rows
+    // and nothing else. A variable the template declares is not a value the
+    // server holds.
+    expect(() => assertRconStopReachesEveryServer(RCON_STOP, [server({ variables: [] })])).toThrow(
+      /RCON_PASSWORD holds no password/,
+    );
+  });
+
+  it('reads an empty password as no password', () => {
+    // As `rconPassword` does: the login is not weaker for a blank password, it
+    // is a connection the game refuses at the socket — most servers switch RCON
+    // off entirely when it is blank.
+    expect(() =>
+      assertRconStopReachesEveryServer(RCON_STOP, [
+        server({ variables: [{ envVariable: 'RCON_PASSWORD', value: '' }] }),
+      ]),
+    ).toThrow(/holds no password/);
+  });
+
+  it('reads the variable the stop names and no other', () => {
+    expect(() =>
+      assertRconStopReachesEveryServer(RCON_STOP, [
+        server({ variables: [{ envVariable: 'RCON_PASS', value: 'hunter2' }] }),
+      ]),
+    ).toThrow(/RCON_PASSWORD holds no password/);
+  });
+
+  it('passes over a server that has no primary port at all', () => {
+    // Such a server cannot be started: `build` throws on it long before any of
+    // this matters. Reporting it here would put a message about RCON in front
+    // of an operator whose server is broken in a way that has nothing to do
+    // with the edit they are making.
+    expect(() =>
+      assertRconStopReachesEveryServer(
+        { type: 'rcon', command: 'quit', secretVariable: 'RCON_PASSWORD' },
+        [server({ primaryAllocationId: null, allocations: [] })],
+      ),
+    ).not.toThrow();
+  });
+
+  it('names the servers in the way rather than counting them', () => {
+    // The fix is per server — a port in one Network tab, a value in one Startup
+    // tab — so a count alone leaves the operator to go and find which.
+    expect(() =>
+      assertRconStopReachesEveryServer(RCON_STOP, [
+        server({ name: 'survival' }),
+        server({ name: 'creative', variables: [] }),
+        server({
+          name: 'lobby',
+          allocations: [{ id: 10, ip: '10.0.0.1', port: 25565, role: null }],
+        }),
+      ]),
+    ).toThrow(
+      /"creative" \(RCON_PASSWORD holds no password\), "lobby" \(no port on it is named "rcon"\)/,
+    );
+  });
+
+  it('stops naming them at five and counts the rest', () => {
+    // A refusal that listed forty server names would be unreadable, and the
+    // first five are enough to recognise the shape of what is missing.
+    const broken = Array.from({ length: 8 }, (_, index) =>
+      server({ name: `server-${index}`, variables: [] }),
+    );
+
+    expect(() => assertRconStopReachesEveryServer(RCON_STOP, broken)).toThrow(
+      /8 existing server\(s\)/,
+    );
+    expect(() => assertRconStopReachesEveryServer(RCON_STOP, broken)).toThrow(/"server-4"/);
+    expect(() => assertRconStopReachesEveryServer(RCON_STOP, broken)).toThrow(/, and 3 more\./);
+    expect(() => assertRconStopReachesEveryServer(RCON_STOP, broken)).not.toThrow(/"server-5"/);
+  });
+
+  it('says what saving would cost, not merely that it is refused', () => {
+    // The stop is refused rather than performed some other way, which is the
+    // part an operator cannot guess: what they lose is Stop and Restart, and
+    // what they are left with is the one action that ends the game before it
+    // has written its world.
+    expect(() => assertRconStopReachesEveryServer(RCON_STOP, [server({ variables: [] })])).toThrow(
+      /Kill — which ends the game before it has written its world/,
+    );
+  });
+
+  it('asks nothing of any server for a stop that is not RCON', () => {
+    // Including an unreadable one: it is not an RCON stop, and the
+    // configuration builder refuses that server outright, which is the louder
+    // failure and the right one.
+    const broken = [server({ variables: [], allocations: [] })];
+
+    expect(() =>
+      assertRconStopReachesEveryServer({ type: 'command', value: 'stop' }, broken),
+    ).not.toThrow();
+    expect(() => assertRconStopReachesEveryServer(null, broken)).not.toThrow();
+    expect(() => assertRconStopReachesEveryServer({ type: 'rcon' }, broken)).not.toThrow();
+  });
+
+  it('allows a stop naming no role at all, which is the primary port', () => {
+    // A template can stop over RCON on the port the server already has. The
+    // role is what makes the check interesting, not what makes it apply.
+    expect(() =>
+      assertRconStopReachesEveryServer(
+        { type: 'rcon', command: 'quit', secretVariable: 'RCON_PASSWORD' },
+        [server({ allocations: [{ id: 10, ip: '10.0.0.1', port: 25565, role: null }] })],
+      ),
+    ).not.toThrow();
+  });
+
+  it('asks nothing when the template has no servers', () => {
+    expect(() => assertRconStopReachesEveryServer(RCON_STOP, [])).not.toThrow();
   });
 });

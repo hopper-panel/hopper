@@ -38,6 +38,18 @@ export const AUDIT_EVENTS = {
   NODE_DELETED: 'node.deleted',
   NODE_TOKEN_ROTATED: 'node.token.rotated',
 
+  // No `templateId` on `AuditLog`, and none added: the column exists for the
+  // server an entry is *about*, which is what the per-server activity feed
+  // filters on, and a template belongs to no server. The uuid and the key
+  // travel in `metadata` instead — the key especially, since it is what a
+  // deleted template can still be recognised by afterwards.
+  TEMPLATE_CREATED: 'template.created',
+  TEMPLATE_UPDATED: 'template.updated',
+  TEMPLATE_DELETED: 'template.deleted',
+  TEMPLATE_GROUP_CREATED: 'template-group.created',
+  TEMPLATE_GROUP_UPDATED: 'template-group.updated',
+  TEMPLATE_GROUP_DELETED: 'template-group.deleted',
+
   SERVER_CREATED: 'server.created',
   SERVER_UPDATED: 'server.updated',
   SERVER_DELETED: 'server.deleted',

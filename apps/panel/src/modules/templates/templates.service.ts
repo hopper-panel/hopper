@@ -8,7 +8,7 @@ import { PrismaService } from '../../prisma/prisma.service.js';
  * The current format is an ordered array; the old object format is still read
  * so as not to break a template created before the change.
  */
-function parseImageOptions(raw: unknown): DockerImageOption[] {
+export function parseImageOptions(raw: unknown): DockerImageOption[] {
   if (Array.isArray(raw)) {
     return raw
       .map((entry) => entry as { name?: unknown; image?: unknown })
@@ -36,7 +36,7 @@ function parseImageOptions(raw: unknown): DockerImageOption[] {
  * `ServerConfigurationService`, where it actually changes what the daemon
  * waits for. This is a display of what the template says, not a diagnosis.
  */
-function parseReadiness(raw: unknown): Readiness | null {
+export function parseReadiness(raw: unknown): Readiness | null {
   if (raw === null || raw === undefined) {
     return null;
   }
@@ -96,7 +96,7 @@ export class TemplatesService {
   constructor(private readonly prisma: PrismaService) {}
 
   async listGroups(): Promise<
-    { uuid: string; name: string; description: string; templateCount: number }[]
+    { uuid: string; name: string; description: string; author: string; templateCount: number }[]
   > {
     const groups = await this.prisma.templateGroup.findMany({
       include: { _count: { select: { templates: true } } },
@@ -107,6 +107,10 @@ export class TemplatesService {
       uuid: group.uuid,
       name: group.name,
       description: group.description,
+      // Additive: nothing reading this list before had the field, and the group
+      // editor would otherwise have to fetch a group one at a time to show the
+      // one column it is there to change.
+      author: group.author,
       templateCount: group._count.templates,
     }));
   }

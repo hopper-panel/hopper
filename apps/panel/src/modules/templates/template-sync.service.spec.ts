@@ -1,6 +1,10 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { templateDefinitionSchema, type TemplateDefinition } from '@hopper/templates';
+import {
+  templateDefinitionSchema,
+  templateVariableDefinitionSchema,
+  type TemplateDefinition,
+} from '@hopper/templates';
 import { Prisma } from '@prisma/client';
 import { describe, expect, it } from 'vitest';
 import type { PrismaService } from '../../prisma/prisma.service.js';
@@ -14,6 +18,10 @@ import { TemplateSyncService } from './template-sync.service.js';
  * field that fails to make the crossing does not fail loudly — it produces a
  * server that waits for a line nobody will print.
  */
+
+/** A variable with the definition's own defaults filled in, which is what a catalogue entry declares. */
+const variable = (name: string, envVariable: string): TemplateDefinition['variables'][number] =>
+  templateVariableDefinitionSchema.parse({ name, envVariable });
 
 const definition = (fields: Partial<TemplateDefinition> = {}): TemplateDefinition =>
   templateDefinitionSchema.parse({
@@ -51,9 +59,19 @@ class RecordingPrisma {
     },
   };
 
+  /**
+   * The variable rows, recorded separately: the create path writes them nested
+   * inside the template and the update path writes them through `createMany`,
+   * and the column that orders them has to arrive by both.
+   */
+  readonly variablesWritten: Record<string, unknown>[][] = [];
+
   readonly templateVariable = {
     deleteMany: () => ({}),
-    createMany: () => ({}),
+    createMany: ({ data }: { data: Record<string, unknown>[] }) => {
+      this.variablesWritten.push(data);
+      return {};
+    },
   };
 
   $transaction = (operations: unknown[]) => Promise.resolve(operations);
@@ -189,6 +207,54 @@ describe('TemplateSyncService.upsert', () => {
 
     expect(prisma.written[0]).toHaveProperty('installInactivityTimeoutMs', null);
     expect(prisma.written[0]).toHaveProperty('installRequiredDiskBytes', null);
+  });
+
+  it('numbers a new template’s variables by their place in the definition', async () => {
+    // No definition carries a `sort`: the order a template author wrote the
+    // variables in *is* the order, and it is the only statement of intent there
+    // is. Written by the synchronisation too and not only by the editor, so
+    // that a resynchronised template and an edited one are ordered by the same
+    // column — otherwise every catalogue template reads back in whatever order
+    // Postgres hands the rows over in, and reshuffles the day one is updated.
+    const prisma = new RecordingPrisma();
+
+    await new TemplateSyncService(prisma.asService()).upsert(
+      definition({
+        variables: [
+          variable('Version', 'VERSION'),
+          variable('Jar file', 'SERVER_JARFILE'),
+          variable('Flags', 'FLAGS'),
+        ],
+      }),
+    );
+
+    expect(prisma.written[0]?.variables).toEqual({
+      create: [
+        expect.objectContaining({ envVariable: 'VERSION', sort: 0 }),
+        expect.objectContaining({ envVariable: 'SERVER_JARFILE', sort: 1 }),
+        expect.objectContaining({ envVariable: 'FLAGS', sort: 2 }),
+      ],
+    });
+  });
+
+  it('numbers them again when it replaces an existing template’s list', async () => {
+    // The variables are replaced wholesale on every update, so this is the path
+    // that decides the order of every catalogue template after the first
+    // resynchronisation — and it is a separate object literal from the one
+    // above.
+    const prisma = new RecordingPrisma();
+    prisma.existing = { id: 7, modifiedByAdmin: false };
+
+    await new TemplateSyncService(prisma.asService()).upsert(
+      definition({
+        variables: [variable('Version', 'VERSION'), variable('Flags', 'FLAGS')],
+      }),
+    );
+
+    expect(prisma.variablesWritten[0]).toEqual([
+      expect.objectContaining({ envVariable: 'VERSION', sort: 0, templateId: 7 }),
+      expect.objectContaining({ envVariable: 'FLAGS', sort: 1, templateId: 7 }),
+    ]);
   });
 
   it('leaves an administrator-edited template untouched', async () => {
