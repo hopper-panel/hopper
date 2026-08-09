@@ -1,4 +1,5 @@
 import { NODE_CAPABILITIES } from '@hopper/shared';
+import { importPterodactylEgg } from '@hopper/templates';
 import { ConflictException, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { describe, expect, it, vi } from 'vitest';
@@ -1851,5 +1852,79 @@ describe('TemplateEditorService — the status of every refusal', () => {
     ],
   ])('answers %s with %i', async (_case, status, run) => {
     expect(await statusOf(run)).toBe(status);
+  });
+});
+
+/**
+ * Exporting a template as a file another installation can read.
+ *
+ * The round trip is what is asserted, and it is asserted through the importer
+ * rather than against a fixture: the two functions are each other's inverse and
+ * a fixture would only pin down whichever one was written second. What this
+ * adds over the exporter's own suite is the half that lives here — the mapping
+ * from a database row to the definition it exports, which is the piece that
+ * silently loses a column when one is added.
+ */
+describe('TemplateEditorService.exportEgg', () => {
+  it('brings back everything the row holds, through the file', async () => {
+    const { service } = editing();
+
+    const egg = await service.exportEgg(TEMPLATE_UUID);
+    const { template } = importPterodactylEgg(JSON.parse(JSON.stringify(egg)) as unknown, {
+      group: 'Tests',
+    });
+
+    expect(template.key).toBe('my-egg');
+    expect(template.name).toBe('My egg');
+    expect(template.startup).toBe('./start.sh');
+    expect(template.installScript).toBe('set -e\ncurl -sSL https://example.invalid -o server.jar');
+    expect(template.configFiles).toEqual([
+      { file: 'server.properties', parser: 'properties', replacements: [] },
+    ]);
+    expect(template.fileDenylist).toEqual(['secrets/**']);
+  });
+
+  /**
+   * The variable the read view hides.
+   *
+   * `TemplatesService.toView` filters out anything not `userViewable`, because
+   * an internal build flag is not something an operator picking a template
+   * should be offered. An export built on that view — the obvious shortcut,
+   * since the route sits beside `findDetail` — would drop the flag from the
+   * file and the template would arrive somewhere else missing the variable its
+   * install script reads.
+   */
+  it('carries the variables an operator is never shown', async () => {
+    const { service } = editing();
+
+    const egg = await service.exportEgg(TEMPLATE_UUID);
+    const { template } = importPterodactylEgg(JSON.parse(JSON.stringify(egg)) as unknown, {
+      group: 'Tests',
+    });
+
+    expect(template.variables.map((variable) => variable.envVariable)).toEqual([
+      'VERSION',
+      'BUILD_PATH',
+    ]);
+    expect(template.variables[1]?.userViewable).toBe(false);
+    expect(template.variables[1]?.defaultValue).toBe('/opt');
+  });
+
+  it('names the egg the template was imported from', async () => {
+    const { service } = editing();
+
+    // Provenance survives the trip through a file: a template that came from an
+    // egg does not become hand-written by being exported.
+    expect((await service.exportEgg(TEMPLATE_UUID)).uuid).toBe(
+      'e0e0e0e0-0000-4000-8000-000000000000',
+    );
+  });
+
+  it('does not export a template that is not there', async () => {
+    const { service } = editing();
+
+    await expect(service.exportEgg('00000000-0000-4000-8000-000000000000')).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
   });
 });

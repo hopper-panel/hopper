@@ -52,7 +52,36 @@ variables and their validation rules, and remembers the original egg's UUID so i
 twice. What it could not carry across comes back with the result, as a list to read before the first
 server is created from it.
 
-Two differences worth knowing:
+## Exporting a template
+
+The download button on a template — on the group's list and in the editor's header — saves it as
+`egg-<key>.json`. What comes out is a real PTDL_v2 egg: another Pterodactyl-compatible panel reads
+it, and so does this one.
+
+An egg has no field for about a third of what a Hopper template says, so the file carries a `hopper`
+block beside the egg's own fields. Any other panel ignores an unknown key and gets the egg; Hopper
+reads the block and gets the template back exactly. In the block: the key, the structured stop with
+its RCON password variable and port name, the shutdown grace, the readiness strategy, the console
+pattern as the regular expression it is rather than the substring the egg field holds, the
+configuration files including the parsers below that do not translate, and the two install limits.
+
+The block is an **overlay**, not a second copy — every field in it is one the egg cannot carry, so
+the two halves can never disagree about the same value. It is validated like any other part of an
+imported file: being written by Hopper is a claim the file makes about itself.
+
+Two things do not survive a trip through another panel, and both are visible in the file:
+
+- **A `file` or `xml` configuration entry** is left out of `config.files`. Pterodactyl's `file`
+  parser replaces the whole line where Hopper's replaces the value, so carrying one across would
+  have the other panel write the key where the value belongs. Both stay exact in the block.
+- **A console pattern that is a real regular expression** — one written by hand rather than derived
+  from an egg — cannot be expressed as the substring Pterodactyl looks for. It is written as it
+  stands, which is wrong there and right here.
+
+Measured: every one of the nine shipped templates, and **272 of the 272 importable eggs of the
+public corpus**, come back byte-identical after export and re-import.
+
+## Differences worth knowing when importing
 
 - The egg's Docker images are kept as they are. An egg referencing
   `ghcr.io/pterodactyl/yolks:java_21` will keep using it — the public image exists, nothing to do,
