@@ -1,3 +1,4 @@
+import { DISCORD_TEMPLATES } from './catalog/discord.js';
 import { FACTORIO_TEMPLATES } from './catalog/factorio.js';
 import { JAVA_TEMPLATES } from './catalog/java.js';
 import { PROXY_TEMPLATES } from './catalog/proxy.js';
@@ -11,6 +12,7 @@ export { JAVA_TEMPLATES } from './catalog/java.js';
 export { PROXY_TEMPLATES } from './catalog/proxy.js';
 export { FACTORIO_TEMPLATES } from './catalog/factorio.js';
 export { SOURCE_TEMPLATES } from './catalog/source.js';
+export { DISCORD_TEMPLATES } from './catalog/discord.js';
 
 /**
  * Every template shipped with Hopper.
@@ -34,6 +36,7 @@ export const TEMPLATE_CATALOG: TemplateDefinition[] = [
   ...PROXY_TEMPLATES,
   ...FACTORIO_TEMPLATES,
   ...SOURCE_TEMPLATES,
+  ...DISCORD_TEMPLATES,
 ].map((template) => templateDefinitionSchema.parse(template));
 
 /** Distinct groups present in the catalogue, in order of appearance. */

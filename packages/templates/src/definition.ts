@@ -214,6 +214,35 @@ export const TEMPLATE_GROUPS = {
    * grows; the three groups above are families too.
    */
   OTHER_GAMES: 'Other games',
+  /**
+   * The Source engine, and a change of mind worth recording.
+   *
+   * `OTHER_GAMES` above was named for the category precisely so that a second
+   * non-Minecraft template would need no new group, and Garry's Mod joined
+   * Factorio there on that reasoning. What changed is that Source is not one
+   * game: `srcds_run`, `-norestart`, the console on standard input, the
+   * anonymous depot and the Steam-login readiness marker are shared by every
+   * dedicated server on the engine, and the catalogue now ships two of them
+   * with a third and fourth obvious. That is a family, like the proxies, not a
+   * one-entry section.
+   *
+   * Moving Garry's Mod costs an existing installation nothing it can notice: a
+   * group name is the upsert key, so the next resynchronisation creates this
+   * group and moves the template into it, leaving `Other games` holding
+   * Factorio. A Garry's Mod an administrator has edited is skipped by that
+   * sync, as it is by every other, and stays where it is.
+   */
+  SOURCE: 'Source engine',
+  /**
+   * Bots, which are not games and do not behave like them.
+   *
+   * Named for the platform rather than for the language: the two templates in
+   * it differ only in which interpreter runs the operator's code, and a group
+   * per language would be two sections of one entry each. What they share is
+   * the shape — no depot, no port, no map, somebody else's dependency tree —
+   * and that is what a group is for.
+   */
+  DISCORD: 'Discord bots',
 } as const;
 
 /**
