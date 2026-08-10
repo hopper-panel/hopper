@@ -13,25 +13,57 @@ const fqdnSchema = z
   .max(255)
   .regex(/^[a-zA-Z0-9.-]+$/, 'The FQDN may only contain letters, digits, dots and hyphens.');
 
-export const createNodeSchema = z.object({
+/**
+ * What a node is made of, with no default attached to any of it.
+ *
+ * Split out from the two schemas below because **`.partial()` does not remove a
+ * `.default()`** — it wraps it, and an absent key still comes out holding the
+ * default. `updateNodeSchema` used to be `createNodeSchema.partial()`, which
+ * meant a PATCH carrying nothing but a corrected address arrived at the service
+ * as a full object: capacity back to 0, port back to 8443, scheme back to
+ * https, description emptied, maintenance cleared.
+ *
+ * Nothing had noticed because nothing called that route — the administration
+ * had no way to edit a node, which is the gap this change closes. Adding the
+ * form without this would have shipped a screen whose every save destroyed the
+ * fields it did not show.
+ *
+ * `NodesService.update` was already written for the correct behaviour: it hands
+ * Prisma `dto.x` and relies on `undefined` meaning "leave this column alone"
+ * (see the `BigInt` guards). It only ever received values.
+ */
+const nodeShape = {
   name: z.string().min(1).max(100),
-  description: z.string().max(1000).default(''),
+  description: z.string().max(1000),
 
   fqdn: fqdnSchema,
-  scheme: z.enum(['http', 'https']).default('https'),
-  port: z.number().int().min(1).max(65535).default(8443),
-  sftpPort: z.number().int().min(1).max(65535).default(2022),
+  scheme: z.enum(['http', 'https']),
+  port: z.number().int().min(1).max(65535),
+  sftpPort: z.number().int().min(1).max(65535),
 
-  memoryBytes: z.number().int().nonnegative().default(0),
-  diskBytes: z.number().int().nonnegative().default(0),
+  memoryBytes: z.number().int().nonnegative(),
+  diskBytes: z.number().int().nonnegative(),
   /** -1 = no limit, 0 = overallocation forbidden. */
-  memoryOverallocation: z.number().int().min(-1).max(1000).default(0),
-  diskOverallocation: z.number().int().min(-1).max(1000).default(0),
+  memoryOverallocation: z.number().int().min(-1).max(1000),
+  diskOverallocation: z.number().int().min(-1).max(1000),
 
-  maintenance: z.boolean().default(false),
+  maintenance: z.boolean(),
+};
+
+export const createNodeSchema = z.object({
+  ...nodeShape,
+  description: nodeShape.description.default(''),
+  scheme: nodeShape.scheme.default('https'),
+  port: nodeShape.port.default(8443),
+  sftpPort: nodeShape.sftpPort.default(2022),
+  memoryBytes: nodeShape.memoryBytes.default(0),
+  diskBytes: nodeShape.diskBytes.default(0),
+  memoryOverallocation: nodeShape.memoryOverallocation.default(0),
+  diskOverallocation: nodeShape.diskOverallocation.default(0),
+  maintenance: nodeShape.maintenance.default(false),
 });
 
-export const updateNodeSchema = createNodeSchema.partial();
+export const updateNodeSchema = z.object(nodeShape).partial();
 
 /**
  * Creating allocations by range: `25565-25585` creates 21 ports at once.

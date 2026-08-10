@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState, type FormEvent } from 'react';
-import { useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
+import { FormDialog } from '../../components/FormDialog';
 import { PageHeader } from '../../components/PageHeader';
 import { useTranslation } from '../../i18n';
 import { Alert, Badge, Button, Card, EmptyState, Field, Input, Spinner } from '../../components/ui';
@@ -14,14 +15,27 @@ import {
 } from '../../lib/api';
 import { formatBytes } from '../../lib/format';
 
+/** Bytes to gibibytes, as the capacity fields are typed. */
+const GIB = 1024 ** 3;
+
 export function AdminNodeDetailPage() {
   const { t } = useTranslation();
   const { uuid = '' } = useParams();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const [editing, setEditing] = useState(false);
 
   const { data: node, isLoading } = useQuery({
     queryKey: ['admin', 'node', uuid],
     queryFn: () => api.get<NodeSummary>(`/api/admin/nodes/${uuid}`),
+  });
+
+  const remove = useMutation({
+    mutationFn: () => api.delete<void>(`/api/admin/nodes/${uuid}`),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['admin', 'nodes'] });
+      void navigate('/admin/nodes');
+    },
   });
 
   const { data: allocations } = useQuery({
@@ -61,8 +75,15 @@ export function AdminNodeDetailPage() {
       <PageHeader
         title={node.name}
         description={`${node.scheme}://${node.fqdn}:${node.port}`}
-        action={<HealthBadge health={health.data} isLoading={health.isFetching} />}
+        action={
+          <div className="flex items-center gap-2">
+            <HealthBadge health={health.data} isLoading={health.isFetching} />
+            <Button onClick={() => setEditing(true)}>{t('common.edit')}</Button>
+          </div>
+        }
       />
+
+      {editing ? <NodeSettingsDialog node={node} onClose={() => setEditing(false)} /> : null}
 
       <div className="mb-6 grid gap-4 sm:grid-cols-4">
         <StatCard label={t('adminNodes.servers')} value={String(node.serverCount)} />
@@ -121,7 +142,200 @@ export function AdminNodeDetailPage() {
           </div>
         )}
       </Card>
+
+      <Card className="mt-6 border-danger/40">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <h2 className="font-medium text-content">{t('adminNode.deleteTitle')}</h2>
+            <p className="mt-1 text-sm text-content-muted">{t('adminNode.deleteHint')}</p>
+          </div>
+
+          <Button
+            variant="danger"
+            disabled={remove.isPending}
+            onClick={() => {
+              if (window.confirm(t('adminNode.deleteConfirm', { name: node.name }))) {
+                remove.mutate();
+              }
+            }}
+          >
+            {t('common.delete')}
+          </Button>
+        </div>
+
+        {/* The API refuses a node that still hosts servers and says how many.
+            Rendered rather than swallowed: the count is the whole instruction,
+            and the remedy — move or delete them — depends on it. */}
+        {remove.error instanceof ApiError ? (
+          <div className="mt-4">
+            <Alert>{remove.error.message}</Alert>
+          </div>
+        ) : null}
+      </Card>
     </>
+  );
+}
+
+/**
+ * Editing a node, which is mostly editing the address the panel reaches it at.
+ *
+ * Every field is sent on every save, including the ones the operator did not
+ * touch. That is deliberate and it is what the form is *for*: `updateNodeSchema`
+ * now carries only the keys it was given, so a body naming a subset would leave
+ * the rest alone — but a form that shows a value and does not send it back is a
+ * form whose fields quietly disagree with the database the moment anything else
+ * writes to it.
+ *
+ * The capacity fields are gibibytes on screen and bytes in the column. The
+ * conversion happens in both directions here, and it has to: opening this
+ * dialog on a node with 64 GiB and saving it back without dividing first would
+ * multiply its declared capacity by a billion, and the panel sells servers
+ * against that number.
+ */
+function NodeSettingsDialog({ node, onClose }: { node: NodeSummary; onClose: () => void }) {
+  const { t } = useTranslation();
+  const queryClient = useQueryClient();
+  const [form, setForm] = useState({
+    name: node.name,
+    description: node.description,
+    fqdn: node.fqdn,
+    scheme: node.scheme,
+    port: node.port,
+    sftpPort: node.sftpPort,
+    memoryGib: Number((node.memoryBytes / GIB).toFixed(2)),
+    diskGib: Number((node.diskBytes / GIB).toFixed(2)),
+    maintenance: node.maintenance,
+  });
+
+  const save = useMutation({
+    mutationFn: () =>
+      api.patch<NodeSummary>(`/api/admin/nodes/${node.uuid}`, {
+        name: form.name.trim(),
+        description: form.description,
+        fqdn: form.fqdn.trim(),
+        scheme: form.scheme,
+        port: Number(form.port),
+        sftpPort: Number(form.sftpPort),
+        memoryBytes: Math.round(form.memoryGib * GIB),
+        diskBytes: Math.round(form.diskGib * GIB),
+        maintenance: form.maintenance,
+      }),
+    onSuccess: () => {
+      // Two keys, because the list and this page are cached separately and the
+      // address shown on both has just changed.
+      void queryClient.invalidateQueries({ queryKey: ['admin', 'nodes'] });
+      void queryClient.invalidateQueries({ queryKey: ['admin', 'node', node.uuid] });
+      onClose();
+    },
+  });
+
+  return (
+    <FormDialog
+      title={t('adminNode.editTitle')}
+      formId="edit-node"
+      onClose={onClose}
+      onSubmit={() => save.mutate()}
+      submit={t('common.save')}
+      submitting={t('common.saving')}
+      pending={save.isPending}
+      disabled={form.name.trim() === '' || form.fqdn.trim() === ''}
+      error={save.error}
+    >
+      <div className="grid gap-4 sm:grid-cols-2">
+        <Field label={t('adminNodes.name')}>
+          <Input
+            value={form.name}
+            onChange={(event) => setForm({ ...form, name: event.target.value })}
+            required
+          />
+        </Field>
+
+        <Field label={t('adminNodes.fqdn')} hint={t('adminNode.fqdnEditHint')}>
+          <Input
+            value={form.fqdn}
+            onChange={(event) => setForm({ ...form, fqdn: event.target.value })}
+            required
+          />
+        </Field>
+
+        <Field label={t('adminNodes.daemonPort')}>
+          <Input
+            type="number"
+            value={form.port}
+            onChange={(event) => setForm({ ...form, port: Number(event.target.value) })}
+            min={1}
+            max={65535}
+            required
+          />
+        </Field>
+
+        <Field label={t('adminNode.sftpPort')}>
+          <Input
+            type="number"
+            value={form.sftpPort}
+            onChange={(event) => setForm({ ...form, sftpPort: Number(event.target.value) })}
+            min={1}
+            max={65535}
+            required
+          />
+        </Field>
+
+        <Field label={t('adminNodes.scheme')} hint={t('adminNodes.schemeHint')}>
+          <select
+            value={form.scheme}
+            onChange={(event) => setForm({ ...form, scheme: event.target.value })}
+            className="w-full rounded-lg border border-border-subtle bg-surface px-3 py-2 text-sm text-content focus:border-accent focus:outline-none"
+          >
+            <option value="https">https</option>
+            <option value="http">http</option>
+          </select>
+        </Field>
+
+        <Field label={t('adminNodes.memory')} hint={t('adminNodes.capacityHint')}>
+          <Input
+            type="number"
+            value={form.memoryGib}
+            onChange={(event) => setForm({ ...form, memoryGib: Number(event.target.value) })}
+            min={0}
+            step="0.01"
+            required
+          />
+        </Field>
+
+        <Field label={t('adminNodes.disk')}>
+          <Input
+            type="number"
+            value={form.diskGib}
+            onChange={(event) => setForm({ ...form, diskGib: Number(event.target.value) })}
+            min={0}
+            step="0.01"
+            required
+          />
+        </Field>
+
+        <Field label={t('adminNode.description')}>
+          <Input
+            value={form.description}
+            onChange={(event) => setForm({ ...form, description: event.target.value })}
+          />
+        </Field>
+      </div>
+
+      <label className="mt-4 flex items-start gap-2 text-sm text-content">
+        <input
+          type="checkbox"
+          checked={form.maintenance}
+          onChange={(event) => setForm({ ...form, maintenance: event.target.checked })}
+          className="mt-0.5"
+        />
+        <span>
+          {t('adminNode.maintenance')}
+          <span className="mt-0.5 block text-xs text-content-muted">
+            {t('adminNode.maintenanceHint')}
+          </span>
+        </span>
+      </label>
+    </FormDialog>
   );
 }
 

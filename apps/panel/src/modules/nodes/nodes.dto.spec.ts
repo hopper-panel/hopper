@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { MAX_ALLOCATIONS_PER_REQUEST, expandPortRanges } from './nodes.dto.js';
+import {
+  MAX_ALLOCATIONS_PER_REQUEST,
+  createNodeSchema,
+  expandPortRanges,
+  updateNodeSchema,
+} from './nodes.dto.js';
 
 describe('expandPortRanges', () => {
   it('accepts a single port', () => {
@@ -53,5 +58,73 @@ describe('expandPortRanges', () => {
     expect(expandPortRanges([`1000-${1000 + MAX_ALLOCATIONS_PER_REQUEST - 1}`])).toHaveLength(
       MAX_ALLOCATIONS_PER_REQUEST,
     );
+  });
+});
+
+/**
+ * A PATCH says "change this and nothing else".
+ *
+ * `updateNodeSchema` was `createNodeSchema.partial()`, and `.partial()` does
+ * not remove a `.default()` — it wraps it, so every key left out of the body
+ * arrived at the service holding the creation default. Editing a node's
+ * address alone therefore reset its capacity to zero, its port to 8443, its
+ * scheme to https and its maintenance flag, silently.
+ *
+ * Nothing had caught it because nothing called the route: the administration
+ * had no way to edit a node until the screen that comes with this test.
+ */
+describe('updateNodeSchema', () => {
+  it('carries only what was sent', () => {
+    expect(updateNodeSchema.parse({ fqdn: '192.168.1.141' })).toEqual({ fqdn: '192.168.1.141' });
+  });
+
+  it('is empty for an empty body, rather than a whole node', () => {
+    // Anything here is a column the service would overwrite with a default.
+    expect(updateNodeSchema.parse({})).toEqual({});
+  });
+
+  it('leaves capacity alone when the body does not mention it', () => {
+    // The one that costs the most: a node declared with 64 GiB of memory,
+    // edited to fix a typo in its name, would have been sold as having none.
+    const parsed = updateNodeSchema.parse({ name: 'node-paris-1' });
+
+    expect(parsed).not.toHaveProperty('memoryBytes');
+    expect(parsed).not.toHaveProperty('diskBytes');
+    expect(parsed).not.toHaveProperty('maintenance');
+  });
+
+  it('still validates what it does carry', () => {
+    expect(updateNodeSchema.safeParse({ port: 70000 }).success).toBe(false);
+    expect(updateNodeSchema.safeParse({ fqdn: 'not a hostname' }).success).toBe(false);
+    expect(updateNodeSchema.safeParse({ scheme: 'ftp' }).success).toBe(false);
+  });
+});
+
+/**
+ * The defaults live on creation, and have to stay there.
+ *
+ * They are what makes `hopper node:create --name x --fqdn y` a complete node
+ * from two flags, which the installer relies on.
+ */
+describe('createNodeSchema', () => {
+  it('fills in a whole node from the two fields that have no sensible default', () => {
+    expect(createNodeSchema.parse({ name: 'node-1', fqdn: 'node1.example.com' })).toEqual({
+      name: 'node-1',
+      fqdn: 'node1.example.com',
+      description: '',
+      scheme: 'https',
+      port: 8443,
+      sftpPort: 2022,
+      memoryBytes: 0,
+      diskBytes: 0,
+      memoryOverallocation: 0,
+      diskOverallocation: 0,
+      maintenance: false,
+    });
+  });
+
+  it('still requires the two that have none', () => {
+    expect(createNodeSchema.safeParse({ name: 'node-1' }).success).toBe(false);
+    expect(createNodeSchema.safeParse({ fqdn: 'node1.example.com' }).success).toBe(false);
   });
 });

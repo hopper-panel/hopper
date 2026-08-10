@@ -209,6 +209,9 @@ export interface NodeSummary {
   sftpPort: number;
   memoryBytes: number;
   diskBytes: number;
+  /** -1 = no limit, 0 = overallocation forbidden. */
+  memoryOverallocation: number;
+  diskOverallocation: number;
   maintenance: boolean;
   daemonTokenId: string;
   serverCount: number;
