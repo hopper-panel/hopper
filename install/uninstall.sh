@@ -31,6 +31,22 @@
 # the certificates themselves. Removing a certificate would make reinstalling
 # on the same domain hit Let's Encrypt's rate limit for no reason.
 
+# Re-exec under bash when started by something else.
+#
+# `sh uninstall.sh` is a natural thing to type, and on Debian `sh` is dash.
+# Dash runs most of this file, which is the problem: it does not fail, it
+# misbehaves. `$'\033[1m'` is a bashism it leaves as the literal text
+# `$\033[1m`, so every heading comes out full of escape codes — including the
+# line telling the operator exactly what to type to confirm a deletion, which
+# is then impossible to read, let alone reproduce.
+#
+# Before `set -euo pipefail`, since dash 0.5.11 and earlier reject `pipefail`
+# outright and would exit here with a message about an invalid option instead
+# of doing the obvious thing.
+if [ -z "${BASH_VERSION:-}" ]; then
+  exec bash "$0" "$@"
+fi
+
 set -euo pipefail
 
 HOPPER_ROOT="${HOPPER_ROOT:-/opt/hopper}"
@@ -133,18 +149,32 @@ fi
 # Confirmation
 # ---------------------------------------------------------------------------
 #
-# Typed in full rather than a y/n, and only when there is something to lose.
-# A prompt that takes a keystroke is a prompt that gets a keystroke, and the
-# thing on the other side of this one does not come back.
+# Typed in full rather than a y/n: a prompt that takes a keystroke is a prompt
+# that gets a keystroke, and the thing on the other side of this one does not
+# come back.
+#
+# **One word, and a word the operator would guess.** The first version asked
+# for `delete 1 server(s)` — the sentence it had just printed, parentheses,
+# pluralisation and all. Watched in use: three attempts, `yes`, then `purge`,
+# then a give-up. A confirmation nobody can reproduce does not protect the
+# data, it just moves the operator to `rm -rf`, which asks nothing at all.
+#
+# The friction that matters is having to type a word rather than press a key,
+# and `purge` supplies it while being the word already on the command line.
 
 if [ -z "$DRY_RUN" ] && [ -z "$ASSUME_YES" ]; then
   step "Confirm"
 
-  EXPECTED=uninstall
-  [ -z "$PURGE" ] || EXPECTED="delete $SERVERS server(s)"
+  if [ -n "$PURGE" ]; then
+    EXPECTED=purge
+    info "This deletes Hopper ${BOLD}and the $SERVERS server(s) in $DATA_ROOT${RESET}."
+  else
+    EXPECTED=uninstall
+  fi
 
   info "Type ${BOLD}$EXPECTED${RESET} to continue, anything else to stop."
-  read -r -p "  > " ANSWER </dev/tty || ANSWER=''
+  # Without a terminal there is no answer to read, and no answer means no.
+  read -r -p "  > " ANSWER </dev/tty 2>/dev/null || ANSWER=''
 
   [ "$ANSWER" = "$EXPECTED" ] || die "Stopped. Nothing was removed."
 fi
