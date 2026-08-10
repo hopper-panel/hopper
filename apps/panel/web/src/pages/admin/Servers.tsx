@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { FormDialog } from '../../components/FormDialog';
 import { PageHeader } from '../../components/PageHeader';
 import { Alert, Badge, Button, Card, EmptyState, Field, Input, Spinner } from '../../components/ui';
@@ -20,6 +20,7 @@ import { describeStatus, formatAddress, formatBytes } from '../../lib/format';
 const GIB = 1024 ** 3;
 
 export function AdminServersPage() {
+  const navigate = useNavigate();
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const [creating, setCreating] = useState(false);
@@ -84,7 +85,38 @@ export function AdminServersPage() {
               {servers.map((server) => {
                 const status = describeStatus(server.status);
                 return (
-                  <tr key={server.uuid} className="border-b border-border-subtle/50 last:border-0">
+                  <tr
+                    key={server.uuid}
+                    /*
+                     * The whole row is a click target, and the anchor below
+                     * stays exactly where it was.
+                     *
+                     * Only the name was clickable, which on a five-column row
+                     * is a target a few characters wide with four columns of
+                     * dead space beside it — every other list in the
+                     * administration wraps its whole card in a link, so this
+                     * table was the one place that asked for precision.
+                     *
+                     * A row cannot be wrapped in an `<a>`, and stretching the
+                     * anchor over it with an absolutely positioned `::after`
+                     * needs `position: relative` on a `<tr>` — which works in
+                     * current browsers and, where it does not, silently
+                     * resolves against whatever ancestor is positioned instead
+                     * and turns the entire card into one link to the first
+                     * server. So the row handles the click and the anchor is
+                     * left intact: it is what carries keyboard focus,
+                     * middle-click and "open in a new tab", none of which an
+                     * onClick can offer.
+                     */
+                    onClick={(event) => {
+                      // The anchor navigates on its own; letting this run too
+                      // would push a second, identical history entry.
+                      if (!(event.target as HTMLElement).closest('a')) {
+                        void navigate(`/admin/servers/${server.uuid}`);
+                      }
+                    }}
+                    className="cursor-pointer border-b border-border-subtle/50 transition-colors last:border-0 hover:bg-surface-hover"
+                  >
                     <td className="px-5 py-3">
                       <Link
                         to={`/admin/servers/${server.uuid}`}

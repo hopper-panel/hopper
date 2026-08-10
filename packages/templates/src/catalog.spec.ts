@@ -200,6 +200,74 @@ describe('catalogue de templates', () => {
       expect(new RegExp(pattern![1]!).test(value)).toBe(accepted);
     });
 
+    /**
+     * The first version of these templates created nothing, and the first
+     * start of every new server said `python: can't open file
+     * '/home/container/bot.py'`. Correct, useless, and answered only by a
+     * paragraph in an install log nobody had a reason to open.
+     */
+    it('write a bot that starts, rather than leaving an empty volume', () => {
+      expect(python?.installScript).toContain('discord.py>=2.4,<3');
+      expect(python?.installScript).toContain('client.run(TOKEN)');
+      expect(node?.installScript).toContain('"discord.js": "^14.16.3"');
+      expect(node?.installScript).toContain('client.login(token)');
+    });
+
+    /**
+     * The rule the Source templates already follow for `server.cfg`, and the
+     * one that makes this script safe to run again: a reinstall is how a
+     * dependency is added here, so it meets a volume full of the operator's
+     * work every time. Writing unconditionally would delete their bot at the
+     * moment they were being careful.
+     */
+    it('seed each file only where there is none', () => {
+      for (const template of [python, node]) {
+        const seeds = (template?.installScript ?? '')
+          .split('\n')
+          .filter((line) => line.startsWith('  cat > '));
+
+        expect(seeds).toHaveLength(2);
+
+        // Every heredoc is inside an `if [ ! -f … ]`, never on its own.
+        const guards = (template?.installScript ?? '')
+          .split('\n')
+          .filter((line) => line.startsWith('if [ ! -f '));
+
+        expect(guards).toHaveLength(2);
+      }
+    });
+
+    /**
+     * The scaffold seeds the file the startup command runs, not a file named
+     * after it. Seeding `bot.py` while the command runs `src/main.py` would
+     * leave the original error standing with something in the volume to make
+     * it puzzling.
+     */
+    it('seed the file the startup command actually runs', () => {
+      expect(python?.installScript).toContain('PY_FILE="${PY_FILE:-bot.py}"');
+      expect(python?.startup).toContain('{{PY_FILE}}');
+      expect(node?.installScript).toContain('MAIN_FILE="${MAIN_FILE:-index.js}"');
+      expect(node?.startup).toContain('{{MAIN_FILE}}');
+    });
+
+    /**
+     * A quoted heredoc, so nothing in the body is expanded on the way to disk.
+     * An unquoted one would resolve `${DISCORD_TOKEN}` during the install and
+     * write the token into a file the file manager displays and every backup
+     * archive carries.
+     */
+    it('never write the token into the volume', () => {
+      for (const template of [python, node]) {
+        expect(template?.installScript).not.toContain('${DISCORD_TOKEN}');
+        // The delimiter is quoted on every heredoc that writes a seed.
+        for (const line of (template?.installScript ?? '')
+          .split('\n')
+          .filter((line) => line.includes('cat > '))) {
+          expect(line).toMatch(/<<'[A-Z]+'$/);
+        }
+      }
+    });
+
     it('claim no disk they cannot know', () => {
       // The field refuses an installation. What a dependency tree weighs is
       // whatever its author put in requirements.txt, so a figure here would

@@ -1,9 +1,10 @@
+import type { Permission } from '@hopper/shared';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { FitAddon } from '@xterm/addon-fit';
 import { Terminal } from '@xterm/xterm';
 import '@xterm/xterm/css/xterm.css';
-import { useTranslation } from '../i18n';
-import type { ConsoleController } from '../lib/use-console';
+import { useTranslation, type MessageKey } from '../i18n';
+import type { ConnectionStatus, ConsoleController } from '../lib/use-console';
 
 /**
  * Number of lines kept in the terminal.
@@ -151,6 +152,8 @@ export function Console({ controller }: { controller: ConsoleController }) {
 
   const canType = canSendCommand && controller.status === 'connected';
 
+  const placeholder = t(consolePlaceholder(controller), { reason: controller.failure ?? '' });
+
   return (
     // Terminal and prompt in one frame, like a real terminal: the input line
     // belongs to the console, not to the page around it.
@@ -172,9 +175,7 @@ export function Console({ controller }: { controller: ConsoleController }) {
           value={command}
           onChange={(event) => setCommand(event.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder={
-            canSendCommand ? t('console.commandPlaceholder') : t('console.commandDenied')
-          }
+          placeholder={placeholder}
           disabled={!canType}
           className="w-full bg-transparent font-mono text-sm text-content placeholder:text-content-subtle focus:outline-none disabled:cursor-not-allowed"
           aria-label={t('console.commandLabel')}
@@ -182,4 +183,40 @@ export function Console({ controller }: { controller: ConsoleController }) {
       </form>
     </div>
   );
+}
+
+/**
+ * Which of four things the command box should say.
+ *
+ * They had one message between them, and it was the wrong one three times out
+ * of four. `permissions` arrives with the socket's `auth_success`, so a console
+ * that never connected has none — and the box said "you do not have permission
+ * to send commands", a sentence about the reader's account. It sent an operator
+ * hunting through their own permissions for a fault that was a node refusing an
+ * origin, and it said the same thing during the second a connection takes.
+ *
+ * So the refusal is claimed only where it is one: a connected socket that did
+ * not grant `control.console`. A connection the far end refused outright shows
+ * what the far end said, because that reason — "Origin not allowed." — is the
+ * single piece of information that ends the problem.
+ *
+ * A pure function, and separate from the component, because the component
+ * needs a terminal and this needs four values.
+ */
+export function consolePlaceholder(controller: {
+  status: ConnectionStatus;
+  permissions: readonly Permission[];
+  failure: string | null;
+}): MessageKey {
+  if (controller.status === 'failed') {
+    return controller.failure ? 'console.refused' : 'console.disconnected';
+  }
+
+  if (controller.status !== 'connected') {
+    return 'console.connecting';
+  }
+
+  return controller.permissions.includes('control.console')
+    ? 'console.commandPlaceholder'
+    : 'console.commandDenied';
 }

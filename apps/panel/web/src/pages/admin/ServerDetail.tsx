@@ -137,6 +137,21 @@ export function AdminServerDetailPage() {
         <Manage
           server={data}
           onDeleted={() => {
+            /*
+             * Invalidated before the navigation, not after it, and both keys.
+             *
+             * The list this returns to is served from cache, so navigating
+             * alone put the operator back in front of the server they had just
+             * deleted — until the query happened to go stale. The creation path
+             * a few lines up has always invalidated both; the deletion
+             * invalidated neither.
+             *
+             * `servers` as well as `admin/servers`: an administrator deleting
+             * their own server has it on their dashboard too, and that list is
+             * keyed separately.
+             */
+            void queryClient.invalidateQueries({ queryKey: ['admin', 'servers'] });
+            void queryClient.invalidateQueries({ queryKey: ['servers'] });
             void navigate('/admin/servers');
           }}
         />
@@ -352,7 +367,7 @@ function Field({
   );
 }
 
-function Manage({ server, onDeleted }: { server: AdminServer; onDeleted: () => void }) {
+export function Manage({ server, onDeleted }: { server: AdminServer; onDeleted: () => void }) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const suspended = server.status === 'SUSPENDED';
