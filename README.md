@@ -54,7 +54,7 @@ Hopper aims for the middle:
 | 🖥️ **Live console**      | WebSocket straight to the daemon, history, command input                                                                          |
 | 📊 **Resources**         | CPU, RAM, disk and network in real time                                                                                           |
 | 📦 **One-click install** | Minecraft (Paper, Purpur, Vanilla, Fabric, NeoForge), the Velocity and BungeeCord proxies, Factorio, Source servers, Discord bots |
-| 🥚 **Egg import**        | Reuse the hundreds of existing Pterodactyl eggs                                                                                   |
+| 🥚 **Egg import**        | Reuse the hundreds of existing Pterodactyl eggs, ports and config files included                                                  |
 | ✏️ **Template editor**   | Write your own, in groups, from the administration                                                                                |
 | 📁 **File manager**      | In-browser editing, upload, archives — behind a strict path jail                                                                  |
 | 🔌 **Built-in SFTP**     | Sign in with your panel credentials, permissions honoured                                                                         |

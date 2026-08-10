@@ -72,9 +72,14 @@ imported file: being written by Hopper is a claim the file makes about itself.
 
 Two things do not survive a trip through another panel, and both are visible in the file:
 
-- **A `file` or `xml` configuration entry** is left out of `config.files`. Pterodactyl's `file`
-  parser replaces the whole line where Hopper's replaces the value, so carrying one across would
-  have the other panel write the key where the value belongs. Both stay exact in the block.
+- **A `file` or `xml` configuration entry** is left out of `config.files`, for two different
+  reasons. Hopper's `file` is _silently different_ over there — it rewrites the value on a line
+  where Pterodactyl's replaces the line — so exporting one under that name would have the other
+  panel write `0.0.0.0:25577` over the whole of `bind = …`. `xml` is a parser no daemon writes, so
+  exporting one would hand another panel a file Hopper itself leaves untouched. Both stay exact in
+  the block. **`whole-line` does translate**, and it goes out as `file`, which is the name that
+  parser has over there: an egg imported here and exported again arrives with its `config.files`
+  intact.
 - **A console pattern that is a real regular expression** — one written by hand rather than derived
   from an egg — cannot be expressed as the substring Pterodactyl looks for. It is written as it
   stands, which is wrong there and right here.
@@ -121,28 +126,45 @@ means the same thing by. Two of them it does not; see the refusals below.
   to put there, and every use of it in the corpus is a proxy rewriting an address, where a blank is
   worse than the value already in the file.
 
-Two parsers are refused outright, each with a warning naming the file:
+An egg's `file` parser becomes Hopper's **`whole-line`**, and not Hopper's own `file`. The two
+projects have a parser of that name and they do not mean the same thing: Hopper's `file` rewrites
+_the value_ on a matching line and keeps the key, the delimiter and the spacing — which is what the
+Velocity template asks of it — while Pterodactyl's finds a line by its opening text and replaces
+**the whole line**. That is why its eggs write the key into the value:
+`"DISCORD_TOKEN": "DISCORD_TOKEN={{env.discord_token}}"`. Read as the local `file` that is not a
+mistranslation, it is corruption — `DISCORD_TOKEN=DISCORD_TOKEN=…`.
 
-- **`xml`.** The daemon has no rewriter for it. This page used to say a template carrying one "fails
-  on the first start of the first server built from it"; it does not fail at all. The daemon's
-  refusal is caught, the file is left exactly as it is, and the server starts — on the port that
-  file already named, which is the egg author's and not the one the panel allocated. A wrong port
-  and a console line are the whole of the symptom, which is why the refusal happens at import, where
-  somebody is reading. Seven eggs in the corpus, 48 replacements between them.
-- **`file`** — and this one looks like a bug until you read it, because Hopper has a `file` parser
-  of its own. They are not the same parser. Hopper's rewrites _the value_ on a matching line and
-  keeps the key, the delimiter and the spacing; that is what the Velocity template asks of it.
-  Pterodactyl's finds a line by prefix and replaces **the whole line**, which is why its eggs write
-  the key into the value: `"DISCORD_TOKEN": "DISCORD_TOKEN={{env.discord_token}}"`. Carried across
-  unchanged that is not a no-op, it is corruption — Hopper keeps its own prefix and writes
-  `DISCORD_TOKEN=DISCORD_TOKEN=…`. Measured: **255 of the 265 `file` replacements in the corpus
-  repeat their key**, and 75 name a match already carrying the `=`, which Hopper's pattern cannot
-  match at all. A parser with Pterodactyl's semantics is worth having — 27 templates write their
-  port that way — and it is a change to the contract rather than to the importer.
+Every one of them is translated, with no inspection of the value, and that is a decision rather
+than a shortcut. Measured over the corpus: **245 of the 265 `file` replacements repeat their key**,
+and the 20 that do not are not the well-behaved remainder a heuristic would rescue — **14 uncomment
+a line** (`"#port =": "port = {{server.build.default.port}}"`), three delete one by replacing it
+with nothing, and the rest change the key's own spelling. Those are the gestures replacing a whole
+line exists for. An egg was written and tested against Pterodactyl's parser, so reproducing it
+cannot surprise its author; guessing from the shape of a value always could.
 
-What lands, over the whole corpus: **100 templates carry configuration files** (107 files, 544
-replacements), **85 of them now write the allocated port**, and 60 carry at least one warning
-naming what was left behind.
+Until v0.13.0 all 265 were dropped with a warning, and **27 eggs write their port nowhere else** —
+they imported into a template whose servers listened on whatever the egg's author had left in a
+file.
+
+One parser and one form are still refused, each with a warning naming the file:
+
+- **`xml`.** No daemon has a rewriter for it. This page used to say a template carrying one "fails
+  on the first start of the first server built from it"; it does not fail at all. The refusal is
+  caught, the file is left exactly as it is, and the server starts — on the port that file already
+  named, which is the egg author's and not the one the panel allocated. A wrong port and a console
+  line are the whole of the symptom, which is why the refusal happens where somebody is reading:
+  at import, and in the template editor, which refuses the parser outright. Seven eggs in the
+  corpus, 48 replacements between them.
+- **A conditional replacement under `file`.** Pterodactyl's conditional form becomes Hopper's
+  `ifValue`, which under `whole-line` is compared against the entire line while these conditions
+  are values — so an expanded one would match nothing, the port would go unwritten, and the only
+  evidence would be a file that stayed as it was. There are zero of them in the public corpus,
+  which is why refusing costs nothing.
+
+What lands, measured by running the importer over the whole corpus: **153 templates carry
+configuration files** (164 files, 805 replacements, 57 of them `whole-line`), and **109 write the
+allocated port**. Before `whole-line` those figures were 100, 107, 544 and 84 — so carrying an
+egg's `file` entries is 25 more games that listen where the panel says they do.
 
 ## Writing a template
 
@@ -700,3 +722,41 @@ and the allocation the panel displays would be a lie.
 A template whose port arrives as a command-line argument needs none of this and says so with an
 empty `configFiles`: there is nothing on disk holding the port for the daemon to rewrite. Factorio
 is the shipped example.
+
+### The parsers
+
+Each entry names one, and the two that both patch a line are the pair worth reading before
+choosing:
+
+| parser       | finds                              | writes                                                   |
+| ------------ | ---------------------------------- | -------------------------------------------------------- |
+| `properties` | a `key=value` line                 | the value, keeping key, spacing and delimiter            |
+| `ini`        | the same, in an INI or a TOML      | the value, keeping quotes if there were any              |
+| `yaml`       | a dotted path, `listeners[0].host` | the value, through the document model — comments survive |
+| `json`       | a dotted path                      | the value, re-serialised with two-space indentation      |
+| `file`       | a `key=value` or `key: value` line | **the value only**                                       |
+| `whole-line` | a line by the text it starts with  | **the whole line**, so the replacement carries the key   |
+
+`whole-line` is what an imported egg's `file` parser becomes, and the one to reach for when the
+replacement has to do more to a line than change its value: uncommenting it (`match: '#port ='`),
+deleting it (an empty `replaceWith`), or changing the key's own spelling. `ifValue` follows the
+same split — for every other parser it is compared against the value, and for `whole-line` against
+the whole line with its surrounding whitespace removed, since no part of that line is a value.
+
+A parser that replaces the whole line does not fire twice: once `#port = 5432` reads `port = 5570`,
+the match finds nothing, so a later change of port leaves that line alone. This is Pterodactyl's
+behaviour, kept deliberately — it is what the egg's author tested against.
+
+**`xml` is in the contract and no daemon writes it.** The template editor refuses it, the egg
+importer refuses it, and no shipped template may declare one. If one reached a daemon anyway the
+file would be left exactly as it is and the server would start on the port it already held — no
+failure, no refusal, one console line, which is why all three doors refuse it instead.
+
+**A node has to understand the parser before a template using it can be placed there.** `whole-line`
+is announced as `whole-line-parser` on `/api/system`, and the panel refuses to create a server, to
+transfer one, or to save a template onto a node that does not announce it. This gate is stricter
+than the two above and the reason is mechanical rather than a matter of degree: a parser outside the
+enum's domain fails the whole page of configurations that daemon fetches, so it would adopt **none**
+of its servers — including the servers of every other template on that machine. Editing a template
+that already uses the parser is not gated, so a template can still be corrected, or the parser taken
+back out, while its servers sit on a node nobody has upgraded yet.
