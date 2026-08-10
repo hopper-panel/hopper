@@ -92,6 +92,47 @@ jobs:
       # kind is only ever run once per installation, by somebody who will not
       # be reading its output carefully, so the one place it can be rehearsed
       # is here.
+      # An operator reinstalled onto his LAN address, was told
+      # `Panel : http://192.168.1.141`, and landed on the default nginx page:
+      # `.env` and the vhost are both kept on a rerun, so the panel stayed on
+      # the address typed weeks earlier while the script reported the new one.
+      - name: Reinstalling with another address actually moves the panel
+        env:
+          HOPPER_NONINTERACTIVE: '1'
+          HOPPER_DOMAIN: 192.0.2.10
+          HOPPER_WEBSERVER: nginx
+          HOPPER_TLS: 'no'
+          HOPPER_ADMIN_EMAIL: ci@example.com
+          HOPPER_ADMIN_USERNAME: ci
+          HOPPER_REPOSITORY: ${{ github.workspace }}
+        run: |
+          set -euo pipefail
+
+          # A vhost left over from an earlier address, which is what the
+          # operator had. Written by hand so the rewrite is exercised rather
+          # than the first-time creation.
+          sudo mkdir -p /etc/nginx/sites-available /etc/nginx/sites-enabled
+          printf 'server {\n    listen 80;\n    server_name 198.51.100.7;\n}\n' |
+            sudo tee /etc/nginx/sites-available/hopper.conf >/dev/null
+          sudo ln -sf /etc/nginx/sites-available/hopper.conf /etc/nginx/sites-enabled/hopper.conf
+
+          OUT=$(sudo -E bash install/install.sh)
+          printf '%s\n' "$OUT"
+
+          # The address the script announces is the address it wrote.
+          grep -q '^APP_URL=http://192.0.2.10$' /opt/hopper/apps/panel/.env
+
+          # The vhost answers for the new address, not the old one — otherwise
+          # nginx serves its default site and the panel looks broken.
+          grep -q '192.0.2.10' /etc/nginx/sites-available/hopper.conf
+          ! grep -q '198.51.100.7' /etc/nginx/sites-available/hopper.conf
+
+          # And a rerun that creates no administrator says how to get back in,
+          # rather than printing nothing where the password used to be.
+          printf '%s' "$OUT" | grep -q 'hopper user:password --username ci'
+
+          systemctl is-active --quiet hopper-panel
+
       # `sh uninstall.sh` is what an operator typed, and on Debian `sh` is
       # dash: it ran the script and printed `$\033[1m` in place of every
       # heading, including the line saying what to type to confirm a deletion.
