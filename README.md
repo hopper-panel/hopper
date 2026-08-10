@@ -4,9 +4,9 @@
 
 **An open-source panel for hosting your game servers, on your own machine.**
 
-Minecraft, Factorio and Garry's Mod ship with it; anything else runs through an imported Pterodactyl
-egg. Live console, file manager, SFTP, backups, scheduled tasks — every server isolated in its own
-Docker container.
+Minecraft and its proxies, Factorio, the Source engine and Discord bots ship with it; anything else
+runs through an imported Pterodactyl egg. Live console, file manager, SFTP, backups, scheduled tasks
+— every server isolated in its own Docker container.
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](./LICENSE)
 [![Node](https://img.shields.io/badge/node-%3E%3D22-brightgreen.svg)](https://nodejs.org)
@@ -49,22 +49,22 @@ Hopper aims for the middle:
 
 ## Features
 
-|                          |                                                                                       |
-| ------------------------ | ------------------------------------------------------------------------------------- |
-| 🖥️ **Live console**      | WebSocket straight to the daemon, history, command input                              |
-| 📊 **Resources**         | CPU, RAM, disk and network in real time                                               |
-| 📦 **One-click install** | Paper, Purpur, Vanilla, Fabric, NeoForge, Velocity, BungeeCord, Factorio, Garry's Mod |
-| 🥚 **Egg import**        | Reuse the hundreds of existing Pterodactyl eggs                                       |
-| ✏️ **Template editor**   | Write your own, in groups, from the administration                                    |
-| 📁 **File manager**      | In-browser editing, upload, archives — behind a strict path jail                      |
-| 🔌 **Built-in SFTP**     | Sign in with your panel credentials, permissions honoured                             |
-| 💾 **Backups**           | Compressed archives on the node, one-click restore                                    |
-| ⏰ **Scheduler**         | Daily restart, nightly backup, scheduled commands                                     |
-| 👥 **Subusers**          | Share a server with your staff, permission by permission                              |
-| 🔔 **Notifications**     | Discord or a signed webhook: server down, backup finished                             |
-| 🔑 **API keys**          | Drive your servers from a script, with scopes                                         |
-| 🌍 **Five languages**    | English, French, Spanish, German, Russian                                             |
-| 🖧 **Multi-machine**      | One panel, as many nodes as you need                                                  |
+|                          |                                                                                                                                   |
+| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------- |
+| 🖥️ **Live console**      | WebSocket straight to the daemon, history, command input                                                                          |
+| 📊 **Resources**         | CPU, RAM, disk and network in real time                                                                                           |
+| 📦 **One-click install** | Minecraft (Paper, Purpur, Vanilla, Fabric, NeoForge), the Velocity and BungeeCord proxies, Factorio, Source servers, Discord bots |
+| 🥚 **Egg import**        | Reuse the hundreds of existing Pterodactyl eggs                                                                                   |
+| ✏️ **Template editor**   | Write your own, in groups, from the administration                                                                                |
+| 📁 **File manager**      | In-browser editing, upload, archives — behind a strict path jail                                                                  |
+| 🔌 **Built-in SFTP**     | Sign in with your panel credentials, permissions honoured                                                                         |
+| 💾 **Backups**           | Compressed archives on the node, one-click restore                                                                                |
+| ⏰ **Scheduler**         | Daily restart, nightly backup, scheduled commands                                                                                 |
+| 👥 **Subusers**          | Share a server with your staff, permission by permission                                                                          |
+| 🔔 **Notifications**     | Discord or a signed webhook: server down, backup finished                                                                         |
+| 🔑 **API keys**          | Drive your servers from a script, with scopes                                                                                     |
+| 🌍 **Five languages**    | English, French, Spanish, German, Russian                                                                                         |
+| 🖧 **Multi-machine**      | One panel, as many nodes as you need                                                                                              |
 
 ## Architecture
 

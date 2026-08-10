@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { PARSERS_NOT_WRITTEN } from '@hopper/shared';
 import { TEMPLATE_CATALOG, catalogGroups } from './index.js';
-import { templateDefinitionSchema } from './definition.js';
+import { TEMPLATE_GROUPS, templateDefinitionSchema } from './definition.js';
 /**
  * Reaching into the daemon from a template test, on purpose.
  *
@@ -40,6 +40,27 @@ describe('catalogue de templates', () => {
     expect(catalogGroups().length).toBeGreaterThan(0);
     for (const group of catalogGroups()) {
       expect(group.trim()).not.toBe('');
+    }
+  });
+
+  /**
+   * No group is declared that no template joins.
+   *
+   * `TEMPLATE_GROUPS` is a list of names the catalogue upserts on, and nothing
+   * ever reads the object itself: both writers walk `TEMPLATE_CATALOG` and
+   * upsert `definition.group`. So a key nothing names creates no row, appears
+   * in no dropdown and reaches no operator — it is a promise kept where only a
+   * contributor can see it, and read as a feature by the next person deciding
+   * what to work on. `BEDROCK` sat there for six releases.
+   */
+  it('ships a template for every group it declares', () => {
+    const used = new Set(catalogGroups());
+
+    for (const [key, name] of Object.entries(TEMPLATE_GROUPS)) {
+      expect(
+        used,
+        `TEMPLATE_GROUPS.${key} is "${name}" and no shipped template joins it`,
+      ).toContain(name);
     }
   });
 

@@ -2,7 +2,7 @@
   "name": "hopper",
   "version": "0.12.2",
   "private": true,
-  "description": "Hopper Panel — open-source, self-hosted Minecraft server management panel",
+  "description": "Hopper Panel — open-source, self-hosted game server management panel",
   "license": "AGPL-3.0-or-later",
   "repository": {
     "type": "git",
