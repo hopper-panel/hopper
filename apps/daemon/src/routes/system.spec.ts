@@ -1,4 +1,5 @@
 import Fastify from 'fastify';
+import { NODE_CAPABILITIES } from '@hopper/shared';
 import { describe, expect, it, vi } from 'vitest';
 import type { DockerClient } from '../docker/client.js';
 import type { ServerManager } from '../server/server-manager.js';
@@ -49,6 +50,31 @@ async function get(app: ReturnType<typeof harness>['app']) {
 }
 
 describe('GET /api/system', () => {
+  /**
+   * Every capability the contract declares is announced by this build.
+   *
+   * The list in `system.ts` is written by hand, and it has to be: it says what
+   * *this daemon* honours, and deriving it from `NODE_CAPABILITIES` would have
+   * the route announce whatever the contract happens to declare — including a
+   * capability added to the contract in one commit and implemented in the
+   * next, which is the one lie this whole mechanism exists to prevent.
+   *
+   * Written by hand is also how a capability gets forgotten, and the symptom
+   * of forgetting is bad in a way that reads as somebody else's fault: the
+   * panel refuses the feature on nodes that are perfectly up to date, with a
+   * message telling the operator their daemon is too old.
+   *
+   * So the equality is asserted, and the discipline it enforces is stated
+   * here: **a name enters `NODE_CAPABILITIES` in the same commit that makes
+   * this build honour it, never before.** A capability that is designed but
+   * not yet written does not go in the contract — it stays in the branch.
+   */
+  it('announces every capability the contract declares', async () => {
+    const { app } = harness();
+
+    expect((await get(app)).capabilities).toEqual(Object.values(NODE_CAPABILITIES));
+  });
+
   it('carries the network isolation verdict', async () => {
     const { app } = harness();
 

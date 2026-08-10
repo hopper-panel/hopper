@@ -20,6 +20,10 @@ import type { RequestContext } from '../auth/auth.service.js';
 import { NodeClientService } from '../nodes/node-client.service.js';
 import { NodesService } from '../nodes/nodes.service.js';
 import {
+  assertWholeLineParserHonouredEverywhere,
+  declaresWholeLineParser,
+} from '../servers/config-parsers.js';
+import {
   assertRconStopReachesEveryServer,
   assertStopTransportHonouredEverywhere,
   declaresRconStop,
@@ -344,6 +348,7 @@ export class TemplateEditorService {
     // decryption and a round trip.
     await this.assertStopReachesEveryServer(existing, dto, merged.stop);
     await this.assertStopReachesEveryNode(existing, merged.stop);
+    await this.assertParsersReachEveryNode(existing, merged.configFiles);
 
     // Last of all the reads, and after every refusal above, because it creates
     // a group when the name names none: a refused edit that had already made
@@ -709,6 +714,46 @@ export class TemplateEditorService {
 
     await assertStopTransportHonouredEverywhere(
       stop,
+      nodes.map((node) => ({
+        name: node.name,
+        connection: () => this.nodes.getConnection(node.uuid),
+      })),
+      this.client,
+    );
+  }
+
+  /**
+   * Refuses an edit that would put a whole-line parser on a node too old to
+   * read one.
+   *
+   * The escape hatch of the stop gate above, for the same reason and with more
+   * riding on it: only an edit that *introduces* the parser asks anything new
+   * of a node. A template already using it can still be corrected — a wrong
+   * `match`, a file renamed — while its servers sit on a node that has not
+   * been upgraded yet, and removing the parser is never refused, which is what
+   * leaves a way out of the corner.
+   *
+   * Without that, the one edit an operator most needs on a stale node — taking
+   * the parser back out — would be the edit this gate blocked.
+   */
+  private async assertParsersReachEveryNode(
+    existing: TemplateRow,
+    configFiles: ConfigFile[],
+  ): Promise<void> {
+    if (
+      !declaresWholeLineParser(configFiles) ||
+      declaresWholeLineParser(parseConfigFiles(existing.configFiles))
+    ) {
+      return;
+    }
+
+    const nodes = await this.prisma.node.findMany({
+      where: { servers: { some: { templateId: existing.id } } },
+      select: { uuid: true, name: true },
+    });
+
+    await assertWholeLineParserHonouredEverywhere(
+      configFiles,
       nodes.map((node) => ({
         name: node.name,
         connection: () => this.nodes.getConnection(node.uuid),

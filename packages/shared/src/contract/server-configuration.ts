@@ -7,7 +7,55 @@ import { z } from 'zod';
  * watch or reinstall a server has to be in here.
  */
 
-export const configParserSchema = z.enum(['properties', 'yaml', 'json', 'ini', 'xml', 'file']);
+/**
+ * How the daemon finds a setting in a file, and how much of it it replaces.
+ *
+ * Two of these names describe key-on-a-line formats and the difference between
+ * them is the whole reason both exist:
+ *
+ * - **`file`** finds the line whose key is `match` and rewrites **the value**
+ *   after the delimiter. The key, its spacing, the delimiter and any quotes
+ *   survive. `bind = "0.0.0.0:25565"` becomes `bind = "0.0.0.0:25570"`, which
+ *   is what the shipped Velocity template asks for.
+ * - **`whole-line`** finds the line that *starts with* `match` and replaces
+ *   **the entire line** with `replaceWith`. Nothing of the old line is kept,
+ *   so the replacement has to carry the key itself:
+ *   `{ match: 'DISCORD_TOKEN', replaceWith: 'DISCORD_TOKEN=abc' }`.
+ *
+ * The second is Pterodactyl's `file` parser, under a name that says what it
+ * does. Sharing the name would have been worse than untranslatable: an egg
+ * carrying `"DISCORD_TOKEN": "DISCORD_TOKEN={{env.token}}"` — and 245 of the
+ * 265 `file` replacements in the public corpus repeat their key that way —
+ * read as Hopper's `file` writes `DISCORD_TOKEN=DISCORD_TOKEN=…`, which is
+ * corruption rather than a mistranslation.
+ *
+ * Replacing the whole line is not merely a coarser edit, it is what lets a
+ * replacement **uncomment** one — `{ match: '#port =', replaceWith: 'port =
+ * 5432' }`, which 14 replacements in the corpus do, and which no amount of
+ * value-rewriting can express. It also lets one be deleted, by replacing it
+ * with nothing.
+ *
+ * `xml` is accepted here and written by nobody; see `PARSERS_NOT_WRITTEN`.
+ *
+ * **This enum is not additive-safe, and that is the one thing to know before
+ * adding to it.** Zod strips object keys it does not know; it does not strip a
+ * value outside a known key's domain — it fails, and the failure is not local.
+ * A parser an older daemon has never heard of makes `configFileSchema` fail,
+ * which makes `serverConfigurationSchema` fail, which makes the whole page of
+ * server configurations that daemon fetches fail to parse — so it adopts none
+ * of its servers, not merely the one. Every value added here therefore needs a
+ * capability the panel gates on before a template naming it can reach a node.
+ * See `NODE_CAPABILITIES.wholeLineParser`.
+ */
+export const configParserSchema = z.enum([
+  'properties',
+  'yaml',
+  'json',
+  'ini',
+  'xml',
+  'file',
+  'whole-line',
+]);
 export type ConfigParser = z.infer<typeof configParserSchema>;
 
 /**
@@ -46,9 +94,23 @@ export type ConfigParser = z.infer<typeof configParserSchema>;
 export const PARSERS_NOT_WRITTEN: readonly ConfigParser[] = ['xml'];
 
 export const configReplacementSchema = z.object({
-  /** Dotted path, e.g. `server-port` or `settings.bungeecord`. */
+  /**
+   * What to find. A dotted path for the structured parsers — `server-port`,
+   * `settings.bungeecord`, `listeners[0].host` — and for `whole-line` the
+   * literal text the line begins with, which may be a comment marker.
+   */
   match: z.string().min(1),
-  /** Replace only if the current value equals this. Otherwise always overwrite. */
+  /**
+   * Replace only if what is there already reads like this. Otherwise always
+   * overwrite.
+   *
+   * What "what is there" means depends on the parser, and there is only one
+   * honest answer per parser rather than one for all of them: for the
+   * structured ones and for `file` it is the value, unquoted; for
+   * `whole-line`, where no part of the line is a value, it is **the whole line
+   * with its surrounding whitespace removed**. Comparing against the value
+   * there would mean comparing against something the parser never computes.
+   */
   ifValue: z.string().optional(),
   replaceWith: z.string(),
 });

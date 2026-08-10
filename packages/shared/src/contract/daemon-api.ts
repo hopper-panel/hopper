@@ -69,6 +69,26 @@ export const NODE_CAPABILITIES = {
    * stop that the only clean shutdown this game has is unavailable.
    */
   rconStop: 'rcon-stop',
+
+  /**
+   * Understands `parser: 'whole-line'`, and therefore replaces the line a
+   * match names instead of rewriting the value on it.
+   *
+   * The worst of the three when it is missing, and worse than the two above by
+   * a mechanism rather than by degree. Those fields are *stripped* by an older
+   * daemon or fail *one* object; a parser outside the enum's domain fails
+   * `configFileSchema`, therefore `serverConfigurationSchema`, therefore the
+   * entire page of configurations that daemon fetches — so it adopts none of
+   * its servers. One template edited on the panel, and a node full of servers
+   * belonging to other templates entirely goes dark: every console answers
+   * "unknown to this node", every power action fails, and the containers keep
+   * running with nothing driving them.
+   *
+   * There is no partial reading to fall back on and nothing in the payload can
+   * warn the node, so the panel refuses to put such a template on such a node
+   * at all. See `config-parsers.ts`.
+   */
+  wholeLineParser: 'whole-line-parser',
 } as const;
 
 /**

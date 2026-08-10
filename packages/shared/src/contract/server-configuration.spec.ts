@@ -86,6 +86,54 @@ describe('serverConfigurationSchema', () => {
  * server was measured stopping on `quit` written to stdin, exit code 0, and the
  * shipped template stops that way.
  */
+/**
+ * Why a new parser needs a node capability, stated as a test.
+ *
+ * The gate in `config-parsers.ts` and the paragraph on `configParserSchema`
+ * both rest on one claim: an unknown parser does not degrade, it fails the
+ * whole configuration. If Zod ever stripped it instead — or if somebody
+ * "helpfully" relaxed the enum to `z.string()` — the gate would become a
+ * refusal for no reason, and the reasoning would be wrong before the code was.
+ */
+describe('a parser the contract does not know', () => {
+  const withParser = (parser: string) => ({
+    ...MINIMAL,
+    configFiles: [
+      { file: '.env', parser, replacements: [{ match: 'PORT', replaceWith: 'PORT=1' }] },
+    ],
+  });
+
+  it('fails the whole configuration, not merely its own entry', () => {
+    const result = serverConfigurationSchema.safeParse(withParser('whole-lines'));
+
+    expect(result.success).toBe(false);
+    expect(result.error?.issues[0]?.path).toEqual(['configFiles', 0, 'parser']);
+  });
+
+  it('takes down a configuration whose other entries are perfectly readable', () => {
+    // This is the shape that costs a node its whole page: one template names a
+    // parser, and the object carrying it — along with everything else in it —
+    // becomes unreadable.
+    const config = {
+      ...MINIMAL,
+      configFiles: [
+        {
+          file: 'server.properties',
+          parser: 'properties',
+          replacements: [{ match: 'server-port', replaceWith: '25570' }],
+        },
+        { file: '.env', parser: 'whole-lines', replacements: [] },
+      ],
+    };
+
+    expect(serverConfigurationSchema.safeParse(config).success).toBe(false);
+  });
+
+  it('accepts the one this release added', () => {
+    expect(serverConfigurationSchema.safeParse(withParser('whole-line')).success).toBe(true);
+  });
+});
+
 describe('the rcon stop transport', () => {
   const RCON_STOP = {
     type: 'rcon',
