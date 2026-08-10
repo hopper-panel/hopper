@@ -4,12 +4,13 @@ A template describes **what a server installs and runs**: its Docker image, its 
 startup command and the variables the user can set. It is the equivalent of Pterodactyl's "eggs",
 and the importer accepts those as they are.
 
-The shipped catalogue covers Vanilla, Paper, Purpur, Fabric, NeoForge, Velocity and BungeeCord for
-Minecraft, with Factorio and Garry's Mod beside them. Folia, Forge and Bedrock were listed here
-before they existed; they do not, yet — and the count that used to close this sentence stopped being
-true the day the catalogue grew past Minecraft, so the list that ships is
-`packages/templates/src/index.ts` and this paragraph is only its summary. Anything else runs through
-an imported egg.
+The shipped catalogue covers five Minecraft servers (Vanilla, Paper, Purpur, Fabric, NeoForge), the
+Velocity and BungeeCord proxies, Factorio, the Source engine and Discord bots. Named by family
+rather than one by one, and that is the second correction this paragraph has taken: Folia, Forge and
+Bedrock were listed here before they existed, and then a closed list of nine outlived the release
+that made it eleven. A list written out is a list that goes stale the day somebody adds a template
+and reads this page as documentation rather than as inventory. The one that ships is
+`packages/templates/src/index.ts`. Anything else runs through an imported egg.
 **Administration → Templates → Resynchronise** reinstalls it after a Hopper update; a template
 edited by hand is flagged "edited" and is not overwritten.
 
@@ -78,8 +79,10 @@ Two things do not survive a trip through another panel, and both are visible in 
   from an egg — cannot be expressed as the substring Pterodactyl looks for. It is written as it
   stands, which is wrong there and right here.
 
-Measured: every one of the nine shipped templates, and **272 of the 272 importable eggs of the
-public corpus**, come back byte-identical after export and re-import.
+Measured: every shipped template, and **272 of the 272 importable eggs of the public corpus**, come
+back byte-identical after export and re-import. Every one, not a number — the test derives its cases
+from `TEMPLATE_CATALOG`, so it covers whatever ships on the day it runs, and a figure written here
+only records when this line was last edited.
 
 ## Differences worth knowing when importing
 

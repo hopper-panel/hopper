@@ -199,10 +199,16 @@ export type DockerImageOption = z.infer<typeof dockerImageOptionSchema>;
  * the first. They are also rendered exactly as written in the create-server
  * dropdown, untranslated. Both facts mean the wording has to be chosen once
  * and then stay chosen.
+ *
+ * **Every key here is named by a template that ships.** Nothing reads this
+ * object to create a group — `TemplateSyncService.upsert` and the seed both
+ * upsert on `definition.group`, walking the catalogue — so a key no template
+ * names creates nothing, means nothing to an operator, and is only a promise
+ * made in a place nobody reads. `BEDROCK` was one for six releases. The rule
+ * is held by `catalog.spec.ts` now rather than by whoever is looking.
  */
 export const TEMPLATE_GROUPS = {
   JAVA: 'Minecraft: Java Edition',
-  BEDROCK: 'Minecraft: Bedrock Edition',
   PROXY: 'Proxies',
   /**
    * Everything that is not Minecraft.

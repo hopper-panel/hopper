@@ -105,14 +105,19 @@ const GARRYS_MOD_SERVER_CFG = [
 export const garrysMod: TemplateDefinition = {
   key: 'garrys-mod',
   /**
-   * Beside Factorio, not in a group of its own.
+   * In the Source group, which this comment used to argue against.
    *
-   * A "Source engine" group is the tempting shape and `TEMPLATE_GROUPS` argues
-   * against it in its own comment: the group name is the upsert key, so it can
-   * never be renamed, and a group per engine turns the create-server dropdown
-   * into a list of one-entry sections. "Other games" was named for the category
-   * precisely so the second and the tenth non-Minecraft template could join it
-   * without a migration.
+   * It said "beside Factorio, not in a group of its own", and the reasoning was
+   * sound while the catalogue held one Source template: a group per engine
+   * turns the create-server dropdown into a list of one-entry sections, and
+   * the name is the upsert key, so it can never be renamed out of a mistake.
+   *
+   * What changed is that there are two of them now, with a third obvious, and
+   * they share an engine rather than a category — `srcds_run`, `-norestart`,
+   * the console on standard input, the anonymous depot. `TEMPLATE_GROUPS.SOURCE`
+   * records that change of mind at length; the line below stopped agreeing with
+   * the paragraph above it in the same commit, and nobody reading this file
+   * would have known which one to believe.
    */
   group: TEMPLATE_GROUPS.SOURCE,
   name: "Garry's Mod",
