@@ -18,6 +18,18 @@
 # Rerunning the script on an existing installation updates the code without
 # touching the database, the .env file or the vhosts already written.
 
+# Re-exec under bash when started by something else.
+#
+# `sh install.sh` is a natural thing to type and every page here says `bash`,
+# which is exactly the kind of instruction that gets half-followed. On Debian
+# `sh` is dash: it would run most of this file and mangle the rest, starting
+# with `$'[1m'`, which it leaves as literal text and turns every heading
+# into escape codes. Reported against `uninstall.sh` by an operator who typed
+# `sh`; the same trap was here.
+if [ -z "${BASH_VERSION:-}" ]; then
+  exec bash "$0" "$@"
+fi
+
 set -euo pipefail
 
 HOPPER_ROOT="${HOPPER_ROOT:-/opt/hopper}"

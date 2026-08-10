@@ -92,6 +92,16 @@ jobs:
       # kind is only ever run once per installation, by somebody who will not
       # be reading its output carefully, so the one place it can be rehearsed
       # is here.
+      # `sh uninstall.sh` is what an operator typed, and on Debian `sh` is
+      # dash: it ran the script and printed `$\033[1m` in place of every
+      # heading, including the line saying what to type to confirm a deletion.
+      - name: Started with sh, it still reads like English
+        run: |
+          set -euo pipefail
+          OUT=$(sudo sh install/uninstall.sh --dry-run)
+          printf '%s' "$OUT" | grep -q 'would be removed'
+          ! printf '%s' "$OUT" | grep -q '033\['
+
       - name: The uninstaller says what it would do, and does not do it
         run: |
           set -euo pipefail
