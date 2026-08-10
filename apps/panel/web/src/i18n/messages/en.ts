@@ -936,6 +936,19 @@ export const en = {
     'A single port (25565) or a range (25565-25585). Ports already present are ignored.',
   'adminNode.created': '{created} port(s) created.',
   'adminNode.skipped': '{skipped} already there.',
+
+  'adminNode.editTitle': 'Edit this node',
+  'adminNode.description': 'Description',
+  'adminNode.sftpPort': 'SFTP port',
+  'adminNode.fqdnEditHint':
+    'The panel reaches the daemon here, and so does every browser opening a console. Changing it takes effect at once, for the servers already on this node as well.',
+  'adminNode.maintenance': 'Under maintenance',
+  'adminNode.maintenanceHint':
+    'No new server can be created here. The ones already running are left alone.',
+  'adminNode.deleteTitle': 'Delete this node',
+  'adminNode.deleteHint':
+    'The daemon is not touched: it goes on running and has to be stopped on the machine itself. Its allocated ports go with the node.',
+  'adminNode.deleteConfirm': 'Delete the node “{name}”? Its allocated ports go with it.',
   'adminNodes.configSteps':
     'Write this file to /etc/hopper/daemon.yml on the machine, then chmod 600 it and restart hopperd.',
 

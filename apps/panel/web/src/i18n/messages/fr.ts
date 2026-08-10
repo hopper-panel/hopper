@@ -950,6 +950,19 @@ export const fr: Partial<Messages> = {
     'Un port isolé (25565) ou une plage (25565-25585). Les ports déjà présents sont ignorés.',
   'adminNode.created': '{created} port(s) créé(s).',
   'adminNode.skipped': '{skipped} déjà présent(s).',
+
+  'adminNode.editTitle': 'Modifier ce node',
+  'adminNode.description': 'Description',
+  'adminNode.sftpPort': 'Port SFTP',
+  'adminNode.fqdnEditHint':
+    'C’est ici que le panel joint le daemon, et que chaque navigateur ouvre une console. Le changement prend effet immédiatement, y compris pour les serveurs déjà présents sur ce node.',
+  'adminNode.maintenance': 'En maintenance',
+  'adminNode.maintenanceHint':
+    'Aucun nouveau serveur ne peut être créé ici. Ceux qui tournent déjà ne sont pas touchés.',
+  'adminNode.deleteTitle': 'Supprimer ce node',
+  'adminNode.deleteHint':
+    'Le daemon n’est pas touché : il continue de tourner et doit être arrêté sur la machine elle-même. Les ports alloués partent avec le node.',
+  'adminNode.deleteConfirm': 'Supprimer le node « {name} » ? Ses ports alloués partent avec lui.',
   'adminNodes.configSteps':
     'Écrivez ce fichier dans /etc/hopper/daemon.yml sur la machine, puis chmod 600 et redémarrage de hopperd.',
 
