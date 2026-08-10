@@ -41,7 +41,11 @@ export function registerSystemRoutes(
       // What this build honours that an older one silently did not. The panel
       // gates operations on it rather than on the daemon's version string,
       // which says nothing about what was backported into it.
-      capabilities: [NODE_CAPABILITIES.allocationRoles, NODE_CAPABILITIES.rconStop],
+      capabilities: [
+        NODE_CAPABILITIES.allocationRoles,
+        NODE_CAPABILITIES.rconStop,
+        NODE_CAPABILITIES.wholeLineParser,
+      ],
       // Beside the capabilities rather than among them: a capability is absent
       // on every daemon too old to announce it, so "not isolated" and "too old
       // to say" would be the same answer. See `networkIsolationSchema`.

@@ -12,6 +12,7 @@ import { AUDIT_EVENTS, AuditService } from '../audit/audit.service.js';
 import { NodeClientService, type NodeConnection } from '../nodes/node-client.service.js';
 import { NodesService } from '../nodes/nodes.service.js';
 import { ServerConfigurationService } from './server-configuration.service.js';
+import { assertWholeLineParserHonoured } from './config-parsers.js';
 import { assertStopTransportHonoured } from './stop-transport.js';
 
 /**
@@ -216,6 +217,15 @@ export class TransferService {
     // one's files had been copied across and the original deleted.
     await assertStopTransportHonoured(
       server.template.stop,
+      { name: target.name, connection: () => this.nodes.getConnection(target.uuid) },
+      this.client,
+    );
+
+    // Likewise, and here the target's other servers are the ones at stake: a
+    // parser it cannot read makes its whole page of configurations unreadable,
+    // so the servers it already hosts go dark on arrival of this one.
+    await assertWholeLineParserHonoured(
+      server.template.configFiles,
       { name: target.name, connection: () => this.nodes.getConnection(target.uuid) },
       this.client,
     );

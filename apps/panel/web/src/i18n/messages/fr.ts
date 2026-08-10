@@ -866,7 +866,7 @@ export const fr: Partial<Messages> = {
 
   'adminTemplate.configFiles': 'Fichiers de configuration (JSON)',
   'adminTemplate.configFilesHint':
-    'Ce que le daemon réécrit dans les fichiers du serveur à chaque démarrage. Parsers : properties, yaml, json, ini, file. Lu en direct, et une entrée que le contrat ne sait pas lire sort tous les serveurs de ce template de leur node — elle est donc vérifiée ici avant envoi.',
+    'Ce que le daemon réécrit dans les fichiers du serveur à chaque démarrage. Parsers : properties, yaml, json, ini, file (réécrit la valeur d’une ligne en gardant la clé) et whole-line (remplace la ligne, donc le remplacement porte la clé — c’est ce que devient le parser file d’un egg importé). Lu en direct, et une entrée que le contrat ne sait pas lire sort tous les serveurs de ce template de leur node — elle est donc vérifiée ici avant envoi.',
   'adminTemplate.fileDenylist': 'Fichiers protégés',
   'adminTemplate.fileDenylistHint':
     'Un chemin par ligne, relatif à la racine du serveur. Le gestionnaire de fichiers refuse de les modifier ou de les supprimer.',

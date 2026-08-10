@@ -258,16 +258,13 @@ function rewrite(
       // overwriting velocity.toml with the word `0.0.0.0:25577` would delete
       // everything else the operator configured.
       //
-      // **Not Pterodactyl's `file` parser either**, which this comment used to
-      // claim it matched. Theirs finds a line by prefix and replaces the whole
-      // line, so an egg writes the key into the value —
-      // `"DISCORD_TOKEN": "DISCORD_TOKEN={{env.discord_token}}"` — and 255 of
-      // the 265 uses in the public egg corpus do. Handed to this branch, that
-      // value would be written after the prefix this rewrite preserves, giving
-      // `DISCORD_TOKEN=DISCORD_TOKEN=…`. The importer refuses them rather than
-      // corrupt a file, and says so; a parser with those semantics would be a
-      // new name in `configParserSchema`, not a reinterpretation of this one.
+      // **Not Pterodactyl's `file` parser either.** Theirs replaces the whole
+      // line, and that is `whole-line` below — a second name rather than a
+      // reinterpretation of this one, which is what the comment here used to
+      // say was needed and is now what happened.
       return rewriteLines(original, replacements, ['=', ':']);
+    case 'whole-line':
+      return rewriteWholeLines(original, replacements);
     case 'json':
       return rewriteJson(original, replacements);
     case 'yaml':
@@ -334,6 +331,75 @@ function rewriteLines(
       }
 
       lines[index] = `${prefix}${quote}${replacement.replaceWith}${quote}`;
+      changed += 1;
+      break;
+    }
+  }
+
+  return { text: lines.join('\n'), changed };
+}
+
+/**
+ * Pterodactyl's `file` parser: find a line by its opening text, replace all of
+ * it.
+ *
+ * Deliberately not `rewriteLines` with a different delimiter set. That one
+ * looks for a key *followed by* a delimiter and keeps everything up to it —
+ * two properties this parser must not have. 75 of the corpus's matches carry
+ * the `=` themselves (`'#port ='`), which its pattern cannot match at all, and
+ * keeping a prefix is precisely what produces `DISCORD_TOKEN=DISCORD_TOKEN=…`
+ * out of an egg that repeats its key.
+ *
+ * Because the whole line goes, a replacement here can do things no value
+ * rewrite expresses, and the corpus relies on all three: **uncomment** a line
+ * (`'#port ='` → `'port = 5432'`), **delete** one (replace with the empty
+ * string), or change the key's own spelling. That is why an egg's `file`
+ * entries are not merely untranslatable into `file` — they are doing something
+ * else.
+ *
+ * **Leading whitespace is matched over and then discarded**, which is the one
+ * asymmetry worth stating. An indented line is found, and what replaces it is
+ * `replaceWith` exactly, so its indentation is whatever the replacement
+ * carries. Preserving it would be the kinder guess and it would be a guess: a
+ * replacement that deletes a line would leave the indentation of the line it
+ * deleted.
+ *
+ * **A replacement that uncomments does not fire twice.** Once `#port = 5432`
+ * has become `port = 5570`, the match `'#port ='` finds nothing, so a later
+ * change of port leaves that line alone. Inherited, not invented — Pterodactyl
+ * behaves the same way, which is what the egg's author tested against. Making
+ * it cleverer here (also matching the uncommented form) would rewrite lines
+ * that egg never intended this replacement to reach.
+ */
+function rewriteWholeLines(
+  original: string,
+  replacements: readonly Replacement[],
+): { text: string; changed: number } {
+  const lines = original.split('\n');
+  let changed = 0;
+
+  for (const replacement of replacements) {
+    for (const [index, line] of lines.entries()) {
+      // Anchored at the start, past any indentation. `includes` would reach a
+      // match sitting inside a value, and a match of `DISCORD_TOKEN` would
+      // then eat the commented-out `# DISCORD_TOKEN=…` above it — or the
+      // comment explaining what the setting does.
+      if (!line.trimStart().startsWith(replacement.match)) {
+        continue;
+      }
+
+      // The whole line is the value here, so the whole line is what a
+      // condition can be about. Trimmed, because the condition is written by
+      // whoever wrote the template and the indentation belongs to the file.
+      if (replacement.ifValue !== undefined && line.trim() !== replacement.ifValue) {
+        continue;
+      }
+
+      if (line === replacement.replaceWith) {
+        break;
+      }
+
+      lines[index] = replacement.replaceWith;
       changed += 1;
       break;
     }

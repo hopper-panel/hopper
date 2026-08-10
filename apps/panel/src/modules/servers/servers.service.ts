@@ -21,6 +21,7 @@ import { NodeClientService } from '../nodes/node-client.service.js';
 import { NodesService } from '../nodes/nodes.service.js';
 import { checkCapacity } from './capacity.js';
 import { ServerConfigurationService } from './server-configuration.service.js';
+import { assertWholeLineParserHonoured } from './config-parsers.js';
 import { assertStopTransportHonoured } from './stop-transport.js';
 import type { CreateServerDto, UpdateServerBuildDto, UpdateServerDto } from './servers.dto.js';
 
@@ -165,6 +166,15 @@ export class ServersService {
     // node loses track of every server it has, see `stop-transport.ts`.
     await assertStopTransportHonoured(
       template.stop,
+      { name: node.name, connection: () => this.nodes.getConnection(node.uuid) },
+      this.client,
+    );
+
+    // And the same, for the parser that takes a node down harder than the stop
+    // does: an unknown parser fails the whole page of configurations rather
+    // than one object. See `config-parsers.ts`.
+    await assertWholeLineParserHonoured(
+      template.configFiles,
       { name: node.name, connection: () => this.nodes.getConnection(node.uuid) },
       this.client,
     );
