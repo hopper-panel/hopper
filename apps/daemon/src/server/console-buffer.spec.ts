@@ -1,4 +1,4 @@
-import { CONSOLE_BUFFER_LINES } from '@hopper/shared';
+import { CONSOLE_BUFFER_BYTES, CONSOLE_BUFFER_LINES } from '@hopper/shared';
 import { describe, expect, it } from 'vitest';
 import {
   ConsoleBuffer,
@@ -877,5 +877,96 @@ describe('ConsoleBuffer', () => {
     buffer.pushAssembled({ text: 'c bis', overwritesPreviousRow: true });
 
     expect(buffer.snapshot()).toEqual(['b', 'c bis']);
+  });
+});
+
+/**
+ * How much of an installation survives to be read afterwards.
+ *
+ * Reported as "long text disappears in the console": an operator reinstalled a
+ * server, opened the console, and was replayed the tail of a pip install with
+ * the beginning gone — the apt output and the first half of the downloads,
+ * which is the half that says what failed. The buffer held five hundred lines
+ * and the install printed more.
+ *
+ * The line count was low because it was standing in for a memory bound, and it
+ * is a bad one: a line runs to `MAX_LINE_LENGTH`, so five hundred of them was a
+ * four-megabyte worst case. Bounding the bytes directly lets the count go up
+ * and brings the worst case down at the same time.
+ */
+describe('ConsoleBuffer retention', () => {
+  it('keeps a whole installation, not its tail', () => {
+    const buffer = new ConsoleBuffer();
+
+    // What apt and pip print between them, in the shape they print it.
+    for (let index = 0; index < 1500; index += 1) {
+      buffer.push(`Downloading package-${index}-py3-none-any.whl (54 kB)`);
+    }
+
+    const snapshot = buffer.snapshot();
+
+    expect(snapshot).toHaveLength(1500);
+    // The first line is the one that used to be gone, and it is the one an
+    // operator reads to find out where an install went wrong.
+    expect(snapshot[0]).toContain('package-0-');
+  });
+
+  it('stops at the byte budget rather than at the line count', () => {
+    const buffer = new ConsoleBuffer();
+    const long = 'x'.repeat(MAX_LINE_LENGTH);
+
+    // Well under the line limit, well over the byte one.
+    for (let index = 0; index < 200; index += 1) {
+      buffer.push(long);
+    }
+
+    const held = buffer.snapshot().reduce((total, line) => total + line.length, 0);
+
+    expect(buffer.size).toBeLessThan(200);
+    expect(held).toBeLessThanOrEqual(CONSOLE_BUFFER_BYTES);
+  });
+
+  it('keeps one line that is larger than the whole budget', () => {
+    const buffer = new ConsoleBuffer(2000, 64);
+
+    buffer.push('x'.repeat(500));
+
+    // Evicting it would leave a console showing nothing at all, which is worse
+    // than one showing a single enormous line — and the assembler's own cap is
+    // what stops that line being unbounded.
+    expect(buffer.size).toBe(1);
+  });
+
+  /**
+   * A progress bar replaces its row rather than appending, and it does so twice
+   * a second for the length of a download. If the running total only ever grew,
+   * the byte budget would evict the entire buffer within a minute of a depot
+   * starting — the exact failure this class keeps rows rather than writes to
+   * avoid, reintroduced through the back door.
+   */
+  it('does not leak bytes when a row is redrawn', () => {
+    // A budget the redraws would blow through if each one counted: fifty
+    // frames of a hundred characters is five kilobytes of writes against one
+    // kilobyte of retention, for output that occupies one row. At the real
+    // budget this same leak takes a two-hour download to show, which is how it
+    // would have reached an operator rather than a test.
+    const buffer = new ConsoleBuffer(2000, 1024);
+
+    buffer.push('an ordinary line');
+
+    for (let index = 0; index < 50; index += 1) {
+      buffer.pushAssembled({
+        text: `${index} MB downloaded`.padEnd(100, ' '),
+        overwritesPreviousRow: index > 0,
+      });
+    }
+
+    // The line that follows the download is what makes the leak visible: the
+    // eviction check runs on an append, so a total inflated by fifty frames
+    // pays for itself here by throwing away everything before it.
+    buffer.push('Installation finished.');
+
+    expect(buffer.snapshot()[0]).toBe('an ordinary line');
+    expect(buffer.size).toBe(3);
   });
 });

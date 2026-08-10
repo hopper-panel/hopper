@@ -79,8 +79,50 @@ export const WS_ERROR_CODES = {
 export type WsErrorCode = (typeof WS_ERROR_CODES)[keyof typeof WS_ERROR_CODES];
 
 /**
- * Number of console lines the daemon keeps and replays on connect. Enough to
- * see a complete stack trace, few enough not to weigh on memory with fifty
- * servers.
+ * Number of console lines the daemon keeps and replays on connect.
+ *
+ * Five hundred until an installation was watched: `apt-get` and `pip` between
+ * them print well past that, so an operator opening the console after a
+ * reinstall was replayed the tail and had lost the beginning — which is the
+ * half that says what failed to download and what the package manager refused.
+ * The line that mattered had scrolled out of a buffer sized for a stack trace.
+ *
+ * Four times as many, and the memory that figure was protecting is now
+ * protected by {@link CONSOLE_BUFFER_BYTES} instead, which bounds it far more
+ * tightly than a line count can.
  */
-export const CONSOLE_BUFFER_LINES = 500;
+export const CONSOLE_BUFFER_LINES = 2000;
+
+/**
+ * Bytes of console the daemon keeps per server, whichever limit is reached
+ * first.
+ *
+ * A line count is a poor bound on memory because a line is not a fixed size:
+ * the assembler caps one at 8192 characters, so five hundred lines was a
+ * four-megabyte worst case per server — two hundred megabytes across fifty of
+ * them, for a buffer that normally holds a few tens of kilobytes. Two thousand
+ * lines under this budget is a **quarter** of a megabyte at worst, so the
+ * replay grew fourfold and the worst case shrank sixteenfold.
+ *
+ * Ordinary console lines are short, so this is reached only by output that is
+ * pathological on purpose — a binary written to stdout, a minified stack trace
+ * — which is exactly when a bound is wanted.
+ */
+export const CONSOLE_BUFFER_BYTES = 256 * 1024;
+
+/**
+ * Lines the daemon reads back from Docker when it adopts a container it did
+ * not start — after its own restart, with a server still running.
+ *
+ * Deliberately smaller than {@link CONSOLE_BUFFER_LINES}, and not the same
+ * question. Retention fills as output arrives, a line at a time, under a byte
+ * budget. This is one `docker logs --tail` that materialises every one of those
+ * lines at once, out of a file that on a server running for weeks is measured
+ * in hundreds of megabytes — so the number that is right for a buffer filling
+ * gradually is not the number that is right for a single read.
+ *
+ * A thousand lines is what somebody wants after a daemon restart: enough to see
+ * how the server was doing, without paying for a session's worth of history
+ * nobody was watching.
+ */
+export const CONSOLE_ADOPTION_TAIL_LINES = 1000;

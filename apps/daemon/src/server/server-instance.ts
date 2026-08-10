@@ -2,7 +2,7 @@ import { EventEmitter } from 'node:events';
 import { connect } from 'node:net';
 import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
-import { CONSOLE_BUFFER_LINES } from '@hopper/shared';
+import { CONSOLE_ADOPTION_TAIL_LINES } from '@hopper/shared';
 import type {
   PowerAction,
   ResourceUsage,
@@ -450,7 +450,7 @@ export class ServerInstance extends EventEmitter {
         stdout: true,
         stderr: true,
         follow: false,
-        tail: CONSOLE_BUFFER_LINES,
+        tail: CONSOLE_ADOPTION_TAIL_LINES,
       });
 
       // `follow: false` resolves with the whole body. The containers run with a
