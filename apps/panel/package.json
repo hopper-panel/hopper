@@ -28,7 +28,7 @@
     "@fastify/cookie": "^11.1.2",
     "@fastify/cors": "^11.3.0",
     "@fastify/helmet": "^13.1.0",
-    "@fastify/static": "^10.1.2",
+    "@fastify/static": "^10.1.3",
     "@hopper/shared": "workspace:*",
     "@hopper/templates": "workspace:*",
     "@nestjs/common": "^11.1.6",
@@ -59,7 +59,7 @@
     "@types/nodemailer": "^8.0.1",
     "eslint": "^9.35.0",
     "rimraf": "^6.0.1",
-    "tsx": "^4.23.5",
+    "tsx": "^4.23.9",
     "typescript": "^5.9.2",
     "vitest": "^4.1.10"
   }
