@@ -180,6 +180,40 @@ describe('exporting a template as a Pterodactyl egg', () => {
       expect(exported.hopper.configFiles).toEqual(velocity.configFiles);
     });
 
+    /**
+     * The one parser that translates, and the only test that can see it.
+     *
+     * The round trip above cannot: a re-import reads `hopper.configFiles`
+     * first, so a `config.files` block exported with the wrong parser name —
+     * or with no block at all — comes back byte-identical here and is broken
+     * for every panel that is not this one. What that costs is precisely what
+     * this parser was added for: an imported egg's port, exported again and
+     * written nowhere.
+     */
+    it('writes a whole-line parser under the name the other panel knows it by', () => {
+      const template = templateDefinitionSchema.parse({
+        ...TEMPLATE_CATALOG[0]!,
+        configFiles: [
+          {
+            file: '.env',
+            parser: 'whole-line',
+            replacements: [{ match: 'DISCORD_TOKEN', replaceWith: 'DISCORD_TOKEN=abc' }],
+          },
+        ],
+      });
+
+      const exported = exportPterodactylEgg(template, { exportedAt: EXPORTED_AT });
+      const files = JSON.parse(exported.config.files) as Record<string, { parser: string }>;
+
+      expect(files['.env']?.parser).toBe('file');
+      // And back again, without passing through the `hopper` block.
+      expect(
+        importPterodactylEgg(JSON.parse(JSON.stringify({ ...exported, hopper: undefined })), {
+          group: template.group,
+        }).template.configFiles,
+      ).toEqual(template.configFiles);
+    });
+
     it('names the egg a template came from, and invents none for a template that came from nowhere', () => {
       const imported = templateDefinitionSchema.parse({
         ...TEMPLATE_CATALOG[0]!,

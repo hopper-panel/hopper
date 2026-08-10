@@ -1,4 +1,4 @@
-import type { ConfigFile, Readiness, StopConfiguration } from '@hopper/shared';
+import type { ConfigFile, ConfigParser, Readiness, StopConfiguration } from '@hopper/shared';
 import type { TemplateDefinition } from './definition.js';
 
 /**
@@ -132,19 +132,35 @@ export interface HopperEggBlock {
 }
 
 /**
- * The parsers both projects mean the same thing by.
+ * How each of Hopper's parsers is spelled over there, where it is spelled at
+ * all.
  *
- * The inverse of the importer's map, and short for the same two reasons.
- * `xml` is in Hopper's contract and the daemon has no rewriter for it, so
- * exporting one would hand another panel a configuration file Hopper itself
- * leaves untouched — a template that looks portable and is not.
- * `file` is worse than untranslatable, it is *silently different*: Hopper's
- * rewrites the value on a matching line and Pterodactyl's replaces the whole
- * line, so a Hopper template exported with its `file` entries intact would
- * have Pterodactyl write `server-port` where the value belongs. Both stay out
- * of `config.files`; both are exact in `hopper.configFiles`.
+ * The inverse of the importer's map, and the one entry worth reading twice is
+ * `whole-line` → `file`: **Pterodactyl's `file` is Hopper's `whole-line`**, so
+ * that is the pair that translates, and Hopper's own `file` is the one that
+ * does not. Without this line an egg imported here and exported again would
+ * come back to any other panel with an empty `config.files` — its port written
+ * nowhere — while looking perfectly correct to Hopper, which reads the
+ * `hopper` block first.
+ *
+ * Two stay out, for different reasons:
+ *
+ * - **`file`** is *silently different* over there. Hopper's rewrites the value
+ *   on a matching line; exported under the same name, Pterodactyl would
+ *   replace the line and write `0.0.0.0:25577` over the whole of `bind = …`.
+ * - **`xml`** is in Hopper's contract and no daemon writes it, so exporting one
+ *   would hand another panel a file Hopper itself leaves untouched.
+ *
+ * Both are still exact in `hopper.configFiles`, which is what makes the round
+ * trip back into Hopper lossless either way.
  */
-const EXPORTABLE_PARSERS = new Set(['properties', 'yaml', 'json', 'ini']);
+const EXPORTED_PARSER_NAMES: Partial<Record<ConfigParser, string>> = {
+  properties: 'properties',
+  yaml: 'yaml',
+  json: 'json',
+  ini: 'ini',
+  'whole-line': 'file',
+};
 
 export interface ExportOptions {
   /**
@@ -247,7 +263,9 @@ function configFilesOf(files: readonly ConfigFile[]): Record<string, unknown> {
   const block: Record<string, unknown> = {};
 
   for (const file of files) {
-    if (!EXPORTABLE_PARSERS.has(file.parser)) {
+    const parser = EXPORTED_PARSER_NAMES[file.parser];
+
+    if (!parser) {
       continue;
     }
 
@@ -271,7 +289,7 @@ function configFilesOf(files: readonly ConfigFile[]): Record<string, unknown> {
       };
     }
 
-    block[file.file] = { parser: file.parser, find };
+    block[file.file] = { parser, find };
   }
 
   return block;
