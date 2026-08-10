@@ -2,8 +2,9 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { PARSERS_NOT_WRITTEN, configParserSchema } from '@hopper/shared';
 import { JailedFilesystem } from '../fs/jailed-filesystem.js';
-import { applyConfigFiles, parsePath } from './config-writer.js';
+import { applyConfigFiles, parsePath, unwrittenParserMessage } from './config-writer.js';
 
 /**
  * The rewriter that makes an allocated port real.
@@ -247,6 +248,96 @@ describe('a structured file is never invented', () => {
 
     expect(report?.skipped).toBe('file not present');
     await expect(read('config.yml')).rejects.toThrow();
+  });
+});
+
+describe('a parser with no rewriter behind it', () => {
+  const CONFIG = [
+    {
+      file: 'server.xml',
+      parser: 'xml' as const,
+      replacements: [{ match: 'port', replaceWith: '{{server.build.default.port}}' }],
+    },
+  ];
+
+  /**
+   * The case that had no test, which is how three places in this repository
+   * came to describe it wrongly.
+   *
+   * `xml` is in the contract and nothing here writes it. What that produces is
+   * not a failed start — `applyOne` catches, `writeConfigFiles` is never fatal
+   * — it is a server running on the port its file already held. The two
+   * assertions below are the whole difference between a bug an operator can
+   * act on and one they cannot see.
+   */
+  it('leaves the file untouched and starts anyway, rather than failing', async () => {
+    await write('server.xml', '<server port="8080" />\n');
+
+    const [report] = await applyConfigFiles(jail, CONFIG, substitute);
+
+    expect(report?.changed).toBe(0);
+    expect(await read('server.xml')).toBe('<server port="8080" />\n');
+  });
+
+  it('says whose fault it is not, and what the operator is left with', async () => {
+    await write('server.xml', '<server port="8080" />\n');
+
+    const [report] = await applyConfigFiles(jail, CONFIG, substitute);
+
+    // `unreadable` is the word every other refusal in this file uses, and it
+    // means *their* file would not parse. Theirs is fine. Reaching for it here
+    // sends them to inspect the one thing that is not the problem.
+    expect(report?.skipped).not.toMatch(/unreadable/);
+    expect(report?.skipped).toContain('no xml rewriter');
+    // The consequence, not just the cause: this line is the only warning
+    // anybody gets that what the template meant to write was not written.
+    // Hedged rather than asserted — a refused file need not name a port at
+    // all, and claiming it does is the same overreach this commit removes
+    // elsewhere.
+    expect(report?.skipped).toContain('this template meant to write into it');
+  });
+
+  it('does not invent the file when it is missing either', async () => {
+    // `createMissing` is for `properties` alone, and a parser nothing writes
+    // must not slip past that on the strength of the file being absent.
+    const [report] = await applyConfigFiles(jail, CONFIG, substitute);
+
+    expect(report?.skipped).toBe('file not present');
+    await expect(read('server.xml')).rejects.toThrow();
+  });
+
+  /**
+   * The list in the contract and the `switch` here say the same thing.
+   *
+   * They are two declarations of one fact, in two packages, and the panel
+   * refuses a template on the strength of the first one while only the second
+   * decides anything. Left unlinked, the day someone writes a rewriter and
+   * forgets the list is the day the panel refuses a parser that works — and the day someone adds a parser to the enum without
+   * a branch here, this `switch` stops being exhaustive and TypeScript says
+   * so, but nothing says the list is now wrong.
+   *
+   * Driven off the enum rather than a copy of it, so a seventh parser is
+   * covered by this test the moment it exists.
+   */
+  it('refuses exactly the parsers the contract says nothing writes', async () => {
+    for (const parser of configParserSchema.options) {
+      await write('probe', '');
+
+      const [report] = await applyConfigFiles(
+        jail,
+        [{ file: 'probe', parser, replacements: [{ match: 'port', replaceWith: PORT }] }],
+        substitute,
+      );
+
+      const listed = PARSERS_NOT_WRITTEN.includes(parser);
+
+      expect(
+        report?.skipped === unwrittenParserMessage(parser),
+        listed
+          ? `${parser} is in PARSERS_NOT_WRITTEN and this rewriter writes it: the panel refuses a parser that works`
+          : `${parser} is refused by this rewriter and missing from PARSERS_NOT_WRITTEN: a template can name it and nothing warns`,
+      ).toBe(listed);
+    }
   });
 });
 

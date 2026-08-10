@@ -135,8 +135,9 @@ export interface HopperEggBlock {
  * The parsers both projects mean the same thing by.
  *
  * The inverse of the importer's map, and short for the same two reasons.
- * `xml` is in Hopper's contract and the daemon's rewriter throws on it, so
- * exporting one would hand another panel a file Hopper itself cannot run.
+ * `xml` is in Hopper's contract and the daemon has no rewriter for it, so
+ * exporting one would hand another panel a configuration file Hopper itself
+ * leaves untouched — a template that looks portable and is not.
  * `file` is worse than untranslatable, it is *silently different*: Hopper's
  * rewrites the value on a matching line and Pterodactyl's replaces the whole
  * line, so a Hopper template exported with its `file` entries intact would

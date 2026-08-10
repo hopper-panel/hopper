@@ -1,4 +1,5 @@
 import {
+  PARSERS_NOT_WRITTEN,
   configFileSchema,
   stopConfigurationSchema,
   type ConfigFile,
@@ -242,6 +243,7 @@ export class TemplateEditorService {
     // that is going to be refused must not leave an empty one behind it. The
     // two that need no query go first, for the same reason in miniature.
     assertVariableNamesAreDistinct(dto.variables);
+    assertEveryParserIsWritten(dto.configFiles);
     this.assertKeyMayBeTaken(dto.key);
     await this.assertKeyFree(dto.key);
     await this.assertNameFreeInGroup(dto.group, dto.name);
@@ -334,6 +336,8 @@ export class TemplateEditorService {
     }
 
     const merged = mergedDefinition(existing, dto, key, groupName);
+
+    assertEveryParserIsWritten(merged.configFiles);
 
     // The servers first and the nodes second, because this order is the order
     // of the cost: the servers are one query, and every node is a token
@@ -992,6 +996,33 @@ function parseStop(raw: unknown): StopConfiguration | null {
   const result = stopConfigurationSchema.safeParse(raw);
 
   return result.success ? result.data : null;
+}
+
+/**
+ * Refuses a configuration file whose parser no daemon writes.
+ *
+ * The contract accepts more parsers than any rewriter implements, and it is
+ * right to — an imported egg gets to say what its author wrote, and the
+ * importer refuses what will not be honoured, in front of somebody. This is
+ * the same door for a template typed by hand, and until it existed the editor
+ * accepted `xml` in silence: the file is left alone, the server starts on the
+ * port that file already named, and the only evidence is one console line on
+ * the node.
+ *
+ * A refusal rather than a warning because saving is the last moment anybody is
+ * looking. And a refusal that stays possible to escape: taking the entry out
+ * is always allowed, since what is checked is what the save would leave behind.
+ */
+function assertEveryParserIsWritten(files: readonly ConfigFile[] | undefined): void {
+  const refused = (files ?? []).filter((file) => PARSERS_NOT_WRITTEN.includes(file.parser));
+
+  if (refused.length === 0) {
+    return;
+  }
+
+  throw new ConflictException(
+    `No daemon writes the ${refused[0]!.parser} parser, so ${refused.map((file) => `"${file.file}"`).join(', ')} would be left exactly as ${refused.length === 1 ? 'it is' : 'they are'} — including whatever this template means to write into ${refused.length === 1 ? 'it' : 'them'}, the allocated port most likely among them. Nothing would fail and nothing would be reported, which is why this is refused here. Use properties, yaml, json, ini or file.`,
+  );
 }
 
 function parseConfigFiles(raw: unknown): ConfigFile[] {

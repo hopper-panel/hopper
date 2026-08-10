@@ -759,6 +759,47 @@ describe('TemplateEditorService.create', () => {
     expect(prisma.writes[0]).toMatchObject({ groupId: created?.id });
   });
 
+  /**
+   * The refusal the contract itself cannot make.
+   *
+   * `xml` is a valid `ConfigParser`, so every schema on the way in accepts it,
+   * and nothing downstream complains either: the daemon leaves the file alone
+   * and the server starts on the port that file already held. Saving is the
+   * last moment anybody is looking at this, so it is where the refusal goes.
+   */
+  it('refuses a parser the contract accepts and no daemon writes', async () => {
+    const { service } = creating();
+
+    await expect(
+      service.create(
+        creation({
+          configFiles: [{ file: 'server.xml', parser: 'xml', replacements: [] }],
+        }),
+        1,
+        context,
+      ),
+    ).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it('refuses it before creating the group the request names', async () => {
+    // Every refusal comes before `resolveGroup`, which creates one: a request
+    // that is going to be refused must not leave an empty group behind it.
+    const { service, prisma } = creating();
+
+    await expect(
+      service.create(
+        creation({
+          group: 'Elsewhere',
+          configFiles: [{ file: 'server.xml', parser: 'xml', replacements: [] }],
+        }),
+        1,
+        context,
+      ),
+    ).rejects.toBeInstanceOf(ConflictException);
+
+    expect(prisma.groups.find((group) => group.name === 'Elsewhere')).toBeUndefined();
+  });
+
   it('refuses a key another template already answers to', async () => {
     // The key is the catalogue's upsert key: two templates sharing one is a
     // state the sync cannot resolve, and the unique index refuses it anyway —

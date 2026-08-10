@@ -327,9 +327,14 @@ function parseJsonBlock(raw: unknown): Record<string, unknown> {
  *    entry, so the object expands rather than being refused.
  *  - **A value can be a bare `true` or `0`.** JSON keeps the type; the
  *    replacement is text either way.
- *  - **`xml` is refused**, per file, loudly. The daemon's rewriter throws on
- *    it, and a template carrying one would import cleanly and then fail on the
- *    first start of the first server built from it. Seven eggs in the corpus.
+ *  - **`xml` is refused**, per file, loudly. The daemon has no rewriter for it.
+ *    This used to say such a template "would fail on the first start of the
+ *    first server built from it", and the correction matters more than the
+ *    sentence did: it starts. The daemon's throw is caught, the file is left
+ *    alone, and the server comes up on the port that file already named — the
+ *    egg author's, not the allocated one. Nothing fails, which is why the
+ *    refusal has to happen here, where somebody is reading. Seven eggs in the
+ *    corpus, 48 replacements between them.
  *  - **`file` is refused too, and this one is not obvious**, because both
  *    projects have a parser by that name and they do not mean the same thing.
  *    Hopper's rewrites *the value* on a matching line and keeps the key, the

@@ -120,8 +120,12 @@ means the same thing by. Two of them it does not; see the refusals below.
 
 Two parsers are refused outright, each with a warning naming the file:
 
-- **`xml`.** The daemon's rewriter throws on it, so a template carrying one imports cleanly and then
-  fails on the first start of the first server built from it. Seven eggs in the corpus.
+- **`xml`.** The daemon has no rewriter for it. This page used to say a template carrying one "fails
+  on the first start of the first server built from it"; it does not fail at all. The daemon's
+  refusal is caught, the file is left exactly as it is, and the server starts — on the port that
+  file already named, which is the egg author's and not the one the panel allocated. A wrong port
+  and a console line are the whole of the symptom, which is why the refusal happens at import, where
+  somebody is reading. Seven eggs in the corpus, 48 replacements between them.
 - **`file`** — and this one looks like a bug until you read it, because Hopper has a `file` parser
   of its own. They are not the same parser. Hopper's rewrites _the value_ on a matching line and
   keeps the key, the delimiter and the spacing; that is what the Velocity template asks of it.
