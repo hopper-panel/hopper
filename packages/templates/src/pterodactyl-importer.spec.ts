@@ -515,30 +515,81 @@ describe('importPterodactylEgg', () => {
     });
 
     /**
-     * The refusal that looks like a bug until it is read.
+     * The translation that looks like a mistake until it is read.
      *
      * Both projects have a parser called `file` and they do not mean the same
-     * thing. Hopper's rewrites *the value* on a matching line and keeps the key,
-     * the delimiter and the spacing — that is what the Velocity template asks of
-     * it. Pterodactyl's matches a line by prefix and replaces **the whole line**,
-     * which is why its eggs write the key into the value.
+     * thing, so the egg's `file` becomes `whole-line` and **not** the parser of
+     * the same name. Hopper's `file` rewrites *the value* on a matching line
+     * and keeps the key — which is what the Velocity template asks of it, and
+     * which applied here would write `DISCORD_TOKEN=DISCORD_TOKEN={{token}}`.
      *
-     * Carrying one across is therefore not a no-op, it is corruption: Hopper
-     * keeps its own prefix and appends a value that starts with the key again.
-     * Measured over the corpus, 255 of the 265 `file` replacements repeat their
-     * key that way, and 75 name a match already carrying the `=`, which Hopper's
-     * pattern cannot match at all.
+     * 265 replacements across the corpus arrive this way, 245 of them repeating
+     * their key, and every one was dropped with a warning until this parser
+     * existed.
      */
-    it("refuses Pterodactyl's file parser, which is not Hopper's", () => {
+    it("translates Pterodactyl's file parser into the one that means the same thing", () => {
       const result = withFiles({
         '.env': { parser: 'file', find: { DISCORD_TOKEN: 'DISCORD_TOKEN={{env.token}}' } },
       });
 
-      // Never `DISCORD_TOKEN=DISCORD_TOKEN={{token}}`, which is what carrying it
-      // across would put in the file.
+      expect(result.template.configFiles).toEqual([
+        {
+          file: '.env',
+          parser: 'whole-line',
+          replacements: [{ match: 'DISCORD_TOKEN', replaceWith: 'DISCORD_TOKEN={{token}}' }],
+        },
+      ]);
+      // Nothing to warn about any more: it is carried, and carried exactly.
+      expect(result.warnings.join(' ')).not.toContain('.env');
+    });
+
+    /**
+     * A value that does not repeat its key is carried too, and in silence.
+     *
+     * The branch this test guards nearly shipped as a warning — "this
+     * replacement does not begin with its match, so the key will disappear
+     * from the file". Twenty replacements in the corpus are shaped like this
+     * and not one of them is an accident: fourteen uncomment a line, three
+     * delete one. They are the replacements that need whole-line semantics
+     * most, so warning about them would have put a false alarm on the best
+     * reason the parser exists.
+     */
+    it('carries a replacement that uncomments a line, without complaining about it', () => {
+      const result = withFiles({
+        'postgresql.conf': {
+          parser: 'file',
+          find: { '#port =': 'port = {{server.build.default.port}}' },
+        },
+      });
+
+      expect(result.template.configFiles[0]?.replacements).toEqual([
+        { match: '#port =', replaceWith: 'port = {{server.build.default.port}}' },
+      ]);
+      expect(result.warnings.join(' ')).not.toContain('postgresql.conf');
+    });
+
+    /**
+     * The one form of an egg's `file` block that cannot be carried.
+     *
+     * Pterodactyl's conditional form is Hopper's `ifValue`, and under every
+     * other parser it expands into one replacement per condition. Under
+     * `whole-line` a condition is compared against the entire line while these
+     * conditions are values, so an expanded one would never match: the port
+     * would go unwritten and the only evidence would be a file that stayed as
+     * it was. Zero replacements in the public corpus take this shape, which is
+     * why refusing costs nothing.
+     */
+    it('refuses a conditional replacement under the whole-line parser, and names it', () => {
+      const result = withFiles({
+        'server.cfg': {
+          parser: 'file',
+          find: { host: { '127.0.0.1': 'host=0.0.0.0' } },
+        },
+      });
+
       expect(result.template.configFiles).toEqual([]);
-      expect(result.warnings.join(' ')).toContain('.env (file)');
-      expect(result.warnings.join(' ')).toContain('replaces the whole line');
+      expect(result.warnings.join(' ')).toContain('server.cfg: host');
+      expect(result.warnings.join(' ')).toContain('never match');
     });
 
     it("keeps Hopper's own file parser reachable to a template written by hand", () => {

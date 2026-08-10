@@ -243,10 +243,17 @@ function convertStop(raw: string | undefined, warnings: string[]): string {
  * Pterodactyl's parser names, against Hopper's.
  *
  * Four of them are the same vocabulary with a spelling in it: `yml` and `yaml`
- * are both written in the wild and mean the same file. Two are missing, and
- * each absence is a decision {@link convertConfigFiles} explains — `xml`
- * because the daemon's rewriter throws on it, and `file` because the two
- * projects mean different things by the name.
+ * are both written in the wild and mean the same file.
+ *
+ * **`file` is the one that is not a spelling.** Pterodactyl's replaces the
+ * whole line; Hopper has a parser called `file` that rewrites the value on it,
+ * and the two are not interchangeable — which is why the translation is to
+ * `whole-line` rather than to the name it arrived under. Every one of the 265
+ * `file` replacements in the public corpus was refused here until that parser
+ * existed, and 27 eggs write their port nowhere else.
+ *
+ * One name is still missing: `xml`, because the daemon has no rewriter for it.
+ * See {@link convertConfigFiles}.
  */
 const CONFIG_PARSERS: Record<string, ConfigParser> = {
   properties: 'properties',
@@ -254,6 +261,7 @@ const CONFIG_PARSERS: Record<string, ConfigParser> = {
   yml: 'yaml',
   json: 'json',
   ini: 'ini',
+  file: 'whole-line',
 };
 
 /**
@@ -324,7 +332,14 @@ function parseJsonBlock(raw: unknown): Record<string, unknown> {
  *    `{"127.0.0.1": "…", "localhost": "…"}` means *replace this key's value
  *    only where it currently reads `127.0.0.1`, and separately where it reads
  *    `localhost`*. That is exactly Hopper's `ifValue`, one replacement per
- *    entry, so the object expands rather than being refused.
+ *    entry, so the object expands rather than being refused — **except under
+ *    `whole-line`**, where a condition is compared against the entire line and
+ *    these conditions are values. Expanded there, the condition would match
+ *    nothing, the port would never be written, and the only trace would be a
+ *    file that quietly stayed as it was. Refused and named instead. There are
+ *    zero such replacements in the public corpus, which is why refusing costs
+ *    nothing and inventing a second meaning for `ifValue` would have bought
+ *    nothing.
  *  - **A value can be a bare `true` or `0`.** JSON keeps the type; the
  *    replacement is text either way.
  *  - **`xml` is refused**, per file, loudly. The daemon has no rewriter for it.
@@ -335,20 +350,22 @@ function parseJsonBlock(raw: unknown): Record<string, unknown> {
  *    egg author's, not the allocated one. Nothing fails, which is why the
  *    refusal has to happen here, where somebody is reading. Seven eggs in the
  *    corpus, 48 replacements between them.
- *  - **`file` is refused too, and this one is not obvious**, because both
- *    projects have a parser by that name and they do not mean the same thing.
- *    Hopper's rewrites *the value* on a matching line and keeps the key, the
- *    delimiter and the spacing — that is what the Velocity template asks of it.
- *    Pterodactyl's matches a line by prefix and replaces **the whole line**, so
- *    an egg writes `"DISCORD_TOKEN": "DISCORD_TOKEN={{env.discord_token}}"` and
- *    the value carries the key. Carried across unchanged that is not a no-op,
- *    it is corruption: Hopper would keep its own prefix and write
- *    `DISCORD_TOKEN=DISCORD_TOKEN=…`. Measured over the corpus, **255 of the
- *    265 `file` replacements have a value that repeats its key**, and 75 name a
- *    match already carrying the `=`, which Hopper's pattern cannot match at
- *    all. A parser with Pterodactyl's semantics is worth adding — 27 templates
- *    write their port this way — and it is a contract change rather than an
- *    importer one, so it is not smuggled in here.
+ *  - **`file` becomes `whole-line`, never Hopper's own `file`.** Both projects
+ *    have a parser by that name and they do not mean the same thing: Hopper's
+ *    rewrites *the value* on a matching line and keeps the key, Pterodactyl's
+ *    replaces **the whole line**, which is why its eggs write the key into the
+ *    value — `"DISCORD_TOKEN": "DISCORD_TOKEN={{env.discord_token}}"`. Read as
+ *    the local `file` that is not a mistranslation, it is corruption:
+ *    `DISCORD_TOKEN=DISCORD_TOKEN=…`.
+ *
+ *    Always translated, with no inspection of the value, and that is a
+ *    decision rather than an omission. 245 of the corpus's 265 replacements
+ *    repeat their key, and the 20 that do not are *not* the well-behaved
+ *    remainder a heuristic would rescue — 14 uncomment a line, three delete
+ *    one. They need the whole-line semantics more than the others do. An egg
+ *    was written and tested against Pterodactyl's parser, so reproducing it is
+ *    never a surprise to its author and guessing from the shape of a value
+ *    always could be.
  *
  * What is *not* attempted: nothing here reads the file the egg is describing,
  * so a `match` that names a key the game does not have is carried over as
@@ -359,7 +376,7 @@ function convertConfigFiles(raw: unknown, warnings: string[]): ConfigFile[] {
   const files: ConfigFile[] = [];
   const skippedFiles: string[] = [];
   const skippedKeys: string[] = [];
-  let sameNameDifferentParser = false;
+  const skippedConditionals: string[] = [];
 
   for (const [file, rawSpec] of Object.entries(block)) {
     if (!rawSpec || typeof rawSpec !== 'object') {
@@ -376,11 +393,6 @@ function convertConfigFiles(raw: unknown, warnings: string[]): ConfigFile[] {
       // real and the replacements are readable, they just have to be redone by
       // hand in a format the daemon writes.
       skippedFiles.push(declared === '' ? file : `${file} (${declared})`);
-
-      if (declared === 'file') {
-        sameNameDifferentParser = true;
-      }
-
       continue;
     }
 
@@ -390,6 +402,15 @@ function convertConfigFiles(raw: unknown, warnings: string[]): ConfigFile[] {
     if (find && typeof find === 'object') {
       for (const [match, value] of Object.entries(find as Record<string, unknown>)) {
         if (value && typeof value === 'object' && !Array.isArray(value)) {
+          // A condition under `whole-line` is compared against the whole line,
+          // and Pterodactyl's conditions are values — so expanding it produces
+          // an `ifValue` that matches nothing, silently. Refused where it can
+          // be read instead of written where it cannot work.
+          if (parser === 'whole-line') {
+            skippedConditionals.push(`${file}: ${match}`);
+            continue;
+          }
+
           for (const [ifValue, conditional] of Object.entries(value as Record<string, unknown>)) {
             const replaceWith = convertConfigValue(conditional);
 
@@ -428,13 +449,9 @@ function convertConfigFiles(raw: unknown, warnings: string[]): ConfigFile[] {
     );
   }
 
-  if (sameNameDifferentParser) {
-    // Said separately because it is the one refusal an administrator would
-    // otherwise read as a bug: Hopper has a `file` parser, so why is a `file`
-    // one refused? Because the two projects mean different things by the name,
-    // and doing it anyway writes the key twice.
+  if (skippedConditionals.length > 0) {
     warnings.push(
-      "Hopper has a `file` parser of its own and it is not this one: it rewrites the value on a matching line and keeps the key, where Pterodactyl's replaces the whole line — which is why those eggs write the key into the value. Carrying them across unchanged would write it twice.",
+      `These replacements are conditional and their file replaces whole lines, which Hopper cannot express, so they were left out: ${skippedConditionals.join(', ')}. A condition here would be compared against the entire line rather than against the value on it, so it would never match and the line would silently stay as it is. Write them as unconditional replacements if the file is where this game reads its port.`,
     );
   }
 
