@@ -12,11 +12,15 @@ import { exportPterodactylEgg, unescapeRegExp } from './pterodactyl-exporter.js'
  * download button, not a way of moving work between installations.
  *
  * The catalogue is the corpus for it, and it is a better one than a fixture
- * would be. Eleven templates that were written for their games rather than for
- * this test, between them covering every field the egg format cannot hold — the
- * proxies use the `file` parser Pterodactyl means something else by, Factorio
- * stops over RCON with a password variable and a named port, and the Source
- * template declares a required disk size in the billions.
+ * would be: templates written for their games rather than for this test,
+ * between them covering every field the egg format cannot hold — Velocity uses
+ * the `file` parser Pterodactyl means something else by, Factorio stops over
+ * RCON with a password variable and a named port, and the Source templates
+ * declare a required disk size in the billions.
+ *
+ * Neither the count nor "the proxies" survives being written down: this said
+ * eleven when there were twelve, and BungeeCord is `yaml`. The cases come from
+ * `TEMPLATE_CATALOG`, so the corpus is whatever ships.
  */
 
 const EXPORTED_AT = '2026-08-09T12:00:00.000Z';

@@ -104,9 +104,11 @@ For a pull request:
 
 ## Adding a server template
 
-Templates live in `packages/templates/src/`. A template describes the Docker image, the startup
-command, the install script, the variables exposed to the user and the regex that signals the server
-is ready.
+Templates live in `packages/templates/src/catalog/`, one file per family. A template describes the
+Docker image, the startup command, the install script, the variables exposed to the user and how the
+daemon decides the server is ready — `readiness`, which is one of four strategies and no longer a
+regex over the console alone: a Source server never prints `Done (12.4s)!`, and a game that says
+nothing at all on stdout cannot be waited for that way.
 
 A template imported from a Pterodactyl egg goes through
 `packages/templates/src/pterodactyl-importer.ts` — do not write the conversion by hand.
