@@ -135,11 +135,25 @@ async function send<T>(path: string, options: RequestOptions, retry: boolean): P
     throw await parseError(response);
   }
 
-  if (response.status === 204) {
-    return undefined as T;
-  }
+  /*
+   * An empty body, not merely a 204.
+   *
+   * Two routes answer `202 Accepted` with nothing in them — reinstalling a
+   * server, and running a schedule now — and this parsed them as JSON. An
+   * empty string is not JSON, so `response.json()` threw a `SyntaxError`, the
+   * mutation's `onError` ran, and the settings page said "Reinstall failed"
+   * over a reinstall that had already been accepted, audited and started. It
+   * did that every single time, and the only way to find out otherwise was to
+   * look in the volume.
+   *
+   * Read as text and parsed here rather than special-casing 202 beside 204:
+   * the property that matters is that there is nothing to parse, and a third
+   * status answering emptily would otherwise be a third bug of exactly this
+   * shape. `undefined` is what a caller typed `<void>` already expects.
+   */
+  const body = await response.text();
 
-  return (await response.json()) as T;
+  return (body === '' ? undefined : JSON.parse(body)) as T;
 }
 
 export const api = {

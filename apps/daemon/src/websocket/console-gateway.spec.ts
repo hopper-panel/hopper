@@ -818,10 +818,25 @@ describe('registerConsoleGateway', () => {
       expect(success.expiresAt).toBeGreaterThan(Date.now());
     });
 
+    /**
+     * Three seconds rather than one, and the difference is a race this test
+     * used to run.
+     *
+     * The lifetime starts when the token is minted, and the handshake it has to
+     * survive is a socket opened, a frame sent and a frame answered. One second
+     * is enough for that on an idle laptop and not on a loaded CI runner: the
+     * token expired before the connection was authenticated, the daemon
+     * answered `invalid_token` — correctly — and the wait for `auth_success`
+     * timed out on a fault that was in the clock and not in the gateway.
+     *
+     * Three seconds is headroom for the handshake, not a change to what is
+     * asserted: the console still has to be closed by the expiry rather than by
+     * anything else, and 1008 is still the code it has to close with.
+     */
     it('closes the console when the token expires under it', async () => {
-      const client = await authenticated(await mintToken({ ttlSeconds: 1 }));
+      const client = await authenticated(await mintToken({ ttlSeconds: 3 }));
 
-      expect((await client.waitForEvent('token_expired', 4_000)).event).toBe('token_expired');
+      expect((await client.waitForEvent('token_expired', 10_000)).event).toBe('token_expired');
       expect(await client.waitForClose()).toMatchObject({ code: 1008 });
     });
 

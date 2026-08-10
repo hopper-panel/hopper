@@ -1,4 +1,4 @@
-import { CONSOLE_BUFFER_LINES } from '@hopper/shared';
+import { CONSOLE_BUFFER_BYTES, CONSOLE_BUFFER_LINES } from '@hopper/shared';
 
 /**
  * Longest console line kept.
@@ -348,6 +348,15 @@ export class ConsoleBuffer {
   private readonly lines: string[] = [];
 
   /**
+   * Running total of what {@link lines} holds.
+   *
+   * Kept rather than recomputed: eviction happens on every push, and summing
+   * two thousand string lengths to decide whether to drop one of them would
+   * turn an append into a scan of the whole buffer.
+   */
+  private bytes = 0;
+
+  /**
    * Whether the newest line is a terminal row that a rewrite may still land on.
    *
    * False for anything Hopper wrote itself, which is the point of keeping it:
@@ -359,7 +368,10 @@ export class ConsoleBuffer {
    */
   private rowOpen = false;
 
-  constructor(private readonly capacity: number = CONSOLE_BUFFER_LINES) {
+  constructor(
+    private readonly capacity: number = CONSOLE_BUFFER_LINES,
+    private readonly byteCapacity: number = CONSOLE_BUFFER_BYTES,
+  ) {
     if (capacity < 1) {
       throw new Error('The console buffer capacity has to be positive.');
     }
@@ -380,7 +392,14 @@ export class ConsoleBuffer {
    */
   pushAssembled(line: ConsoleLine): void {
     if (line.overwritesPreviousRow && this.rowOpen) {
+      // Through the total as well, or it drifts: a progress bar redrawn twice a
+      // second replaces this row hundreds of times, and a count that only ever
+      // grew would evict the whole buffer within a minute of a download
+      // starting — the precise failure this class keeps rows rather than writes
+      // to avoid.
+      this.bytes -= this.lines[this.lines.length - 1]?.length ?? 0;
       this.lines[this.lines.length - 1] = line.text;
+      this.bytes += line.text.length;
     } else {
       this.append(line.text);
     }
@@ -394,11 +413,23 @@ export class ConsoleBuffer {
 
   private append(line: string): void {
     this.lines.push(line);
+    this.bytes += line.length;
 
-    // `shift` on a 500-element array is negligible next to the cost of a
-    // cleverer ring structure that is also easier to break.
-    while (this.lines.length > this.capacity) {
-      this.lines.shift();
+    // Two bounds, and the second is the one that makes the first affordable: a
+    // line is up to 8192 characters, so a count alone would let two thousand of
+    // them reach sixteen megabytes. `shift` on an array this size is negligible
+    // next to a cleverer ring that is also easier to break.
+    //
+    // `length > 1` on the byte test, so a single line over the whole budget is
+    // kept rather than evicted into an empty buffer: it is still the newest
+    // thing the server said, and a console showing nothing at all is worse than
+    // one showing one enormous line. The assembler's own cap is what stops that
+    // line being unbounded.
+    while (
+      this.lines.length > this.capacity ||
+      (this.bytes > this.byteCapacity && this.lines.length > 1)
+    ) {
+      this.bytes -= this.lines.shift()?.length ?? 0;
     }
   }
 

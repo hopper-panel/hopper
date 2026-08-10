@@ -66,6 +66,49 @@ describe('parseError', () => {
  * from, a query resolving to "no session" and the sign-in screen — on top of a
  * refresh token good for thirty days.
  */
+/**
+ * What comes back when nothing comes back.
+ *
+ * Reinstalling a server answers `202 Accepted` with an empty body, and the
+ * client parsed that as JSON. An empty string is not JSON, so the parse threw,
+ * the mutation's `onError` ran, and the page reported "Reinstall failed" over a
+ * reinstall that had been accepted, audited and started — every time, with the
+ * volume as the only way to learn otherwise.
+ */
+describe('a response with no body', () => {
+  function stub(status: number, body: string | null) {
+    const fetch = vi.fn(() =>
+      Promise.resolve(
+        new Response(body, { status, headers: { 'Content-Type': 'application/json' } }),
+      ),
+    );
+
+    vi.stubGlobal('fetch', fetch);
+  }
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('resolves a 202 that carries nothing', async () => {
+    stub(202, null);
+
+    await expect(api.post('/api/servers/x/settings/reinstall')).resolves.toBeUndefined();
+  });
+
+  it('still resolves a 204', async () => {
+    stub(204, null);
+
+    await expect(api.delete('/api/servers/x/backups/y')).resolves.toBeUndefined();
+  });
+
+  it('still parses a body when there is one', async () => {
+    stub(200, JSON.stringify({ name: 'Bot' }));
+
+    await expect(api.get('/api/servers/x')).resolves.toEqual({ name: 'Bot' });
+  });
+});
+
 describe('the silent refresh', () => {
   function stubFetch(answers: (path: string) => Response) {
     const calls: string[] = [];
