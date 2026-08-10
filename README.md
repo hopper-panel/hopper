@@ -107,7 +107,7 @@ hopper/
 │   ├── templates/        # server templates + Pterodactyl egg import/export
 │   └── config/           # shared ESLint / TypeScript
 ├── docker/               # dev compose (PostgreSQL, Redis)
-├── install/              # install.sh, systemd units, nginx & apache vhosts
+├── install/              # install.sh, uninstall.sh, systemd units, nginx & apache vhosts
 └── docs/                 # installation, updating, CLI, templates, security
 ```
 
