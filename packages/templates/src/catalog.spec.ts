@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { PARSERS_NOT_WRITTEN } from '@hopper/shared';
 import { TEMPLATE_CATALOG, catalogGroups } from './index.js';
 import { templateDefinitionSchema } from './definition.js';
 /**
@@ -39,6 +40,39 @@ describe('catalogue de templates', () => {
     expect(catalogGroups().length).toBeGreaterThan(0);
     for (const group of catalogGroups()) {
       expect(group.trim()).not.toBe('');
+    }
+  });
+
+  /**
+   * No shipped template may name a parser the daemon has no rewriter for.
+   *
+   * The contract accepts more parsers than `config-writer.ts` writes, and it
+   * is right to: an imported egg gets to say what its author wrote, and the
+   * importer refuses what will not be honoured, in front of somebody. What
+   * must never happen is this catalogue doing it, because nothing refuses a
+   * shipped template — and the symptom is not a failure. The file is left
+   * alone and the server starts on the port the template author typed, which
+   * is exactly the bug `config-writer.ts` was written to end.
+   *
+   * Read from the contract rather than restated here: a list copied into a
+   * test agrees with itself while the real one moves.
+   *
+   * Not read from the daemon, and not because it would fail to resolve — it
+   * would resolve perfectly well, `yaml` being a declared dependency of
+   * `apps/daemon`. The reason is the one the head of this file gives: the
+   * import above is tolerated because `invocation.ts` pulls nothing in behind
+   * it, and reaching for `config-writer.ts` would pull a third-party module
+   * into this package's test graph through a path no `package.json` describes.
+   * A spec must not be the only thing joining two packages.
+   */
+  it('never declares a parser nothing writes', () => {
+    for (const template of TEMPLATE_CATALOG) {
+      for (const file of template.configFiles ?? []) {
+        expect(
+          PARSERS_NOT_WRITTEN,
+          `${template.key} declares ${file.file} with the ${file.parser} parser, which the daemon does not write`,
+        ).not.toContain(file.parser);
+      }
     }
   });
 

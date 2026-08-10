@@ -1,4 +1,7 @@
+import { PARSERS_NOT_WRITTEN, configParserSchema } from '@hopper/shared';
 import { describe, expect, it } from 'vitest';
+import { en } from '../i18n/messages/en';
+import { fr } from '../i18n/messages/fr';
 import type { TemplateDetail } from './api';
 import { blankDraft, buildPayload, draftFromDetail, type TemplateDraft } from './template-draft';
 
@@ -146,6 +149,31 @@ describe('buildPayload', () => {
       // The path of the entry, because "invalid" on a sixteen-line block is
       // not something anyone can act on.
       expect(result.errors[0]?.message).toContain('0.parser');
+    }
+  });
+
+  /**
+   * The refusal the contract cannot make.
+   *
+   * `xml` is a valid `ConfigParser`, so `configFileSchema` accepts it and the
+   * test above never fires — which is exactly how it stayed acceptable here
+   * while no daemon had ever written it. What follows a save is not an error
+   * either: the file is left alone and the server starts on the port that file
+   * already held.
+   */
+  it('refuses a parser the contract accepts and no daemon writes', () => {
+    const draft = draftFromDetail(DETAIL);
+    const result = buildPayload(
+      { ...draft, configFiles: '[{"file":"server.xml","parser":"xml","replacements":[]}]' },
+      'update',
+    );
+
+    expect(result.ok).toBe(false);
+
+    if (!result.ok) {
+      expect(result.errors[0]?.field).toBe('configFiles');
+      // Named, because the author has to find it in the block they typed.
+      expect(result.errors[0]?.message).toContain('server.xml');
     }
   });
 
@@ -345,6 +373,41 @@ describe('buildPayload', () => {
       expect(result.body.installContainer).toBe('debian:bookworm-slim');
       expect(result.body.installEntrypoint).toBe('/bin/bash');
       expect(result.body.stopCommand).toBe('command:stop');
+    }
+  });
+});
+
+/**
+ * The parsers an author is told about, and the ones the form accepts.
+ *
+ * Two lists of the same fact in different forms — a constant in the contract
+ * and a sentence in five languages — and the sentence is what an administrator
+ * acts on. It cannot be derived from the constant without turning a translated
+ * paragraph into a template, so it is held to it instead: the hint may not
+ * name a parser nothing writes, and may not omit one that works.
+ *
+ * `xml` sat in that sentence for six releases while the daemon refused it.
+ */
+describe('the parsers the editor tells an author about', () => {
+  const written = configParserSchema.options.filter(
+    (parser) => !PARSERS_NOT_WRITTEN.includes(parser),
+  );
+
+  it.each([
+    ['en', en['adminTemplate.configFilesHint']],
+    ['fr', fr['adminTemplate.configFilesHint']!],
+  ])('names every parser that works, in %s', (_language, hint) => {
+    for (const parser of written) {
+      expect(hint, `${parser} works and the hint does not mention it`).toContain(parser);
+    }
+  });
+
+  it.each([
+    ['en', en['adminTemplate.configFilesHint']],
+    ['fr', fr['adminTemplate.configFilesHint']!],
+  ])('names no parser that nothing writes, in %s', (_language, hint) => {
+    for (const parser of PARSERS_NOT_WRITTEN) {
+      expect(hint, `${parser} is offered and the form refuses it`).not.toContain(parser);
     }
   });
 });

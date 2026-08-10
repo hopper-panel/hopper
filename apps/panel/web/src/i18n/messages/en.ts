@@ -853,7 +853,7 @@ export const en = {
 
   'adminTemplate.configFiles': 'Configuration files (JSON)',
   'adminTemplate.configFilesHint':
-    'What the daemon rewrites in the server’s own files on every start. Parsers: properties, yaml, json, ini, xml, file. Read live, and an entry the contract cannot read takes every server on this template off its node — so it is checked here before it is sent.',
+    'What the daemon rewrites in the server’s own files on every start. Parsers: properties, yaml, json, ini, file. Read live, and an entry the contract cannot read takes every server on this template off its node — so it is checked here before it is sent.',
   'adminTemplate.fileDenylist': 'Protected files',
   'adminTemplate.fileDenylistHint':
     'One path per line, relative to the server root. The file manager refuses to edit or delete them.',

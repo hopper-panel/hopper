@@ -1,4 +1,9 @@
-import { configFileSchema, readinessSchema, type StopConfiguration } from '@hopper/shared';
+import {
+  PARSERS_NOT_WRITTEN,
+  configFileSchema,
+  readinessSchema,
+  type StopConfiguration,
+} from '@hopper/shared';
 import type { TemplateDetail, TemplateVariableDetail } from './api';
 
 /**
@@ -263,6 +268,23 @@ export function buildPayload(draft: TemplateDraft, mode: 'create' | 'update'): B
 
   if (dockerImages.length === 0) {
     errors.push({ field: 'dockerImages', message: 'A template needs at least one Docker image.' });
+  }
+
+  // A parser the contract accepts and no daemon writes. The API refuses this
+  // too; refusing it here names the file against the field the author is
+  // looking at, a round trip earlier. It is not the schema's job — the value is
+  // a valid `ConfigParser`, which is exactly why it got this far unremarked.
+  const unwritten = (configFiles ?? []).filter((file) => PARSERS_NOT_WRITTEN.includes(file.parser));
+
+  if (unwritten.length > 0) {
+    errors.push({
+      field: 'configFiles',
+      message: `No daemon writes the ${unwritten[0]!.parser} parser, so ${unwritten
+        .map((file) => `"${file.file}"`)
+        .join(
+          ', ',
+        )} would be left exactly as it is — including whatever this template means to write into it, the allocated port most likely among them.`,
+    });
   }
 
   if (errors.length > 0) {

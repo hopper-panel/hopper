@@ -47,6 +47,35 @@ export interface ConfigWriteReport {
   created?: boolean;
 }
 
+/**
+ * A parser this file has no rewriter for, as opposed to a file it could not
+ * read.
+ *
+ * The two used to arrive at the operator as one sentence — `unreadable (the
+ * xml parser is not implemented)` — and that word is an accusation aimed at
+ * the wrong thing. Their file is fine. What is missing is on this side, and
+ * only one of the two failures is theirs to fix.
+ */
+class UnwrittenParserError extends Error {}
+
+/**
+ * What the operator reads when a template names a parser nothing writes.
+ *
+ * Built from the parser's own name and exported, so the spec can assert the
+ * equivalence that keeps `PARSERS_NOT_WRITTEN` honest: a parser is on that
+ * list exactly when this file refuses it. Written out on both sides, the two
+ * drift the first time somebody implements a rewriter and forgets the list —
+ * and the panel would go on refusing a parser that works.
+ *
+ * The second half is not padding. A refusal here is not a failed start:
+ * `applyOne` catches it, `writeConfigFiles` never rethrows, and the server
+ * comes up on whatever port the file already held. This sentence is the only
+ * warning anyone gets.
+ */
+export function unwrittenParserMessage(parser: ConfigParser): string {
+  return `Hopper has no ${parser} rewriter, so this file is left exactly as it is — including whatever this template meant to write into it, the port most likely among them.`;
+}
+
 /** Substitutes `{{variables}}`; the daemon passes `invocation.ts`'s own. */
 export type Substitute = (input: string) => string;
 
@@ -102,6 +131,14 @@ async function applyOne(
   try {
     result = rewrite(config.parser, original, replacements);
   } catch (error: unknown) {
+    // Reported as it was written, with no word of this daemon's added to it:
+    // the sentence is the whole of what the operator gets, and `unreadable`
+    // in front of it would send them to inspect a file that is not the
+    // problem. See `UnwrittenParserError`.
+    if (error instanceof UnwrittenParserError) {
+      return { file: config.file, changed: 0, skipped: error.message };
+    }
+
     return {
       file: config.file,
       changed: 0,
@@ -236,9 +273,18 @@ function rewrite(
     case 'yaml':
       return rewriteYaml(original, replacements);
     case 'xml':
-      // Refused out loud rather than done badly. No shipped template uses it,
-      // and a regex over XML is how a configuration file gets corrupted.
-      throw new Error('the xml parser is not implemented');
+      // Refused out loud rather than done badly. No shipped template uses it —
+      // `catalog.spec.ts` holds that — and a regex over XML is how a
+      // configuration file gets corrupted.
+      //
+      // **What follows is not a failed start**, which three places in this
+      // repository used to say and one of them was this file's own message.
+      // The throw is caught by `applyOne`, the report comes back `skipped`,
+      // and `writeConfigFiles` is never fatal: the server starts. It starts on
+      // the port its file already named, which is the template author's and
+      // not the one the panel allocated — so the sentence has to name that,
+      // because it is the only warning anybody gets.
+      throw new UnwrittenParserError(unwrittenParserMessage('xml'));
   }
 }
 

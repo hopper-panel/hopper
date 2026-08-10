@@ -493,10 +493,13 @@ describe('importPterodactylEgg', () => {
     /**
      * The refusals, and why each is louder than carrying the file would be.
      *
-     * `xml` is refused because the daemon's rewriter throws on it: a template
-     * carrying one imports cleanly and then fails on the first start of the
-     * first server built from it, which is the worst place to find out. Seven
-     * eggs in the corpus.
+     * `xml` is refused because the daemon has no rewriter for it — and not,
+     * as this used to say, because the server would then fail to start. It
+     * starts: the throw is caught, the file is left alone, and the server
+     * listens on the port the egg author's file named instead of the allocated
+     * one. There is no failure to find out about later, only a wrong port
+     * nobody is told about, which is why the refusal belongs here at import,
+     * in front of somebody. Seven eggs in the corpus.
      */
     it('refuses a parser the daemon cannot write, and says which file', () => {
       const result = withFiles({

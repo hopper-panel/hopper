@@ -10,6 +10,41 @@ import { z } from 'zod';
 export const configParserSchema = z.enum(['properties', 'yaml', 'json', 'ini', 'xml', 'file']);
 export type ConfigParser = z.infer<typeof configParserSchema>;
 
+/**
+ * The parsers this contract accepts and no daemon writes.
+ *
+ * A gap on purpose, and worth stating rather than leaving to be discovered.
+ * The enum above is what a template is allowed to *say*, and an imported
+ * Pterodactyl egg gets to say what its author wrote — the importer then
+ * refuses what will not be honoured, in front of somebody who can act on it.
+ * The rewriter is a separate list and a shorter one.
+ *
+ * What that gap does when nobody notices it is the reason this is declared:
+ * the daemon leaves the file exactly as it is, and the server starts. On the
+ * port that file already named — the template author's, not the one the panel
+ * allocated. No failure, no refusal, one console line.
+ *
+ * Declared here rather than in the daemon because the packages that need the
+ * answer must not depend on it: `@hopper/templates` holds that no shipped
+ * template may name one, and the panel refuses one on its way in — at the API
+ * and again in the editor's form, so the message names the file next to the
+ * field. The list belongs to the contract because it is the contract that
+ * declares the enum whose gap it describes.
+ *
+ * Kept in step with the rewriter by an assertion over the whole enum in the
+ * daemon's `config-writer.spec.ts` — a list this side and a `switch` the other
+ * side cannot drift apart in silence, since the symptom of their drifting is a
+ * wrong port nobody is told about.
+ *
+ * Meant to shrink. Writing a rewriter and taking a parser off this list is not
+ * the whole of it, and the rest is worth naming rather than discovering: the
+ * egg importer's `CONFIG_PARSERS` and the exporter's parser map both encode
+ * which names translate — a different question, but one that is answered `no`
+ * for the same parsers today — and the editor's help text lists them in prose
+ * a test holds to this list rather than deriving from it.
+ */
+export const PARSERS_NOT_WRITTEN: readonly ConfigParser[] = ['xml'];
+
 export const configReplacementSchema = z.object({
   /** Dotted path, e.g. `server-port` or `settings.bungeecord`. */
   match: z.string().min(1),
