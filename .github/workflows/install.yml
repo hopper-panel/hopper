@@ -119,13 +119,17 @@ jobs:
           OUT=$(sudo -E bash install/install.sh)
           printf '%s\n' "$OUT"
 
+          # `sudo` on every read: `.env` is mode 600 and owned by root, which
+          # is the point of it. Without it grep exits 2 — "cannot open" — and
+          # the step fails while reporting nothing about the assertion.
+          #
           # The address the script announces is the address it wrote.
-          grep -q '^APP_URL=http://192.0.2.10$' /opt/hopper/apps/panel/.env
+          sudo grep -q '^APP_URL=http://192.0.2.10$' /opt/hopper/apps/panel/.env
 
           # The vhost answers for the new address, not the old one — otherwise
           # nginx serves its default site and the panel looks broken.
-          grep -q '192.0.2.10' /etc/nginx/sites-available/hopper.conf
-          ! grep -q '198.51.100.7' /etc/nginx/sites-available/hopper.conf
+          sudo grep -q '192.0.2.10' /etc/nginx/sites-available/hopper.conf
+          ! sudo grep -q '198.51.100.7' /etc/nginx/sites-available/hopper.conf
 
           # And a rerun that creates no administrator says how to get back in,
           # rather than printing nothing where the password used to be.
