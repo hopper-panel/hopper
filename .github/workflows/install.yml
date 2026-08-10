@@ -94,7 +94,11 @@ jobs:
       - name: Reinstalling with another address actually moves the panel
         env:
           HOPPER_NONINTERACTIVE: '1'
-          HOPPER_DOMAIN: 192.0.2.10
+          # Pasted with a scheme and a trailing slash, as an operator did. Both
+          # used to survive into APP_URL, into the daemon's allowed origins —
+          # where a trailing slash never matches a browser's Origin — and into
+          # server_name.
+          HOPPER_DOMAIN: http://192.0.2.10/
           HOPPER_WEBSERVER: nginx
           HOPPER_TLS: 'no'
           HOPPER_ADMIN_EMAIL: ci@example.com

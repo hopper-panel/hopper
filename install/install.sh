@@ -110,6 +110,31 @@ if [ -z "$DOMAIN" ]; then
   ask "Domain name of the panel (or IP address)" "$(hostname -f 2>/dev/null || hostname)" DOMAIN
 fi
 
+# A host name, whatever was typed. People paste URLs.
+#
+# `http://192.168.1.141/` travelled through this script untouched and broke
+# three things at once, none of them near the question that produced it:
+#
+#   - `APP_URL` became `http://192.168.1.141/`, which the daemon copies into
+#     its allowed origins — and a browser's `Origin` header never carries a
+#     trailing slash, so every console was refused with "Origin not allowed".
+#   - `server_name 192.168.1.141/;` is not a host nginx will ever match.
+#   - `IS_IP` below tests for characters outside `[0-9.]`, so the slash made an
+#     IP address look like a domain name, and the script offered a Let's
+#     Encrypt certificate that could only fail.
+#
+# Trimmed rather than refused: the answer is unambiguous, and sending somebody
+# back to retype an address because of a slash is the kind of strictness that
+# teaches nothing.
+ORIGINAL_DOMAIN="$DOMAIN"
+DOMAIN="${DOMAIN#http://}"
+DOMAIN="${DOMAIN#https://}"
+DOMAIN="${DOMAIN%%/*}"
+DOMAIN="$(printf '%s' "$DOMAIN" | tr -d '[:space:]')"
+
+[ -n "$DOMAIN" ] || die "The panel needs a domain name or an IP address."
+[ "$DOMAIN" = "$ORIGINAL_DOMAIN" ] || note "domain read as $DOMAIN"
+
 # An IP address cannot receive a Let's Encrypt certificate: offering TLS in that
 # case would lead the user straight into a certbot failure.
 IS_IP=0
