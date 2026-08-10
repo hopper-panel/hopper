@@ -87,6 +87,52 @@ jobs:
       - name: End to end — a server on a port that is not the default
         run: sudo -E bash .github/scripts/install-e2e.sh
 
+      # Last, because it destroys what everything above built — which is
+      # exactly the machine an uninstaller has to be tried on. A script of this
+      # kind is only ever run once per installation, by somebody who will not
+      # be reading its output carefully, so the one place it can be rehearsed
+      # is here.
+      - name: The uninstaller says what it would do, and does not do it
+        run: |
+          set -euo pipefail
+          sudo bash install/uninstall.sh --dry-run
+          # A dry run that stopped a service would be the worst possible bug in
+          # a script whose whole promise is that it changed nothing.
+          systemctl is-active --quiet hopper-panel
+          systemctl is-active --quiet hopperd
+          test -d /opt/hopper
+
+      - name: The uninstaller removes what the installer created
+        run: |
+          set -euo pipefail
+          sudo bash install/uninstall.sh --purge --yes
+
+          for UNIT in hopper-panel hopperd hopper-update.path hopper-update.service; do
+            ! systemctl is-active --quiet "$UNIT"
+            test ! -e "/etc/systemd/system/$UNIT" -a ! -e "/etc/systemd/system/$UNIT.service"
+          done
+
+          test ! -e /opt/hopper
+          test ! -e /etc/hopper
+          test ! -e /usr/local/bin/hopper
+          test ! -e /var/lib/hopper
+          test ! -e /etc/nginx/sites-enabled/hopper.conf
+          ! id hopper 2>/dev/null
+          ! sudo docker network inspect hopper0 >/dev/null 2>&1
+          test -z "$(sudo docker ps -aq --filter 'name=^hopper-')"
+          # The database and its role are the panel's own records; --purge is
+          # about the game files, and both go either way.
+          test "$(sudo -u postgres psql -tAc "select count(*) from pg_database where datname='hopper'")" = 0
+          test "$(sudo -u postgres psql -tAc "select count(*) from pg_roles where rolname='hopper'")" = 0
+
+          # And what it must never touch: the services another application on
+          # the machine could be sitting on.
+          systemctl is-active --quiet postgresql
+          systemctl is-active --quiet docker
+
+      - name: Uninstalling twice is not an error
+        run: sudo bash install/uninstall.sh --purge --yes
+
       - name: What the daemon said, if any of that failed
         if: failure()
         run: |

@@ -105,11 +105,26 @@ holds the node secret and the console signing key.
 ## Uninstalling
 
 ```bash
-systemctl disable --now hopper-panel hopperd
-rm -f /etc/systemd/system/hopper-panel.service /etc/systemd/system/hopperd.service
-rm -rf /opt/hopper /etc/hopper /usr/local/bin/hopper
-su - postgres -c "dropdb hopper && dropuser hopper"
+sudo bash /opt/hopper/install/uninstall.sh
 ```
 
-`/var/lib/hopper` holds **your servers' volumes and your backups**: these commands do not remove it,
-and moving it is wiser than erasing it.
+It removes what the installer created — the four systemd units, the `hopper` command, `/opt/hopper`,
+`/etc/hopper`, the database and its role, the game containers, their Docker network, the vhost, the
+certbot renewal hook and the `hopper` system user — and asks you to type `uninstall` first.
+
+**Your servers' files are kept.** `/var/lib/hopper/volumes` holds every world, plugin and
+configuration file, and that is the one part nobody can regenerate; the script says how much is
+there and where. Add `--purge` to delete it as well, and the confirmation then asks you to type the
+number of servers you are destroying rather than a word.
+
+`--dry-run` prints what would go and touches nothing. It is worth a minute before the real thing,
+especially on a machine that hosts something else.
+
+This page used to list the commands to run by hand, and they were incomplete: they left behind the
+two `hopper-update` units, the containers, the `hopper0` network, the vhost and the system user. The
+script exists because that list was wrong in a way nobody notices — everything appears to have gone.
+
+**Docker, PostgreSQL, Redis, nginx and certbot are left installed**, along with your TLS
+certificates. They are shared services, another application may be using any of them, and deleting a
+certificate would burn a Let's Encrypt rate limit for a domain you may want to reinstall on
+tomorrow.
