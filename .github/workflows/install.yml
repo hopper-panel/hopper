@@ -124,7 +124,21 @@ jobs:
           NODE=$(curl -fsS -H "$AUTH" "$API/api/admin/nodes?perPage=10" \
             | python3 -c 'import sys,json;print(json.load(sys.stdin)["data"][0]["uuid"])')
 
-          curl -fsS -o /dev/null -X POST -H "$AUTH" "$API/api/admin/nodes/$NODE/apply-locally"
+          # The body, not just the status: when the panel refuses, its message
+          # is the whole point of the refusal — and `curl -f` prints none of
+          # it, leaving a step that failed with "exit code 22".
+          CODE=$(curl -sS -o /tmp/apply.json -w '%{http_code}' \
+            -X POST -H "$AUTH" "$API/api/admin/nodes/$NODE/apply-locally")
+
+          if [ "$CODE" != 202 ]; then
+            cat /tmp/apply.json
+            echo
+            # The two things that make it refuse, printed together: the mount
+            # namespace the panel actually runs in, and the directory it wants.
+            systemctl show hopper-panel -p ReadWritePaths
+            ls -ld /var/lib/hopper/node-apply || true
+            exit 1
+          fi
 
           STATE=unknown
           for _ in $(seq 1 30); do

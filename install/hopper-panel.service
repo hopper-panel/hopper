@@ -48,11 +48,22 @@ RestrictNamespaces=true
 LockPersonality=true
 MemoryDenyWriteExecute=false
 
-# One writable path, and only one: where the panel drops its request for an
-# update. It holds an empty trigger file and a status the root-side updater
+# Two writable paths, and only two: where the panel drops its request for an
+# update, and where it drops its request for this machine's daemon
+# configuration. Each holds a trigger file and a status the root-side unit
 # writes back — no code, no configuration, nothing the panel could execute.
 # Everything else still goes through the database and journald.
-ReadWritePaths=/var/lib/hopper/updates
+#
+# The second was missing, and the whole feature sat behind it: `ProtectSystem=
+# strict` makes every other path read-only, so the panel writing into
+# /var/lib/hopper/node-apply got EROFS no matter who owned the directory. The
+# button answered "Internal server error", which is not a sentence anybody can
+# act on.
+#
+# Both are prefixed `-` so a missing directory is a feature that refuses and
+# says what to run instead, rather than a panel that will not start at all.
+ReadWritePaths=-/var/lib/hopper/updates
+ReadWritePaths=-/var/lib/hopper/node-apply
 
 LimitNOFILE=16384
 
