@@ -167,7 +167,8 @@ jobs:
           set -euo pipefail
           sudo bash install/uninstall.sh --purge --yes
 
-          for UNIT in hopper-panel hopperd hopper-update.path hopper-update.service; do
+          for UNIT in hopper-panel hopperd hopper-update.path hopper-update.service \
+            hopper-node-apply.path hopper-node-apply.service; do
             ! systemctl is-active --quiet "$UNIT"
             test ! -e "/etc/systemd/system/$UNIT" -a ! -e "/etc/systemd/system/$UNIT.service"
           done

@@ -1,0 +1,52 @@
+[Unit]
+Description=Write this machine's daemon configuration and restart hopperd
+Documentation=https://github.com/hopper-panel/hopper
+After=hopper-panel.service
+
+[Service]
+Type=oneshot
+
+# Root, because the work is writing /etc/hopper/daemon.yml in mode 600 and
+# restarting a unit — neither of which the panel's account can do, and neither
+# of which it should be able to do.
+#
+# The panel names a node and nothing else. It cannot say where the file goes,
+# what mode it gets, or which service is restarted: all three are fixed below.
+# A compromised panel therefore gains "point this machine's daemon at one of my
+# own nodes", which the API already lets it do by rotating that node's token —
+# not "run anything as root", which is what a sudoers line would have handed
+# over.
+User=root
+Group=root
+
+# Removed first: left in place it refires the path unit the moment this service
+# exits, and the machine rewrites its configuration in a loop.
+ExecStartPre=/bin/sh -c 'cat /var/lib/hopper/node-apply/requested > /run/hopper-node-apply.uuid'
+ExecStartPre=/bin/rm -f /var/lib/hopper/node-apply/requested
+ExecStartPre=/bin/sh -c 'printf "{\\"state\\":\\"running\\",\\"startedAt\\":\\"%%s\\"}" "$(date -Is)" > /var/lib/hopper/node-apply/status.json'
+
+# A uuid, or nothing happens. The value crosses a file written by a service
+# account and is about to become an argument, so it is checked against the one
+# shape it may have rather than trusted for coming from our own panel.
+#
+# `node:token` writes the file itself, in mode 600 — the reason this goes
+# through the CLI instead of a shell redirection. An operator following the
+# copy-and-paste instructions this replaces produced a 0644 file, and hopperd
+# refuses to start on one: it holds the node secret and the console signing key.
+ExecStart=/bin/bash -c 'UUID=$(cat /run/hopper-node-apply.uuid); \
+  printf "%%s" "$UUID" | grep -Eq "^[0-9a-fA-F-]{36}$" || { echo "not a node uuid: $UUID" >&2; exit 1; }; \
+  HOPPER_ROOT=/opt/hopper /usr/local/bin/hopper node:token --node "$UUID" --output /etc/hopper/daemon.yml'
+ExecStart=/bin/systemctl restart hopperd
+
+ExecStopPost=/bin/rm -f /run/hopper-node-apply.uuid
+ExecStopPost=/bin/sh -c 'if [ "$EXIT_STATUS" = "0" ]; then S=succeeded; else S=failed; fi; \
+  printf "{\\"state\\":\\"%%s\\",\\"finishedAt\\":\\"%%s\\",\\"log\\":\\"%%s\\"}" \
+  "$S" "$(date -Is)" "$(journalctl -u hopper-node-apply -n 20 --no-pager -o cat | tail -c 2000 | sed "s/[\\\\\\"]/ /g" | tr "\n" " ")" \
+  > /var/lib/hopper/node-apply/status.json'
+
+Environment=NO_COLOR=1
+
+TimeoutStartSec=120
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=hopper-node-apply

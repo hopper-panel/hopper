@@ -3,9 +3,9 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { FormDialog } from '../../components/FormDialog';
 import { PageHeader } from '../../components/PageHeader';
-import { Badge, Button, Card, EmptyState, Field, Input, Spinner } from '../../components/ui';
+import { Alert, Badge, Button, Card, EmptyState, Field, Input, Spinner } from '../../components/ui';
 import { useTranslation } from '../../i18n';
-import { api, type NodeSummary, type Paginated } from '../../lib/api';
+import { ApiError, api, type NodeSummary, type Paginated } from '../../lib/api';
 import { formatBytes } from '../../lib/format';
 
 const GIB = 1024 ** 3;
@@ -14,7 +14,7 @@ export function AdminNodesPage() {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const [creating, setCreating] = useState(false);
-  const [configuration, setConfiguration] = useState<string | null>(null);
+  const [configuration, setConfiguration] = useState<{ uuid: string; value: string } | null>(null);
 
   const { data, isLoading } = useQuery({
     queryKey: ['admin', 'nodes'],
@@ -29,7 +29,7 @@ export function AdminNodesPage() {
       setCreating(false);
       // The secret exists only here: it is stored encrypted and the API will
       // never return it a second time.
-      setConfiguration(result.configuration);
+      setConfiguration({ uuid: result.node.uuid, value: result.configuration });
     },
   });
 
@@ -52,7 +52,11 @@ export function AdminNodesPage() {
       />
 
       {configuration ? (
-        <DaemonConfiguration value={configuration} onDismiss={() => setConfiguration(null)} />
+        <DaemonConfiguration
+          nodeUuid={configuration.uuid}
+          value={configuration.value}
+          onDismiss={() => setConfiguration(null)}
+        />
       ) : null}
 
       {creating ? (
@@ -226,9 +230,34 @@ function CreateNodeForm({
   );
 }
 
-function DaemonConfiguration({ value, onDismiss }: { value: string; onDismiss: () => void }) {
+/**
+ * The document a new node needs, and the button that saves copying it.
+ *
+ * Three manual steps used to follow this screen — write the file, `chmod 600`,
+ * restart hopperd — and the middle one is the one that bites: a file left at
+ * 0644 makes hopperd exit 78 at every start, while the panel reports the node
+ * as merely unreachable. An operator lost an evening to it after piping the
+ * document through `tee`, which recreates the file at the shell's umask.
+ *
+ * So the panel offers to do it, for the machine it runs on. The document stays
+ * on screen because a second machine still needs it: nothing here can write a
+ * root-owned file on somebody else's host, and it should not be able to.
+ */
+function DaemonConfiguration({
+  nodeUuid,
+  value,
+  onDismiss,
+}: {
+  nodeUuid: string;
+  value: string;
+  onDismiss: () => void;
+}) {
   const { t } = useTranslation();
   const [copied, setCopied] = useState(false);
+
+  const applyLocally = useMutation({
+    mutationFn: () => api.post<{ state: string }>(`/api/admin/nodes/${nodeUuid}/apply-locally`, {}),
+  });
 
   return (
     <Card className="mb-6 border-accent/40">
@@ -247,14 +276,36 @@ function DaemonConfiguration({ value, onDismiss }: { value: string; onDismiss: (
         {value}
       </pre>
 
-      <Button
-        className="mt-3"
-        onClick={() => {
-          void navigator.clipboard.writeText(value).then(() => setCopied(true));
-        }}
-      >
-        {copied ? t('adminNodes.copied') : t('adminNodes.copy')}
-      </Button>
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <Button
+          onClick={() => {
+            void navigator.clipboard.writeText(value).then(() => setCopied(true));
+          }}
+        >
+          {copied ? t('adminNodes.copied') : t('adminNodes.copy')}
+        </Button>
+
+        <Button
+          variant="primary"
+          disabled={applyLocally.isPending || applyLocally.isSuccess}
+          onClick={() => applyLocally.mutate()}
+        >
+          {applyLocally.isPending ? t('adminNodes.applying') : t('adminNodes.applyHere')}
+        </Button>
+      </div>
+
+      {applyLocally.isSuccess ? (
+        <p className="mt-3 text-sm text-content">{t('adminNodes.applyStarted')}</p>
+      ) : null}
+
+      {/* The API refuses when this machine has no root-side unit, and its
+          message carries the commands to run instead. Rendered rather than
+          swallowed: it is the whole of the fallback. */}
+      {applyLocally.error instanceof ApiError ? (
+        <div className="mt-3">
+          <Alert>{applyLocally.error.message}</Alert>
+        </div>
+      ) : null}
     </Card>
   );
 }

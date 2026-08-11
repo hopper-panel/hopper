@@ -15,7 +15,7 @@
 #
 # What is removed:
 #
-#   - the four systemd units and the `hopper` CLI
+#   - the six systemd units and the `hopper` CLI
 #   - /opt/hopper, /etc/hopper
 #   - the `hopper` PostgreSQL database and role
 #   - the game containers, their Docker network, the `hopper` system user
@@ -189,7 +189,9 @@ fi
 
 step "Services"
 
-for UNIT in hopper-update.path hopper-update.service hopperd.service hopper-panel.service; do
+for UNIT in hopper-update.path hopper-update.service \
+  hopper-node-apply.path hopper-node-apply.service \
+  hopperd.service hopper-panel.service; do
   if systemctl list-unit-files "$UNIT" >/dev/null 2>&1 && systemctl cat "$UNIT" >/dev/null 2>&1; then
     run systemctl disable --now "$UNIT" >/dev/null 2>&1 || true
     run rm -f "/etc/systemd/system/$UNIT"
@@ -338,7 +340,7 @@ if [ -n "$PURGE" ]; then
 else
   # The state directories that hold nothing anyone would miss go regardless;
   # `volumes` and `backups` are the whole reason this branch exists.
-  for LEFTOVER in "$DATA_ROOT/updates" "$DATA_ROOT/tmp"; do
+  for LEFTOVER in "$DATA_ROOT/updates" "$DATA_ROOT/node-apply" "$DATA_ROOT/tmp"; do
     [ ! -d "$LEFTOVER" ] || run rm -rf "$LEFTOVER"
   done
 

@@ -21,6 +21,7 @@ import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe.js';
 import type { RequestContext } from '../auth/auth.service.js';
 import { AdminOnly } from '../auth/decorators.js';
 import { CurrentUser, type AuthenticatedRequest, type RequestUser } from '../auth/request-user.js';
+import { NodeApplyService, type NodeApplyStatus } from './node-apply.service.js';
 import { NodeClientService, type NodeHealth } from './node-client.service.js';
 import {
   createAllocationsSchema,
@@ -38,6 +39,7 @@ export class NodesController {
   constructor(
     private readonly nodes: NodesService,
     private readonly client: NodeClientService,
+    private readonly apply: NodeApplyService,
   ) {}
 
   @Get()
@@ -45,6 +47,18 @@ export class NodesController {
     @Query(new ZodValidationPipe(paginationQuerySchema)) query: PaginationQuery,
   ): Promise<Paginated<NodeView>> {
     return this.nodes.list(query);
+  }
+
+  /**
+   * Declared before `:uuid`, and it has to be.
+   *
+   * Nest matches routes in declaration order, so a `@Get(':uuid')` sitting
+   * above this one swallows `local-apply` as a node identifier and answers
+   * "Node not found" for a path that names no node at all.
+   */
+  @Get('local-apply/status')
+  applyStatus(): Promise<NodeApplyStatus> {
+    return this.apply.status();
   }
 
   @Get(':uuid')
@@ -94,6 +108,24 @@ export class NodesController {
     @Req() request: AuthenticatedRequest,
   ): Promise<{ configuration: string }> {
     return this.nodes.rotateToken(uuid, actor.id, contextOf(request));
+  }
+
+  /**
+   * Writes this machine's `daemon.yml` and restarts hopperd.
+   *
+   * Only ever the machine the panel runs on: nothing here reaches across the
+   * wire. See `NodeApplyService` for why the panel asks rather than writes.
+   */
+  @Post(':uuid/apply-locally')
+  @HttpCode(HttpStatus.ACCEPTED)
+  async applyLocally(@Param('uuid') uuid: string): Promise<NodeApplyStatus> {
+    // Resolved first, so a uuid naming no node is a 404 rather than a request
+    // the root-side unit refuses a second later with nothing to show for it.
+    const node = await this.nodes.findByUuid(uuid);
+
+    await this.apply.request(node.uuid);
+
+    return this.apply.status();
   }
 
   @Delete(':uuid')

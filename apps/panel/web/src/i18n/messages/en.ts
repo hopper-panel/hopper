@@ -915,6 +915,10 @@ export const en = {
   'adminNodes.configTitle': 'Daemon configuration',
   'adminNodes.configNote': 'The secret is shown once. Losing it means rotating the token.',
   'adminNodes.copy': 'Copy',
+  'adminNodes.applyHere': 'Apply on this machine',
+  'adminNodes.applying': 'Applying…',
+  'adminNodes.applyStarted':
+    'This machine is writing the file and restarting its daemon. Run hopper doctor in a few seconds to confirm.',
   'adminNodes.copied': 'Copied',
   'adminNode.allocations': 'Allocated ports',
   'adminNode.addPorts': 'Add ports',

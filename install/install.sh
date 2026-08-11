@@ -474,6 +474,16 @@ install -m 755 "$HOPPER_ROOT/install/hopper" /usr/local/bin/hopper
 install -d -o hopper -g hopper -m 700 "$DATA_ROOT/updates"
 install -m 644 "$HOPPER_ROOT/install/hopper-update.service" /etc/systemd/system/hopper-update.service
 install -m 644 "$HOPPER_ROOT/install/hopper-update.path" /etc/systemd/system/hopper-update.path
+
+# The same arrangement for a node's own configuration: the panel asks, a root
+# unit writes `/etc/hopper/daemon.yml` in mode 600 and restarts hopperd. What
+# it replaces is a screen telling the operator to copy a document, chmod it and
+# restart a service by hand — three steps, of which the middle one produces a
+# daemon that refuses to start and a panel that reports the node as merely
+# unreachable.
+install -m 644 "$HOPPER_ROOT/install/hopper-node-apply.service" /etc/systemd/system/hopper-node-apply.service
+install -m 644 "$HOPPER_ROOT/install/hopper-node-apply.path" /etc/systemd/system/hopper-node-apply.path
+
 systemctl daemon-reload
 
 # `enable --now` starts a stopped service and leaves a running one alone, which
@@ -710,6 +720,9 @@ good "hopperd"
 # triggered by the very update running right now would cut that update short.
 systemctl enable hopper-update.path >/dev/null
 systemctl start hopper-update.path >/dev/null 2>&1 || true
+
+systemctl enable hopper-node-apply.path >/dev/null
+systemctl start hopper-node-apply.path >/dev/null 2>&1 || true
 good "update watcher"
 
 # ---------------------------------------------------------------------------
