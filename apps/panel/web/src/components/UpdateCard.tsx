@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslation } from '../i18n';
 import { api, ApiError } from '../lib/api';
 import { Badge, Button, Card, Spinner } from './ui';
@@ -50,9 +50,41 @@ export function UpdateCard() {
     queryFn: () => api.get<UpdateStatus>('/api/admin/updates/status'),
     // Polled only while something is happening: the panel goes away mid-update
     // and comes back, and the poll is how the interface notices it returned.
-    refetchInterval: applied ? 5000 : false,
+    //
+    // Every two seconds rather than five, because this interval is now what
+    // stands between the update finishing and the page showing the version it
+    // finished on.
+    refetchInterval: applied ? 2000 : false,
     retry: false,
   });
+
+  /**
+   * The reload the card has been promising.
+   *
+   * "This page will come back" was written in three languages and implemented
+   * nowhere: the poll noticed `succeeded` and then did nothing with it, so the
+   * card sat on "Updating…" until somebody pressed F5 — on an installation
+   * that had finished updating minutes earlier.
+   *
+   * A full reload rather than refetching the queries, and that is the whole
+   * reason this is not `invalidateQueries`. Vite stamps a digest into every
+   * asset name, so the JavaScript this page is running no longer exists on
+   * the server it is talking to. Only fetching `index.html` again picks up the
+   * new names.
+   *
+   * Gated on `applied`, so a `succeeded` left over from an update somebody ran
+   * last week does not reload the page of whoever opens the settings next.
+   */
+  useEffect(() => {
+    if (!applied || status.data?.state !== 'succeeded') {
+      return;
+    }
+
+    // The answer carrying `succeeded` came from the panel that has already
+    // restarted — it is the one that served this very poll — so there is
+    // nothing left to wait for.
+    window.location.reload();
+  }, [applied, status.data?.state]);
 
   const apply = useMutation({
     mutationFn: () => api.post<{ accepted: true }>('/api/admin/updates/apply', {}),
@@ -64,7 +96,15 @@ export function UpdateCard() {
 
   const data = check.data;
   const unsupported = status.data?.supported === false;
-  const running = applied || status.data?.state === 'running' || status.data?.state === 'requested';
+
+  // `applied` alone used to keep the card on "Updating…" for ever once the
+  // button had been pressed, including after the unit reported a failure: the
+  // log appeared underneath while the button above it still said the work was
+  // under way.
+  const finished = status.data?.state === 'failed' || status.data?.state === 'succeeded';
+  const running =
+    !finished &&
+    (applied || status.data?.state === 'running' || status.data?.state === 'requested');
 
   return (
     <Card>
