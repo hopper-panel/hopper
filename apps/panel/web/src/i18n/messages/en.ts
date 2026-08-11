@@ -917,8 +917,12 @@ export const en = {
   'adminNodes.copy': 'Copy',
   'adminNodes.applyHere': 'Apply on this machine',
   'adminNodes.applying': 'Applying…',
-  'adminNodes.applyStarted':
-    'This machine is writing the file and restarting its daemon. Run hopper doctor in a few seconds to confirm.',
+  'adminNodes.applyStarted': 'This machine is writing the file and restarting its daemon…',
+  'adminNodes.applyDone': 'Done: this machine wrote its configuration and restarted its daemon.',
+  'adminNodes.applyFailed':
+    'This machine could not apply the configuration. Its daemon is still running the previous one, if it had one.',
+  'adminNodes.applyManual':
+    'This machine cannot configure itself from the panel. Run, as root: {command}',
   'adminNodes.copied': 'Copied',
   'adminNode.allocations': 'Allocated ports',
   'adminNode.addPorts': 'Add ports',

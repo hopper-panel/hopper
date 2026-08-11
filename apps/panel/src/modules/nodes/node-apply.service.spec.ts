@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { ServiceUnavailableException } from '@nestjs/common';
@@ -14,14 +14,24 @@ import { NodeApplyService } from './node-apply.service.js';
  * reported the node as unreachable, which sends anyone looking at the network.
  */
 
+let root: string;
 let spool: string;
 let unit: string;
 let service: NodeApplyService;
 
 const NODE_UUID = 'a3c2e1d0-5b44-4f21-8e73-9c1a2b3d4e5f';
 
+/**
+ * Denying a directory's write bit is a real test only where the bit is real.
+ *
+ * Windows does not honour it and root ignores it, and in both cases the write
+ * below succeeds — so the suite would pass while proving nothing. Skipped
+ * rather than weakened, in the way `client.spec.ts` skips without an engine.
+ */
+const canDenyWrites = process.platform !== 'win32' && process.getuid?.() !== 0;
+
 beforeEach(async () => {
-  const root = await mkdtemp(join(tmpdir(), 'hopper-apply-'));
+  root = await mkdtemp(join(tmpdir(), 'hopper-apply-'));
   spool = join(root, 'node-apply');
   unit = join(root, 'hopper-node-apply.path');
 
@@ -34,7 +44,10 @@ beforeEach(async () => {
 afterEach(async () => {
   delete process.env.HOPPER_NODE_APPLY_DIR;
   delete process.env.HOPPER_NODE_APPLY_UNIT;
-  await rm(join(spool, '..'), { recursive: true, force: true });
+  // Restored first: a test that took the write bit off leaves a directory
+  // nothing can be deleted from, including this line.
+  await chmod(root, 0o700).catch(() => undefined);
+  await rm(root, { recursive: true, force: true });
 });
 
 /** The unit `install.sh` lays down, as far as this service can tell. */
@@ -89,6 +102,40 @@ describe('when the root-side unit is installed', () => {
 
   it('reads an empty machine as idle rather than as a failure', async () => {
     expect(await service.status()).toMatchObject({ state: 'idle', available: true });
+  });
+});
+
+/**
+ * The machine an operator actually met.
+ *
+ * `install.sh` created the updater's spool and not this one, so the units were
+ * installed — the button appeared, and it was enabled — while the panel's
+ * account could not create the directory the request goes in: /var/lib/hopper
+ * belongs to root. Pressing it answered "Internal server error", which says
+ * nothing about a permission on a directory.
+ */
+describe.runIf(canDenyWrites)('when the panel cannot write the spool', () => {
+  beforeEach(async () => {
+    await installUnit();
+    await chmod(root, 0o500);
+  });
+
+  it('names the directory, and what to do about it', async () => {
+    const error = await service.request(NODE_UUID).catch((reason: unknown) => reason);
+
+    // The type matters as much as the words: an unhandled write error is a 500
+    // the interface prints as "Internal server error", and a refusal is a
+    // message it renders in full. The operator repairs the machine off one of
+    // those and reports a bug off the other.
+    expect(error).toBeInstanceOf(ServiceUnavailableException);
+    expect((error as Error).message).toContain(spool);
+    expect((error as Error).message).toMatch(/node:token/);
+  });
+
+  it('does not call itself available with the unit installed', async () => {
+    // Both halves have to hold. The units alone made every installation
+    // report `available: true` on a spool that could not be created.
+    expect(await service.status()).toMatchObject({ available: false });
   });
 });
 

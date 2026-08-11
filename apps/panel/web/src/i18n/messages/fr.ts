@@ -931,8 +931,13 @@ export const fr: Partial<Messages> = {
   'adminNodes.copy': 'Copier',
   'adminNodes.applyHere': 'Appliquer sur cette machine',
   'adminNodes.applying': 'Application…',
-  'adminNodes.applyStarted':
-    'Cette machine écrit le fichier et redémarre son daemon. Lancez hopper doctor dans quelques secondes pour vérifier.',
+  'adminNodes.applyStarted': 'Cette machine écrit le fichier et redémarre son daemon…',
+  'adminNodes.applyDone':
+    'Terminé : cette machine a écrit sa configuration et redémarré son daemon.',
+  'adminNodes.applyFailed':
+    'Cette machine n’a pas pu appliquer la configuration. Son daemon tourne toujours sur la précédente, s’il en avait une.',
+  'adminNodes.applyManual':
+    'Cette machine ne peut pas se configurer depuis le panel. Lancez, en root : {command}',
   'adminNodes.copied': 'Copié',
   'adminNode.allocations': 'Ports alloués',
   'adminNode.addPorts': 'Ajouter des ports',

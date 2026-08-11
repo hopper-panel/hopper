@@ -1,5 +1,5 @@
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { access, constants, mkdir, readFile, writeFile } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
 import { Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
 
 /** The panel writes here; a root unit watches the directory. See `request`. */
@@ -63,7 +63,11 @@ export class NodeApplyService {
   }
 
   async status(): Promise<NodeApplyStatus> {
-    const available = await this.installed();
+    // Both halves, because either one missing makes the button a lie. The
+    // units shipped a release before the directory they share did, so every
+    // installation had `available: true` and a spool the panel could not
+    // create: /var/lib/hopper belongs to root.
+    const available = (await this.installed()) && (await this.writable());
 
     let recorded: Partial<NodeApplyStatus> = {};
 
@@ -101,24 +105,62 @@ export class NodeApplyService {
       );
     }
 
-    await mkdir(this.spool, { recursive: true }).catch(() => undefined);
+    try {
+      // The failure this catches was not hypothetical: `install.sh` created
+      // the updater's spool and not this one, so `mkdir` raised EACCES, the
+      // first version of this line swallowed it, and the write below failed
+      // with a permission error that reached the operator as the five words
+      // "Internal server error".
+      await mkdir(this.spool, { recursive: true });
 
-    await writeFile(
-      join(this.spool, STATUS_NAME),
-      JSON.stringify({ state: 'requested', startedAt: new Date().toISOString() }),
-      'utf8',
-    );
+      await writeFile(
+        join(this.spool, STATUS_NAME),
+        JSON.stringify({ state: 'requested', startedAt: new Date().toISOString() }),
+        'utf8',
+      );
 
-    // Written last: the path unit fires on this file, and a trigger landing
-    // before the status would leave the interface reporting `idle` while the
-    // work is already under way.
-    await writeFile(join(this.spool, TRIGGER_NAME), nodeUuid, 'utf8');
+      // Written last: the path unit fires on this file, and a trigger landing
+      // before the status would leave the interface reporting `idle` while the
+      // work is already under way.
+      await writeFile(join(this.spool, TRIGGER_NAME), nodeUuid, 'utf8');
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code ?? 'unknown error';
+      this.logger.error(`Cannot write ${this.spool}: ${String(error)}`);
+
+      throw new ServiceUnavailableException(
+        `The panel cannot write ${this.spool} (${code}), so it cannot ask this machine to configure itself. ` +
+          `Reinstalling repairs it — or do it by hand: ${this.manualCommand()}`,
+      );
+    }
+
     this.logger.log(`Local daemon configuration requested for node ${nodeUuid}.`);
   }
 
   /** The two commands an operator runs when the unit is not installed. */
   manualCommand(): string {
     return 'sudo hopper node:token --node <name> --output /etc/hopper/daemon.yml && sudo systemctl restart hopperd';
+  }
+
+  /**
+   * Whether the panel's account can actually put a file in the spool.
+   *
+   * The directory is checked when it is there and its parent when it is not,
+   * because "nothing has asked yet" and "the panel is locked out of the
+   * directory" look identical from a bare `access` on a path that does not
+   * exist — and they are opposite answers.
+   */
+  private async writable(): Promise<boolean> {
+    try {
+      await access(this.spool, constants.W_OK);
+      return true;
+    } catch {
+      try {
+        await access(dirname(this.spool), constants.W_OK);
+        return true;
+      } catch {
+        return false;
+      }
+    }
   }
 
   private async installed(): Promise<boolean> {
