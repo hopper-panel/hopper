@@ -160,14 +160,23 @@ jobs:
         run: |
           set -euo pipefail
 
-          test "$(sudo -u postgres psql -d hopper -tAc \
-            "select value from settings where key = 'defaultLocale'")" = fr
-          test "$(sudo -u postgres psql -d hopper -tAc \
-            "select value from settings where key = 'panelName'")" = 'CI panel'
+          # Read into variables and printed, so that a failure here says what
+          # the machine actually holds. `test` prints nothing when it fails,
+          # which turns a wrong assertion into a step that fails in silence —
+          # and the first version of this one was wrong: it looked for a field
+          # named `locale` in an answer that carries `defaultLocale`.
+          SETTINGS=$(sudo -u postgres psql -d hopper -tAc \
+            "select key || '=' || value from settings order by key")
+          BRANDING=$(curl -fsS http://127.0.0.1:8080/api/panel)
 
-          # What the browser is served, which is the only version of this that
-          # an operator experiences.
-          curl -fsS http://127.0.0.1:8080/api/panel | grep -q '"locale":"fr"'
+          printf '%s\n%s\n' "$SETTINGS" "$BRANDING"
+
+          printf '%s' "$SETTINGS" | grep -qx 'defaultLocale=fr'
+          printf '%s' "$SETTINGS" | grep -qx 'panelName=CI panel'
+
+          # What the browser is served, which is the only version of this an
+          # operator ever experiences.
+          printf '%s' "$BRANDING" | grep -q '"defaultLocale":"fr"'
 
           # And the file the daemon reads, which is generated from the node row
           # — so this also says the row carries it.
