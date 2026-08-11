@@ -9,4 +9,4 @@
  * `scripts/release.mjs` moves all of them together. Editing one by hand is how
  * they drift.
  */
-export const DAEMON_VERSION = '0.15.1';
+export const DAEMON_VERSION = '0.16.0';
