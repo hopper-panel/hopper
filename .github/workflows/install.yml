@@ -80,9 +80,16 @@ jobs:
 
           # A pasted URL is read as a host name. All three of APP_URL, the
           # vhost's server_name and the IP detection used to take the slash.
-          sudo -E env HOPPER_DOMAIN=http://192.0.2.10/ HOPPER_WEBSERVER=none \
+          #
+          # Captured and then searched, never piped into `grep -q`: grep exits
+          # at the first match, the script dies of SIGPIPE on its next line, and
+          # `pipefail` turns that into a failed step. The seed had this exact
+          # bug and the installer carries the comment about it — which did not
+          # stop it being written again, here, one directory away.
+          PASTED=$(sudo -E env HOPPER_DOMAIN=http://192.0.2.10/ HOPPER_WEBSERVER=none \
             HOPPER_ADMIN_EMAIL=ci@example.com HOPPER_ADMIN_USERNAME=ci \
-            bash install/install.sh --check | grep -q 'domain read as 192.0.2.10'
+            bash install/install.sh --check)
+          printf '%s' "$PASTED" | grep -q 'domain read as 192.0.2.10'
 
           # A typo is refused with the choices named, at the moment it is made
           # — not several minutes later, after the machine has been changed.
