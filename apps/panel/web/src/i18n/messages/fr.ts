@@ -962,6 +962,9 @@ export const fr: Partial<Messages> = {
 
   'adminNode.editTitle': 'Modifier ce node',
   'adminNode.description': 'Description',
+  'adminNode.timezone': 'Fuseau horaire',
+  'adminNode.timezoneHint':
+    'Nom IANA, par exemple Europe/Paris. Tous les serveurs de ce node horodatent leurs logs avec.',
   'adminNode.sftpPort': 'Port SFTP',
   'adminNode.fqdnEditHint':
     'C’est ici que le panel joint le daemon, et que chaque navigateur ouvre une console. Le changement prend effet immédiatement, y compris pour les serveurs déjà présents sur ce node.',

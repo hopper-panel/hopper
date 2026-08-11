@@ -35,6 +35,8 @@ export interface NodeView {
   scheme: string;
   port: number;
   sftpPort: number;
+  /** IANA name; reaches every container on the node as `TZ`. */
+  timezone: string;
   memoryBytes: bigint;
   diskBytes: bigint;
   memoryOverallocation: number;
@@ -58,6 +60,7 @@ export function toNodeView(
     scheme: node.scheme,
     port: node.port,
     sftpPort: node.sftpPort,
+    timezone: node.timezone,
     memoryBytes: node.memoryBytes,
     diskBytes: node.diskBytes,
     memoryOverallocation: node.memoryOverallocation,
@@ -145,6 +148,7 @@ export class NodesService {
         scheme: dto.scheme,
         port: dto.port,
         sftpPort: dto.sftpPort,
+        timezone: dto.timezone,
         memoryBytes: BigInt(dto.memoryBytes),
         diskBytes: BigInt(dto.diskBytes),
         memoryOverallocation: dto.memoryOverallocation,
@@ -174,7 +178,8 @@ export class NodesService {
   async update(
     uuid: string,
     dto: UpdateNodeDto,
-    actorId: number,
+    /** Null when the change comes from the command line, with no session. */
+    actorId: number | null,
     context: RequestContext,
   ): Promise<NodeView> {
     const existing = await this.prisma.node.findUnique({ where: { uuid } });
@@ -192,6 +197,7 @@ export class NodesService {
         scheme: dto.scheme,
         port: dto.port,
         sftpPort: dto.sftpPort,
+        timezone: dto.timezone,
         memoryBytes: dto.memoryBytes === undefined ? undefined : BigInt(dto.memoryBytes),
         diskBytes: dto.diskBytes === undefined ? undefined : BigInt(dto.diskBytes),
         memoryOverallocation: dto.memoryOverallocation,
@@ -459,6 +465,10 @@ export class NodesService {
       system: {
         rootDirectory: '/var/lib/hopper',
         sftp: { enabled: true, bindPort: node.sftpPort },
+        // Written from the row and not from whatever the file said before: this
+        // document is regenerated on every token rotation, so a timezone edited
+        // into it by hand survives exactly until the next one.
+        timezone: node.timezone,
       },
       docker: { socket: '/var/run/docker.sock' },
     };

@@ -257,6 +257,20 @@ model Node {
 
   sftpPort Int @default(2022)
 
+  /// IANA timezone the servers on this node run in, e.g. `Europe/Paris`.
+  ///
+  /// It reaches every container as `TZ`, which is what decides the time
+  /// written in front of each line of a game server's log. The daemon has
+  /// always read it from `system.timezone` in daemon.yml and defaulted to UTC
+  /// — but nothing ever wrote it, so every installation ran on UTC and every
+  /// operator outside it read their own logs an hour or six off.
+  ///
+  /// Stored here rather than in the file because the file is generated: it is
+  /// rewritten from this row every time a token is rotated or the
+  /// configuration is applied, and anything edited into it by hand is lost at
+  /// the next rotation.
+  timezone String @default("UTC")
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

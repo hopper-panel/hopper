@@ -43,6 +43,60 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # The interview, on its own, before anything is installed.
+      #
+      # `--check` asks every question, prints the recap and stops — nothing
+      # above that line writes anything, which is the property the whole script
+      # is arranged around. It runs in a second, so the answers can be tried in
+      # combinations no full installation would ever be spent on.
+      #
+      # Worth its own step: the questions are read from variables passed by
+      # name, and bash scopes locals dynamically. A local named like the
+      # caller's variable silently swallows the answer — with `ask_yes_no` that
+      # means every yes/no question answers "no", on a script whose whole job
+      # is to act on what it was told.
+      - name: The questions, asked and answered
+        env:
+          HOPPER_NONINTERACTIVE: '1'
+        run: |
+          set -euo pipefail
+
+          OUT=$(sudo -E env HOPPER_DOMAIN=panel.example.com HOPPER_WEBSERVER=none \
+            HOPPER_ADMIN_EMAIL=ci@example.com HOPPER_ADMIN_USERNAME=ci \
+            HOPPER_PANEL_NAME='CI panel' HOPPER_LOCALE=fr HOPPER_TIMEZONE=Europe/Paris \
+            bash install/install.sh --check)
+          printf '%s\n' "$OUT"
+
+          # Every answer reaches the recap — the operator's only chance to see
+          # what is about to happen.
+          printf '%s' "$OUT" | grep -q 'http://panel.example.com:8080'
+          printf '%s' "$OUT" | grep -q 'CI panel'
+          printf '%s' "$OUT" | grep -qE 'Language +fr'
+          printf '%s' "$OUT" | grep -q 'Europe/Paris'
+
+          # And nothing on this machine moved.
+          test ! -e /opt/hopper
+          test ! -e /etc/hopper
+
+          # A pasted URL is read as a host name. All three of APP_URL, the
+          # vhost's server_name and the IP detection used to take the slash.
+          sudo -E env HOPPER_DOMAIN=http://192.0.2.10/ HOPPER_WEBSERVER=none \
+            HOPPER_ADMIN_EMAIL=ci@example.com HOPPER_ADMIN_USERNAME=ci \
+            bash install/install.sh --check | grep -q 'domain read as 192.0.2.10'
+
+          # A typo is refused with the choices named, at the moment it is made
+          # — not several minutes later, after the machine has been changed.
+          ! sudo -E env HOPPER_DOMAIN=panel.example.com HOPPER_WEBSERVER=ngnix \
+            HOPPER_ADMIN_EMAIL=ci@example.com HOPPER_ADMIN_USERNAME=ci \
+            bash install/install.sh --check
+
+          # An unknown timezone would not fail where it lands: the container
+          # falls back to UTC without a word, which is what the answer was
+          # meant to change.
+          ! sudo -E env HOPPER_DOMAIN=panel.example.com HOPPER_WEBSERVER=none \
+            HOPPER_ADMIN_EMAIL=ci@example.com HOPPER_ADMIN_USERNAME=ci \
+            HOPPER_TIMEZONE=Mars/Olympus bash install/install.sh --check
+
       - name: Run the installer
         env:
           # No domain: an IP address cannot receive a certificate, and the
@@ -55,6 +109,12 @@ jobs:
           HOPPER_TLS: 'no'
           HOPPER_ADMIN_EMAIL: ci@example.com
           HOPPER_ADMIN_USERNAME: ci
+          # Answered, so the rest of this job can check they were honoured. A
+          # locale and a timezone that are not the defaults, because a default
+          # proves nothing about whether the answer was read.
+          HOPPER_LOCALE: fr
+          HOPPER_TIMEZONE: Europe/Paris
+          HOPPER_PANEL_NAME: CI panel
           # Installed from this checkout, not from the published repository:
           # the point is to test the branch under review.
           HOPPER_REPOSITORY: ${{ github.workspace }}
@@ -84,8 +144,40 @@ jobs:
           # allocations, on which no server can be created at all.
           sudo -u postgres psql -d hopper -tAc 'select count(*) from nodes' | grep -qv '^0$'
 
+      # The two answers that had nowhere to go until now.
+      #
+      # A panel installed in one command answered in English and stamped every
+      # game server's log in UTC, and both were settings the operator could
+      # only reach after signing in — in English — to a panel called Hopper.
+      - name: The language and the timezone that were asked for
+        run: |
+          set -euo pipefail
+
+          test "$(sudo -u postgres psql -d hopper -tAc \
+            "select value from settings where key = 'defaultLocale'")" = fr
+          test "$(sudo -u postgres psql -d hopper -tAc \
+            "select value from settings where key = 'panelName'")" = 'CI panel'
+
+          # What the browser is served, which is the only version of this that
+          # an operator experiences.
+          curl -fsS http://127.0.0.1:8080/api/panel | grep -q '"locale":"fr"'
+
+          # And the file the daemon reads, which is generated from the node row
+          # — so this also says the row carries it.
+          sudo grep -q 'timezone: Europe/Paris' /etc/hopper/daemon.yml
+
       - name: End to end — a server on a port that is not the default
         run: sudo -E bash .github/scripts/install-e2e.sh
+
+      # Where the timezone was always going: `TZ` inside the container, which
+      # is what puts the time on every line a game server prints.
+      - name: A server runs on the timezone that was asked for
+        run: |
+          set -euo pipefail
+          CID=$(sudo docker ps -aq --filter 'name=^hopper-' | head -1)
+          test -n "$CID"
+          sudo docker inspect "$CID" --format '{{range .Config.Env}}{{println .}}{{end}}' |
+            grep -qx 'TZ=Europe/Paris'
 
       # The two directories the panel's buttons write into, and the account
       # that has to be able to write them.
@@ -214,6 +306,13 @@ jobs:
           # And a rerun that creates no administrator says how to get back in,
           # rather than printing nothing where the password used to be.
           printf '%s' "$OUT" | grep -q 'hopper user:password --username ci'
+
+          # The node follows the address too. It did not: `.env` and the vhost
+          # moved while the node row kept the name typed months earlier, so the
+          # panel went on calling the daemon at an address nothing answered on
+          # — and went on handing it an allowed origin for a panel that had
+          # moved, which is "Origin not allowed" on every console.
+          test "$(sudo -u postgres psql -d hopper -tAc 'select fqdn from nodes limit 1')" = 192.0.2.10
 
           systemctl is-active --quiet hopper-panel
 
