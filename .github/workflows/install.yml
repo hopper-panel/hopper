@@ -87,6 +87,87 @@ jobs:
       - name: End to end — a server on a port that is not the default
         run: sudo -E bash .github/scripts/install-e2e.sh
 
+      # The two directories the panel's buttons write into, and the account
+      # that has to be able to write them.
+      #
+      # `install.sh` created the updater's and not the node applier's, and
+      # /var/lib/hopper belongs to root — so the units were installed, the
+      # button was offered, and pressing it answered "Internal server error" on
+      # every installation. Nothing above this line could see that: the panel
+      # was up, the daemon was up, and a server had been created and started.
+      - name: The panel can write the directories its own buttons use
+        run: |
+          set -euo pipefail
+          for DIR in /var/lib/hopper/updates /var/lib/hopper/node-apply; do
+            test -d "$DIR" || { ls -ld /var/lib/hopper; exit 1; }
+            sudo -u hopper touch "$DIR/.probe"
+            sudo rm -f "$DIR/.probe"
+          done
+
+      # And the whole chain behind the button, run for real: the panel asks, a
+      # root unit writes /etc/hopper/daemon.yml and restarts hopperd.
+      #
+      # The mode is asserted because it is the entire reason this exists. A
+      # daemon.yml left readable makes hopperd exit 78 at every start, five
+      # times, and then stop trying — while the panel reports the node as
+      # merely unreachable, which sends whoever is looking at it to the network.
+      - name: The panel can configure the machine it runs on
+        run: |
+          set -euo pipefail
+          API=http://127.0.0.1:8080
+
+          TOKEN=$(curl -fsS -X POST "$API/api/auth/login" -H 'content-type: application/json' \
+            -d "{\"identifier\":\"ci\",\"password\":\"$HOPPER_ADMIN_PASSWORD\"}" \
+            | python3 -c 'import sys,json;print(json.load(sys.stdin)["accessToken"])')
+          AUTH="authorization: Bearer $TOKEN"
+
+          NODE=$(curl -fsS -H "$AUTH" "$API/api/admin/nodes?perPage=10" \
+            | python3 -c 'import sys,json;print(json.load(sys.stdin)["data"][0]["uuid"])')
+
+          # The body, not just the status: when the panel refuses, its message
+          # is the whole point of the refusal — and `curl -f` prints none of
+          # it, leaving a step that failed with "exit code 22".
+          CODE=$(curl -sS -o /tmp/apply.json -w '%{http_code}' \
+            -X POST -H "$AUTH" "$API/api/admin/nodes/$NODE/apply-locally")
+
+          if [ "$CODE" != 202 ]; then
+            cat /tmp/apply.json
+            echo
+            # The two things that make it refuse, printed together: the mount
+            # namespace the panel actually runs in, and the directory it wants.
+            systemctl show hopper-panel -p ReadWritePaths
+            ls -ld /var/lib/hopper/node-apply || true
+            exit 1
+          fi
+
+          STATE=unknown
+          for _ in $(seq 1 30); do
+            sleep 2
+            STATE=$(curl -fsS -H "$AUTH" "$API/api/admin/nodes/local-apply/status" \
+              | python3 -c 'import sys,json;print(json.load(sys.stdin)["state"])')
+            [ "$STATE" = succeeded ] && break
+            [ "$STATE" = failed ] && break
+          done
+
+          if [ "$STATE" != succeeded ]; then
+            curl -fsS -H "$AUTH" "$API/api/admin/nodes/local-apply/status" || true
+            sudo journalctl -u hopper-node-apply -n 50 --no-pager || true
+            exit 1
+          fi
+
+          test "$(sudo stat -c %a /etc/hopper/daemon.yml)" = 600
+
+          # The daemon comes back, and answers with the token it was just
+          # given: a rotation the panel failed to record would show up here as
+          # a node that authenticates against nothing.
+          for _ in $(seq 1 15); do
+            sleep 2
+            curl -fsS -o /dev/null -H "$AUTH" "$API/api/admin/nodes/$NODE/health" && exit 0
+          done
+
+          sudo journalctl -u hopperd -n 50 --no-pager || true
+          exit 1
+
       # An operator reinstalled onto his LAN address, was told
       # `Panel : http://192.168.1.141`, and landed on the default nginx page:
       # `.env` and the vhost are both kept on a rerun, so the panel stayed on

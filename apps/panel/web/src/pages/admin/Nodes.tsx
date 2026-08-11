@@ -3,10 +3,11 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { FormDialog } from '../../components/FormDialog';
 import { PageHeader } from '../../components/PageHeader';
-import { Alert, Badge, Button, Card, EmptyState, Field, Input, Spinner } from '../../components/ui';
+import { Badge, Button, Card, EmptyState, Field, Input, Spinner } from '../../components/ui';
 import { useTranslation } from '../../i18n';
-import { ApiError, api, type NodeSummary, type Paginated } from '../../lib/api';
+import { api, type NodeSummary, type Paginated } from '../../lib/api';
 import { formatBytes } from '../../lib/format';
+import { DaemonConfiguration } from './DaemonConfiguration';
 
 const GIB = 1024 ** 3;
 
@@ -227,85 +228,5 @@ function CreateNodeForm({
         </Field>
       </div>
     </FormDialog>
-  );
-}
-
-/**
- * The document a new node needs, and the button that saves copying it.
- *
- * Three manual steps used to follow this screen — write the file, `chmod 600`,
- * restart hopperd — and the middle one is the one that bites: a file left at
- * 0644 makes hopperd exit 78 at every start, while the panel reports the node
- * as merely unreachable. An operator lost an evening to it after piping the
- * document through `tee`, which recreates the file at the shell's umask.
- *
- * So the panel offers to do it, for the machine it runs on. The document stays
- * on screen because a second machine still needs it: nothing here can write a
- * root-owned file on somebody else's host, and it should not be able to.
- */
-function DaemonConfiguration({
-  nodeUuid,
-  value,
-  onDismiss,
-}: {
-  nodeUuid: string;
-  value: string;
-  onDismiss: () => void;
-}) {
-  const { t } = useTranslation();
-  const [copied, setCopied] = useState(false);
-
-  const applyLocally = useMutation({
-    mutationFn: () => api.post<{ state: string }>(`/api/admin/nodes/${nodeUuid}/apply-locally`, {}),
-  });
-
-  return (
-    <Card className="mb-6 border-accent/40">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h2 className="font-medium text-content">{t('adminNodes.configTitle')}</h2>
-          <p className="mt-1 text-sm text-content-muted">{t('adminNodes.configSteps')}</p>
-          <p className="mt-2 text-sm text-accent">{t('adminNodes.configNote')}</p>
-        </div>
-        <Button variant="ghost" onClick={onDismiss}>
-          {t('common.close')}
-        </Button>
-      </div>
-
-      <pre className="mt-4 max-h-80 overflow-auto rounded-lg border border-border-subtle bg-surface p-4 text-xs text-content">
-        {value}
-      </pre>
-
-      <div className="mt-3 flex flex-wrap items-center gap-2">
-        <Button
-          onClick={() => {
-            void navigator.clipboard.writeText(value).then(() => setCopied(true));
-          }}
-        >
-          {copied ? t('adminNodes.copied') : t('adminNodes.copy')}
-        </Button>
-
-        <Button
-          variant="primary"
-          disabled={applyLocally.isPending || applyLocally.isSuccess}
-          onClick={() => applyLocally.mutate()}
-        >
-          {applyLocally.isPending ? t('adminNodes.applying') : t('adminNodes.applyHere')}
-        </Button>
-      </div>
-
-      {applyLocally.isSuccess ? (
-        <p className="mt-3 text-sm text-content">{t('adminNodes.applyStarted')}</p>
-      ) : null}
-
-      {/* The API refuses when this machine has no root-side unit, and its
-          message carries the commands to run instead. Rendered rather than
-          swallowed: it is the whole of the fallback. */}
-      {applyLocally.error instanceof ApiError ? (
-        <div className="mt-3">
-          <Alert>{applyLocally.error.message}</Alert>
-        </div>
-      ) : null}
-    </Card>
   );
 }

@@ -481,6 +481,13 @@ install -m 644 "$HOPPER_ROOT/install/hopper-update.path" /etc/systemd/system/hop
 # restart a service by hand — three steps, of which the middle one produces a
 # daemon that refuses to start and a panel that reports the node as merely
 # unreachable.
+#
+# Its spool is created here for the same reason the updater's is, and the first
+# release shipped without this line: /var/lib/hopper belongs to root, so the
+# panel — which runs as `hopper` — could not create the directory it was about
+# to write into. The units were installed, the button was offered, and pressing
+# it answered "Internal server error" with nothing in it to act on.
+install -d -o hopper -g hopper -m 700 "$DATA_ROOT/node-apply"
 install -m 644 "$HOPPER_ROOT/install/hopper-node-apply.service" /etc/systemd/system/hopper-node-apply.service
 install -m 644 "$HOPPER_ROOT/install/hopper-node-apply.path" /etc/systemd/system/hopper-node-apply.path
 
