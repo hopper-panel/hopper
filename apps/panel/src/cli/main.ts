@@ -3,7 +3,8 @@ import type { INestApplicationContext } from '@nestjs/common';
 import { AppModule } from '../app.module.js';
 import { PANEL_VERSION } from '../version.js';
 import { runDoctor } from './commands/doctor.js';
-import { nodeCreate, nodeToken } from './commands/node.js';
+import { nodeCreate, nodeToken, nodeUpdate } from './commands/node.js';
+import { settingsList, settingsSet } from './commands/settings.js';
 import { createUser, resetPassword } from './commands/user.js';
 import { parseFlags, type Flags } from './flags.js';
 import { fatal, line } from './output.js';
@@ -49,10 +50,28 @@ const COMMANDS: Command[] = [
     run: (context, flags) => resetPassword(context, flags),
   },
   {
+    name: 'settings:list',
+    summary: 'Prints the instance settings.',
+    run: (context) => settingsList(context),
+  },
+  {
+    name: 'settings:set',
+    summary: 'Changes one instance setting.',
+    usage: 'hopper settings:set --key defaultLocale --value fr',
+    run: (context, flags) => settingsSet(context, flags),
+  },
+  {
     name: 'node:create',
     summary: 'Declares a node and returns its daemon.yml.',
-    usage: 'hopper node:create --name local --fqdn panel.example.com [--scheme http]',
+    usage:
+      'hopper node:create --name local --fqdn panel.example.com [--scheme http] [--timezone Europe/Paris]',
     run: (context, flags) => nodeCreate(context, flags),
+  },
+  {
+    name: 'node:update',
+    summary: 'Changes a declared node: address, scheme, timezone, ports.',
+    usage: 'hopper node:update --node <uuid or name> [--fqdn …] [--timezone Europe/Paris]',
+    run: (context, flags) => nodeUpdate(context, flags),
   },
   {
     name: 'node:token',

@@ -947,6 +947,9 @@ export const en = {
 
   'adminNode.editTitle': 'Edit this node',
   'adminNode.description': 'Description',
+  'adminNode.timezone': 'Timezone',
+  'adminNode.timezoneHint':
+    'IANA name, e.g. Europe/Paris. Every server on this node stamps its logs with it.',
   'adminNode.sftpPort': 'SFTP port',
   'adminNode.fqdnEditHint':
     'The panel reaches the daemon here, and so does every browser opening a console. Changing it takes effect at once, for the servers already on this node as well.',

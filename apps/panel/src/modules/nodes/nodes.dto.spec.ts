@@ -115,6 +115,7 @@ describe('createNodeSchema', () => {
       scheme: 'https',
       port: 8443,
       sftpPort: 2022,
+      timezone: 'UTC',
       memoryBytes: 0,
       diskBytes: 0,
       memoryOverallocation: 0,
@@ -126,5 +127,33 @@ describe('createNodeSchema', () => {
   it('still requires the two that have none', () => {
     expect(createNodeSchema.safeParse({ name: 'node-1' }).success).toBe(false);
     expect(createNodeSchema.safeParse({ fqdn: 'node1.example.com' }).success).toBe(false);
+  });
+});
+
+/**
+ * The timezone reaches every container on the node as `TZ`.
+ *
+ * Validated rather than trusted, because a name the tz database does not know
+ * is not an error where it lands: the container falls back to UTC without a
+ * word, which is exactly the behaviour the operator was trying to change. The
+ * refusal has to happen here, at the only point where anybody is watching.
+ */
+describe('the node timezone', () => {
+  it.each(['UTC', 'Europe/Paris', 'America/New_York', 'Asia/Tokyo'])('accepts %s', (zone) => {
+    expect(
+      createNodeSchema.safeParse({ name: 'n', fqdn: 'n.example.com', timezone: zone }).success,
+    ).toBe(true);
+  });
+
+  it.each(['Europe/Paris ', 'Mars/Olympus', 'CEST', ''])('refuses %s', (zone) => {
+    expect(
+      createNodeSchema.safeParse({ name: 'n', fqdn: 'n.example.com', timezone: zone }).success,
+    ).toBe(false);
+  });
+
+  it('is left alone by an update that does not mention it', () => {
+    // The whole reason the shape is split: a rename must not send the node
+    // back to UTC and every server's log with it.
+    expect(updateNodeSchema.parse({ name: 'renamed' })).not.toHaveProperty('timezone');
   });
 });

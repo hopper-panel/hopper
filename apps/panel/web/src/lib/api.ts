@@ -207,6 +207,8 @@ export interface NodeSummary {
   scheme: string;
   port: number;
   sftpPort: number;
+  /** IANA name; every container on the node runs with it as `TZ`. */
+  timezone: string;
   memoryBytes: number;
   diskBytes: number;
   /** -1 = no limit, 0 = overallocation forbidden. */

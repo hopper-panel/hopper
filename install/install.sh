@@ -8,22 +8,26 @@
 # leaves a reachable instance behind. Built for Debian 12+, Ubuntu 22.04+, Rocky
 # and AlmaLinux 9+.
 #
-# The script is **interactive by default** but entirely drivable through
-# environment variables, for an automated deployment:
+# Everything it needs to know is asked **before it writes anything**, and every
+# answer can be given as an environment variable instead, for an automated
+# deployment:
 #
 #   HOPPER_DOMAIN=panel.example.com HOPPER_WEBSERVER=nginx HOPPER_TLS=yes \
 #   HOPPER_ADMIN_EMAIL=me@example.com HOPPER_ADMIN_USERNAME=me \
+#   HOPPER_PANEL_NAME="My panel" HOPPER_LOCALE=fr HOPPER_TIMEZONE=Europe/Paris \
 #   HOPPER_NONINTERACTIVE=1 bash install.sh
 #
 # Rerunning the script on an existing installation updates the code without
-# touching the database, the .env file or the vhosts already written.
+# touching the database, the .env file or the vhosts already written — and every
+# question is asked again with the current answer offered as the default, so a
+# rerun that changes nothing is a matter of pressing Enter.
 
 # Re-exec under bash when started by something else.
 #
 # `sh install.sh` is a natural thing to type and every page here says `bash`,
 # which is exactly the kind of instruction that gets half-followed. On Debian
 # `sh` is dash: it would run most of this file and mangle the rest, starting
-# with `$'[1m'`, which it leaves as literal text and turns every heading
+# with `$'[1m'`, which it leaves as literal text and turns every heading
 # into escape codes. Reported against `uninstall.sh` by an operator who typed
 # `sh`; the same trap was here.
 if [ -z "${BASH_VERSION:-}" ]; then
@@ -40,6 +44,16 @@ DAEMON_PORT="${HOPPER_DAEMON_PORT:-8443}"
 SFTP_PORT="${HOPPER_SFTP_PORT:-2022}"
 REPOSITORY="${HOPPER_REPOSITORY:-https://github.com/hopper-panel/hopper.git}"
 NODE_MAJOR=22
+
+DB_NAME="${HOPPER_DB_NAME:-hopper}"
+DB_USER="${HOPPER_DB_USER:-hopper}"
+
+ENV_FILE="$HOPPER_ROOT/apps/panel/.env"
+DAEMON_FILE="$CONFIG_ROOT/daemon.yml"
+
+# The interface languages. Adding one here without adding it to the panel's
+# catalogue would offer an operator a language nothing is written in.
+LOCALES="en fr es de ru"
 
 # ---------------------------------------------------------------------------
 # Output
@@ -59,6 +73,9 @@ good()  { printf '  %s✓%s %s\n' "$GREEN" "$RESET" "$1"; }
 warn()  { printf '  %s!%s %s\n' "$YELLOW" "$RESET" "$1"; }
 die()   { printf '\n%s✗ %s%s\n' "$RED" "$1" "$RESET" >&2; exit 1; }
 
+# Two columns, so a recap of a dozen answers can be read down the left edge.
+pair()  { printf '  %-22s %s\n' "$1" "$2"; }
+
 # ---------------------------------------------------------------------------
 # Prerequisites
 # ---------------------------------------------------------------------------
@@ -75,8 +92,6 @@ case "${ID:-} ${ID_LIKE:-}" in
   *) die "Unsupported distribution: ${PRETTY_NAME:-unknown}. Debian, Ubuntu, Rocky and Alma are supported." ;;
 esac
 
-info "System: ${PRETTY_NAME:-$ID} ($FAMILY family)"
-
 install_packages() {
   if [ "$FAMILY" = debian ]; then
     DEBIAN_FRONTEND=noninteractive apt-get install -y "$@" >/dev/null
@@ -86,28 +101,153 @@ install_packages() {
 }
 
 # ---------------------------------------------------------------------------
-# Questions
+# What is already here
+#
+# Read before a single question is asked, because every question is better with
+# the current answer in front of it. A rerun that used to propose
+# `hostname -f` while the panel had been answering on a LAN address for weeks
+# invited the operator to change the address by accident — and the one
+# reinstall that genuinely means to change it looks exactly the same from here.
+# ---------------------------------------------------------------------------
+
+FRESH=1
+[ ! -f "$ENV_FILE" ] || FRESH=0
+
+CURRENT_URL=''
+[ ! -f "$ENV_FILE" ] || CURRENT_URL=$(sed -n 's/^APP_URL=//p' "$ENV_FILE" | head -1)
+
+# The host part of whatever the panel currently answers on, so the address
+# question can offer it back without its scheme.
+CURRENT_DOMAIN="${CURRENT_URL#http://}"
+CURRENT_DOMAIN="${CURRENT_DOMAIN#https://}"
+CURRENT_DOMAIN="${CURRENT_DOMAIN%%[:/]*}"
+
+# One setting out of the database, or nothing at all. Everything here has to
+# survive a machine where PostgreSQL is not installed yet, which is the normal
+# state of a first installation.
+db_setting() {
+  command -v psql >/dev/null 2>&1 || return 0
+  su - postgres -c "psql -tAq -d $DB_NAME -c \"select value from settings where key = '$1'\"" \
+    2>/dev/null | head -1
+}
+
+CURRENT_PANEL_NAME=$(db_setting panelName || true)
+CURRENT_LOCALE=$(db_setting defaultLocale || true)
+
+# The timezone the servers are already running in. It lives on the node row and
+# is copied into daemon.yml every time that file is written, so the file is the
+# cheaper place to read it — no database, no build, and it is the value the
+# containers actually got.
+CURRENT_TIMEZONE=''
+if [ -f "$DAEMON_FILE" ]; then
+  CURRENT_TIMEZONE=$(sed -n 's/^[[:space:]]*timezone:[[:space:]]*//p' "$DAEMON_FILE" | head -1)
+fi
+
+# What the machine itself is set to, which is the best guess nobody has to type.
+HOST_TIMEZONE=UTC
+if command -v timedatectl >/dev/null 2>&1; then
+  HOST_TIMEZONE=$(timedatectl show -p Timezone --value 2>/dev/null || echo UTC)
+elif [ -L /etc/localtime ]; then
+  HOST_TIMEZONE=$(readlink -f /etc/localtime | sed 's|.*/zoneinfo/||')
+fi
+[ -n "$HOST_TIMEZONE" ] || HOST_TIMEZONE=UTC
+
+# The web server already in front of the panel, if there is one.
+CURRENT_WEBSERVER=''
+if [ -f /etc/nginx/sites-available/hopper.conf ] || [ -f /etc/nginx/conf.d/hopper.conf ]; then
+  CURRENT_WEBSERVER=nginx
+elif [ -f /etc/apache2/sites-available/hopper.conf ] || [ -f /etc/httpd/conf.d/hopper.conf ]; then
+  CURRENT_WEBSERVER=apache
+elif [ "$FRESH" = 0 ]; then
+  CURRENT_WEBSERVER=none
+fi
+
+# ---------------------------------------------------------------------------
+# The interview
+#
+# Everything is asked here, and nothing outside this section asks anything. The
+# script used to interleave questions with work — install packages, ask, build
+# for four minutes, ask again — which meant an operator had to sit through a
+# build to find out the next question, and a wrong answer was discovered after
+# the machine had already been changed.
 # ---------------------------------------------------------------------------
 
 ask() {
   # $1 question, $2 default, $3 name of the variable to set
-  local answer=''
+  #
+  # The locals are named `__like_this` throughout this section because bash
+  # scopes them dynamically: a local called `answer` here would shadow the
+  # caller's own `answer`, and `printf -v answer` would then assign to this
+  # function's copy and return nothing. `ask_yes_no` reads exactly like that,
+  # and it is a silent failure — every question answers "no".
+  local __value=''
 
   if [ -n "${HOPPER_NONINTERACTIVE:-}" ]; then
-    answer="$2"
+    __value="$2"
   else
-    read -r -p "  $1 [$2] " answer </dev/tty || answer=''
-    [ -n "$answer" ] || answer="$2"
+    read -r -p "  $1 [$2] " __value </dev/tty || __value=''
+    [ -n "$__value" ] || __value="$2"
   fi
 
-  printf -v "$3" '%s' "$answer"
+  printf -v "$3" '%s' "$__value"
+}
+
+# A question whose answer has to be one of a list, asked again until it is.
+#
+# The old script accepted anything and died several lines later with
+# "Unknown web server: ngnix" — after the confirmation, which is the worst
+# possible moment to find out that a typo has cost the whole run.
+ask_choice() {
+  # $1 question, $2 default, $3 variable, $4… allowed values
+  local __question="$1" __default="$2" __name="$3" __choice='' __candidate
+  shift 3
+
+  while true; do
+    ask "$__question ($(printf '%s/' "$@" | sed 's|/$||'))" "$__default" __choice
+
+    for __candidate in "$@"; do
+      if [ "$__choice" = "$__candidate" ]; then
+        printf -v "$__name" '%s' "$__choice"
+        return 0
+      fi
+    done
+
+    # A script cannot be asked again: a wrong value in the environment is a
+    # mistake in whatever generated it, and looping would hang a deployment.
+    [ -z "${HOPPER_NONINTERACTIVE:-}" ] ||
+      die "$__name: \"$__choice\" is not one of $*."
+
+    warn "\"$__choice\" is not one of $*."
+  done
+}
+
+yes_no() {
+  # Reads yes/oui/y/o as yes and everything else as no.
+  case "$1" in yes|y|oui|o|true|1) return 0 ;; *) return 1 ;; esac
+}
+
+ask_yes_no() {
+  # $1 question, $2 default (yes/no), $3 variable
+  local __yn=''
+  ask_choice "$1" "$2" __yn yes no y n oui non o
+  if yes_no "$__yn"; then printf -v "$3" '%s' yes; else printf -v "$3" '%s' no; fi
 }
 
 step "Configuration"
+info "${PRETTY_NAME:-$ID} · $FAMILY family"
+
+if [ "$FRESH" = 0 ]; then
+  note "An installation is already here — every answer defaults to the current one."
+fi
+
+info ""
+
+# --- Where the panel answers ------------------------------------------------
 
 DOMAIN="${HOPPER_DOMAIN:-}"
 if [ -z "$DOMAIN" ]; then
-  ask "Domain name of the panel (or IP address)" "$(hostname -f 2>/dev/null || hostname)" DOMAIN
+  ask "Domain name of the panel (or IP address)" \
+    "${CURRENT_DOMAIN:-$(hostname -f 2>/dev/null || hostname)}" DOMAIN
 fi
 
 # A host name, whatever was typed. People paste URLs.
@@ -145,37 +285,101 @@ esac
 
 WEBSERVER="${HOPPER_WEBSERVER:-}"
 if [ -z "$WEBSERVER" ]; then
-  ask "Web server (nginx / apache / none)" nginx WEBSERVER
+  ask_choice "Web server in front of the panel" "${CURRENT_WEBSERVER:-nginx}" \
+    WEBSERVER nginx apache none
 fi
 
 case "$WEBSERVER" in
-  nginx|apache|none|aucun) ;;
+  nginx|apache|none) ;;
+  aucun) WEBSERVER=none ;;
   *) die "Unknown web server: $WEBSERVER (expected: nginx, apache or none)" ;;
 esac
-[ "$WEBSERVER" != aucun ] || WEBSERVER=none
 
 TLS="${HOPPER_TLS:-}"
 if [ -z "$TLS" ]; then
   if [ "$WEBSERVER" = none ] || [ "$IS_IP" = 1 ]; then
     TLS=no
   else
-    ask "Obtain a Let's Encrypt certificate (yes/no)" yes TLS
+    ask_yes_no "Obtain a Let's Encrypt certificate" yes TLS
   fi
 fi
 
-case "$TLS" in yes|y|oui|o) TLS=yes ;; *) TLS=no ;; esac
+if yes_no "$TLS"; then TLS=yes; else TLS=no; fi
 
 if [ "$TLS" = yes ] && [ "$IS_IP" = 1 ]; then
   warn "Let's Encrypt does not certify an IP address: installing over HTTP."
   TLS=no
 fi
 
-CERTBOT_EMAIL="${HOPPER_ADMIN_EMAIL:-}"
+# --- Who runs it ------------------------------------------------------------
+
 ADMIN_EMAIL="${HOPPER_ADMIN_EMAIL:-}"
 [ -n "$ADMIN_EMAIL" ] || ask "Administrator email address" "admin@$DOMAIN" ADMIN_EMAIL
 ADMIN_USERNAME="${HOPPER_ADMIN_USERNAME:-}"
 [ -n "$ADMIN_USERNAME" ] || ask "Administrator username" admin ADMIN_USERNAME
-[ -n "$CERTBOT_EMAIL" ] || CERTBOT_EMAIL="$ADMIN_EMAIL"
+CERTBOT_EMAIL="${HOPPER_CERTBOT_EMAIL:-$ADMIN_EMAIL}"
+
+# --- What it looks like -----------------------------------------------------
+
+PANEL_NAME="${HOPPER_PANEL_NAME:-}"
+if [ -z "$PANEL_NAME" ]; then
+  ask "Name of this panel" "${CURRENT_PANEL_NAME:-Hopper}" PANEL_NAME
+fi
+[ -n "$PANEL_NAME" ] || die "The panel needs a name."
+
+LOCALE="${HOPPER_LOCALE:-}"
+if [ -z "$LOCALE" ]; then
+  # The language everybody who has not chosen one is served. Every operator
+  # until now landed in English on a panel they had installed in one command,
+  # and had to find the setting to change it — in English.
+  # shellcheck disable=SC2086
+  ask_choice "Language of the interface" "${CURRENT_LOCALE:-en}" LOCALE $LOCALES
+fi
+
+# --- What time it is --------------------------------------------------------
+
+# The timezone the game servers run in, which is what stamps the time on every
+# line of their logs. The daemon has always read it and defaulted it to UTC;
+# nothing ever asked, so every installation ran on UTC and every operator
+# outside it read their own logs offset by their own longitude.
+TIMEZONE="${HOPPER_TIMEZONE:-}"
+if [ -z "$TIMEZONE" ]; then
+  ask "Timezone of the servers" "${CURRENT_TIMEZONE:-$HOST_TIMEZONE}" TIMEZONE
+fi
+
+while [ ! -f "/usr/share/zoneinfo/$TIMEZONE" ]; do
+  # Checked against this machine's own tz database, because that is the one the
+  # containers will use. An unknown name is not an error where it lands: the
+  # container silently falls back to UTC, which is exactly what the answer was
+  # meant to change.
+  [ -z "${HOPPER_NONINTERACTIVE:-}" ] ||
+    die "Unknown timezone: $TIMEZONE (expected an IANA name such as Europe/Paris)."
+
+  warn "This machine does not know the timezone \"$TIMEZONE\"."
+  note "IANA names, as in Europe/Paris, America/New_York, UTC."
+  ask "Timezone of the servers" "$HOST_TIMEZONE" TIMEZONE
+done
+
+# Offering to move the machine's own clock, and only offering.
+#
+# Default yes when the host is still on UTC — nobody chooses UTC on a machine
+# they run games on, it is what an untouched installation says — and no when it
+# is set to anything else, which somebody did on purpose.
+SET_HOST_TIMEZONE=no
+if [ "$HOST_TIMEZONE" != "$TIMEZONE" ] && command -v timedatectl >/dev/null 2>&1; then
+  SUGGEST=no
+  [ "$HOST_TIMEZONE" != UTC ] || SUGGEST=yes
+
+  SET_HOST_TIMEZONE="${HOPPER_SET_HOST_TIMEZONE:-}"
+  if [ -z "$SET_HOST_TIMEZONE" ]; then
+    ask_yes_no "This machine's clock is on $HOST_TIMEZONE — set it to $TIMEZONE too" \
+      "$SUGGEST" SET_HOST_TIMEZONE
+  fi
+
+  if yes_no "$SET_HOST_TIMEZONE"; then SET_HOST_TIMEZONE=yes; else SET_HOST_TIMEZONE=no; fi
+fi
+
+# --- What all that adds up to ----------------------------------------------
 
 if [ "$WEBSERVER" = none ]; then
   APP_URL="http://$DOMAIN:$PANEL_PORT"
@@ -190,15 +394,35 @@ fi
 if [ "$TLS" = yes ]; then NODE_SCHEME=https; else NODE_SCHEME=http; fi
 
 info ""
-info "Panel      : $APP_URL"
-info "Web server : $WEBSERVER"
-info "Daemon     : $NODE_SCHEME://$DOMAIN:$DAEMON_PORT"
-info "SFTP       : $DOMAIN:$SFTP_PORT"
+pair "Panel" "$APP_URL"
+pair "Name" "$PANEL_NAME"
+pair "Language" "$LOCALE"
+pair "Web server" "$WEBSERVER$([ "$TLS" = yes ] && echo ' · Let’s Encrypt' || true)"
+pair "Daemon" "$NODE_SCHEME://$DOMAIN:$DAEMON_PORT"
+pair "SFTP" "$DOMAIN:$SFTP_PORT"
+pair "Servers' timezone" "$TIMEZONE$([ "$SET_HOST_TIMEZONE" = yes ] && echo ' · this machine too' || true)"
+pair "Administrator" "$ADMIN_USERNAME <$ADMIN_EMAIL>"
+pair "Installed in" "$HOPPER_ROOT"
+info ""
 
 if [ -z "${HOPPER_NONINTERACTIVE:-}" ]; then
-  ask "Continue? (yes/no)" yes CONFIRM
-  case "$CONFIRM" in yes|y|oui|o) ;; *) die "Installation cancelled." ;; esac
+  ask_yes_no "Continue" yes CONFIRM
+  yes_no "$CONFIRM" || die "Installation cancelled."
 fi
+
+# A way to see the answers without living with them.
+#
+# `bash install.sh --check` reaches exactly this line and stops: nothing above
+# it writes anything, which is the property the rest of this file depends on
+# and the reason the questions were gathered here in the first place. It is
+# also what lets the interview be tested — every branch of it, on a machine
+# nobody has to rebuild afterwards.
+if [ -n "${HOPPER_INTERVIEW_ONLY:-}" ] || [ "${1:-}" = --check ]; then
+  note "Answers only: nothing on this machine has been changed."
+  exit 0
+fi
+
+note "Nothing else will be asked."
 
 # ---------------------------------------------------------------------------
 # System dependencies
@@ -208,21 +432,18 @@ step "System dependencies"
 
 if [ "$FAMILY" = debian ]; then
   DEBIAN_FRONTEND=noninteractive apt-get update -qq
-  install_packages ca-certificates curl gnupg git tar openssl
-else
-  install_packages ca-certificates curl gnupg git tar openssl
 fi
+install_packages ca-certificates curl gnupg git tar openssl
 good "base tools"
 
 if ! command -v node >/dev/null 2>&1 || [ "$(node -p 'process.versions.node.split(".")[0]')" -lt "$NODE_MAJOR" ]; then
   info "Installing Node $NODE_MAJOR…"
   if [ "$FAMILY" = debian ]; then
     curl -fsSL "https://deb.nodesource.com/setup_${NODE_MAJOR}.x" | bash - >/dev/null
-    install_packages nodejs
   else
     curl -fsSL "https://rpm.nodesource.com/setup_${NODE_MAJOR}.x" | bash - >/dev/null
-    install_packages nodejs
   fi
+  install_packages nodejs
 fi
 good "Node $(node -v)"
 
@@ -241,6 +462,12 @@ if ! command -v docker >/dev/null 2>&1; then
 fi
 good "Docker $(docker --version | cut -d' ' -f3 | tr -d ,)"
 
+if [ "$SET_HOST_TIMEZONE" = yes ]; then
+  timedatectl set-timezone "$TIMEZONE" >/dev/null 2>&1 &&
+    good "machine clock on $TIMEZONE" ||
+    warn "could not set this machine's clock to $TIMEZONE."
+fi
+
 # ---------------------------------------------------------------------------
 # PostgreSQL and Redis
 # ---------------------------------------------------------------------------
@@ -258,8 +485,6 @@ fi
 
 systemctl enable --now postgresql >/dev/null 2>&1 || die "PostgreSQL did not start."
 
-DB_NAME="${HOPPER_DB_NAME:-hopper}"
-DB_USER="${HOPPER_DB_USER:-hopper}"
 DB_PASSWORD="${HOPPER_DB_PASSWORD:-$(openssl rand -hex 24)}"
 
 # The role already exists when the script is rerun: the password is left alone,
@@ -347,8 +572,6 @@ good "panel, interface and daemon built"
 
 step "Panel configuration"
 
-ENV_FILE="$HOPPER_ROOT/apps/panel/.env"
-
 if [ -f "$ENV_FILE" ]; then
   # Kept, because `APP_SECRET` lives in it and encrypts the node tokens, the
   # SQL passwords and the two-factor secrets: rewriting the file would make
@@ -361,7 +584,6 @@ if [ -f "$ENV_FILE" ]; then
   # and left the panel on the address typed months earlier. Reported by an
   # operator who reinstalled onto his LAN address three times and kept landing
   # on the default nginx page — the vhost below had the same problem.
-  CURRENT_URL=$(sed -n 's/^APP_URL=//p' "$ENV_FILE" | head -1)
 
   # The panel listens on the loopback when a proxy sits in front of it, and on
   # every interface otherwise — without which it would be reachable from
@@ -493,6 +715,17 @@ install -m 644 "$HOPPER_ROOT/install/hopper-node-apply.path" /etc/systemd/system
 
 systemctl daemon-reload
 
+# The answers that live in the database, written before the panel is started so
+# that it reads them on the way up: the settings are cached in the process, and
+# a value written underneath a running panel is served from the next restart.
+step "Panel settings"
+
+hopper_cli() { HOPPER_ROOT="$HOPPER_ROOT" hopper "$@"; }
+
+hopper_cli settings:set --key panelName --value "$PANEL_NAME" >/dev/null
+hopper_cli settings:set --key defaultLocale --value "$LOCALE" >/dev/null
+good "name \"$PANEL_NAME\", language $LOCALE"
+
 # `enable --now` starts a stopped service and leaves a running one alone, which
 # made the script useless as the updater it advertises: the files on disk were
 # new, the process serving them was not.
@@ -506,8 +739,6 @@ systemctl daemon-reload
 systemctl enable hopper-panel >/dev/null
 systemctl restart hopper-panel
 good "hopper-panel"
-
-
 
 # ---------------------------------------------------------------------------
 # Web server
@@ -668,7 +899,7 @@ EOF
         TLS=no
         NODE_SCHEME=http
         APP_URL="http://$DOMAIN"
-        sed -i "s|^APP_URL=.*|APP_URL=$APP_URL|" "$HOPPER_ROOT/apps/panel/.env"
+        sed -i "s|^APP_URL=.*|APP_URL=$APP_URL|" "$ENV_FILE"
         systemctl restart hopper-panel
         warn "the panel has been put back on $APP_URL"
       fi
@@ -688,21 +919,63 @@ fi
 # sees it.
 # ---------------------------------------------------------------------------
 
+step "Node"
+
 # The local node is declared from the command line: on a single machine,
 # demanding a trip through the interface before anything works at all would gain
 # nothing.
-if [ ! -f "$CONFIG_ROOT/daemon.yml" ]; then
+if [ ! -f "$DAEMON_FILE" ]; then
   MEMORY_BYTES=$(( $(awk '/MemTotal/ {print $2}' /proc/meminfo) * 1024 ))
   DISK_BYTES=$(df -B1 --output=size "$DATA_ROOT" | tail -1 | tr -d ' ')
 
-  HOPPER_ROOT="$HOPPER_ROOT" hopper node:create \
+  hopper_cli node:create \
     --name "$(hostname -s)" --fqdn "$DOMAIN" --scheme "$NODE_SCHEME" \
-    --port "$DAEMON_PORT" --sftp-port "$SFTP_PORT" \
+    --port "$DAEMON_PORT" --sftp-port "$SFTP_PORT" --timezone "$TIMEZONE" \
     --memory "$MEMORY_BYTES" --disk "$DISK_BYTES" \
-    --output "$CONFIG_ROOT/daemon.yml" >/dev/null
-  good "local node declared"
+    --output "$DAEMON_FILE" >/dev/null
+  good "local node declared, servers on $TIMEZONE"
 else
-  note "daemon.yml already present, kept"
+  # A rerun that changes an answer has to change the machine, or the script is
+  # back to printing one thing and doing another.
+  #
+  # The node row is where the answers land: the panel calls the daemon at the
+  # address written there, `daemon.yml` is generated from it — the certificate
+  # it presents, the origin it accepts, the timezone it hands every container —
+  # and none of that used to move when the script was rerun on a new address.
+  # The panel went on calling the machine by the name it had months earlier,
+  # and reported it as unreachable.
+  #
+  # Which node is read from the file rather than guessed: a panel can hold
+  # several, and only one of them is this machine.
+  NODE_UUID=$(sed -n 's/^uuid:[[:space:]]*//p' "$DAEMON_FILE" | head -1)
+
+  if [ -z "$NODE_UUID" ]; then
+    warn "$DAEMON_FILE names no node — leaving it alone."
+  else
+    NODE_LOG=/tmp/hopper-node-update.log
+    NODE_STATUS=0
+
+    hopper_cli node:update --node "$NODE_UUID" \
+      --fqdn "$DOMAIN" --scheme "$NODE_SCHEME" \
+      --port "$DAEMON_PORT" --sftp-port "$SFTP_PORT" --timezone "$TIMEZONE" \
+      >"$NODE_LOG" 2>&1 || NODE_STATUS=$?
+
+    if [ "$NODE_STATUS" -ne 0 ]; then
+      sed 's/^/    /' "$NODE_LOG" >&2
+      # The likeliest cause is worth naming: the node this file was written for
+      # has been deleted from the panel since, which leaves the daemon
+      # authenticating against nothing and the panel calling it unreachable.
+      warn "the local node could not be updated — does node $NODE_UUID still exist?"
+    elif grep -q 'HOPPER_NODE_CHANGED=1' "$NODE_LOG"; then
+      # Rewritten only when something moved: the rewrite renews the node token,
+      # and renewing a secret on every rerun is a cost with no reason.
+      hopper_cli node:token --node "$NODE_UUID" --output "$DAEMON_FILE" >/dev/null
+      good "local node moved to $NODE_SCHEME://$DOMAIN:$DAEMON_PORT, servers on $TIMEZONE"
+      note "Its token was renewed to rewrite $DAEMON_FILE; the daemon restarts below."
+    else
+      note "daemon.yml already present and current, kept"
+    fi
+  fi
 fi
 
 systemctl enable hopperd >/dev/null
@@ -740,7 +1013,9 @@ if command -v getenforce >/dev/null 2>&1 && [ "$(getenforce)" = Enforcing ]; the
   step "SELinux"
   # Without this boolean, httpd and nginx are refused the connection to the
   # panel: the proxy answers 503 and nothing in their logs explains it.
-  setsebool -P httpd_can_network_connect 1 >/dev/null 2>&1 && good "outbound connections allowed for the web server"     || warn "could not set httpd_can_network_connect: the proxy will answer 503."
+  setsebool -P httpd_can_network_connect 1 >/dev/null 2>&1 &&
+    good "outbound connections allowed for the web server" ||
+    warn "could not set httpd_can_network_connect: the proxy will answer 503."
 fi
 
 if systemctl is-active --quiet firewalld 2>/dev/null; then
@@ -759,21 +1034,23 @@ fi
 
 step "Verification"
 sleep 3
-HOPPER_ROOT="$HOPPER_ROOT" hopper doctor || true
+hopper_cli doctor || true
 
 step "Done"
-info "Panel      : $APP_URL"
+pair "Panel" "$APP_URL"
+pair "Language" "$LOCALE"
+pair "Servers' timezone" "$TIMEZONE"
 
 if [ "$ADMIN_CREATED" = 1 ]; then
-  info "Username   : $ADMIN_USERNAME"
-  info "Password   : $ADMIN_PASSWORD"
+  pair "Username" "$ADMIN_USERNAME"
+  pair "Password" "$ADMIN_PASSWORD"
   note "Write it down: it is not kept in the clear."
 else
   # A rerun creates no account and therefore has no password to print. Saying
   # nothing at all left the operator staring at a sign-in form with credentials
   # from an installation they no longer remembered — and the way out is one
   # command they had no reason to know exists.
-  info "Username   : $ADMIN_USERNAME"
+  pair "Username" "$ADMIN_USERNAME"
   note "The administrator already existed, so no new password was generated."
   note "Lost it?     hopper user:password --username $ADMIN_USERNAME"
 fi

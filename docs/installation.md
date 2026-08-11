@@ -22,12 +22,30 @@ cd hopper
 sudo bash install/install.sh
 ```
 
-The script asks four questions — domain, web server, certificate, administrator account — then
+The script asks everything it needs **before it writes anything**: the address, the web server, the
+certificate, the administrator account, the name and language of the panel and the timezone the game
+servers run in. It then shows what it is about to do and waits for one confirmation. After that it
 installs Node, Docker, PostgreSQL and Redis, builds the panel, writes the systemd services, declares
-the local node and configures the vhost. Allow five to ten minutes, most of it the build.
+the local node and configures the vhost, with nothing further to answer. Allow five to ten minutes,
+most of it the build.
 
 At the end it prints the panel's address and the administrator's password, **which cannot be
 recovered afterwards**.
+
+To see the answers without installing anything:
+
+```bash
+sudo bash install/install.sh --check
+```
+
+It asks the same questions, prints the same recap and stops before touching the machine.
+
+### Rerunning it
+
+The script is also the updater, and a rerun asks every question again with **the current answer as
+the default** — so pressing Enter through it changes nothing. Change one answer and it moves: the
+address is written into `.env`, into the vhost and into the node the panel calls, all three, which
+is what makes reinstalling onto a new address actually work.
 
 ### Without interaction
 
@@ -43,15 +61,29 @@ sudo HOPPER_NONINTERACTIVE=1 \
      bash install/install.sh
 ```
 
-| Variable                | Role                            | Default             |
-| ----------------------- | ------------------------------- | ------------------- |
-| `HOPPER_DOMAIN`         | Domain or IP of the panel       | host name           |
-| `HOPPER_WEBSERVER`      | `nginx`, `apache` or `none`     | `nginx`             |
-| `HOPPER_TLS`            | `yes` to request a certificate  | `yes` with a domain |
-| `HOPPER_ADMIN_PASSWORD` | Password of the account created | generated           |
-| `HOPPER_ROOT`           | Installation directory          | `/opt/hopper`       |
-| `HOPPER_PORT`           | Port the panel listens on       | `8080`              |
-| `HOPPER_DAEMON_PORT`    | Port the daemon listens on      | `8443`              |
+| Variable                   | Role                                  | Default             |
+| -------------------------- | ------------------------------------- | ------------------- |
+| `HOPPER_DOMAIN`            | Domain or IP of the panel             | host name           |
+| `HOPPER_WEBSERVER`         | `nginx`, `apache` or `none`           | `nginx`             |
+| `HOPPER_TLS`               | `yes` to request a certificate        | `yes` with a domain |
+| `HOPPER_ADMIN_PASSWORD`    | Password of the account created       | generated           |
+| `HOPPER_PANEL_NAME`        | Name shown in the interface           | `Hopper`            |
+| `HOPPER_LOCALE`            | `en`, `fr`, `es`, `de`, `ru`          | `en`                |
+| `HOPPER_TIMEZONE`          | Timezone of the game servers          | this machine's      |
+| `HOPPER_SET_HOST_TIMEZONE` | `yes` to move the machine's clock too | asked               |
+| `HOPPER_ROOT`              | Installation directory                | `/opt/hopper`       |
+| `HOPPER_PORT`              | Port the panel listens on             | `8080`              |
+| `HOPPER_DAEMON_PORT`       | Port the daemon listens on            | `8443`              |
+
+### Language and timezone
+
+The language is the one served to anyone who has not chosen their own; every account can pick
+another from its own settings.
+
+The timezone is the one **the game servers** run in — it reaches every container as `TZ`, and it is
+what stamps the time on each line of a server's log. It is asked separately from the machine's own
+clock, which the script offers to align but never changes without being told to. Changing it later
+is a field on the node, in the administration.
 
 ### Without a web server
 

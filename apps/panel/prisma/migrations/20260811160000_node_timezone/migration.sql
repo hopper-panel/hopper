@@ -1,0 +1,11 @@
+-- The timezone the servers on a node run in.
+--
+-- The daemon has read `system.timezone` since it was written and defaults it
+-- to UTC; it puts the value in every container as `TZ`, which is what decides
+-- the time stamped on each line of a game server's log. Nothing ever wrote it.
+-- So every installation ran on UTC, and every operator outside it read their
+-- own logs offset by their own distance from Greenwich.
+--
+-- The column defaults to UTC, which is what those installations are already
+-- doing: an upgrade changes nothing until somebody answers the question.
+ALTER TABLE "nodes" ADD COLUMN     "timezone" TEXT NOT NULL DEFAULT 'UTC';

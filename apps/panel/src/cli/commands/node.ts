@@ -1,6 +1,6 @@
 import { chmod, writeFile } from 'node:fs/promises';
 import type { INestApplicationContext } from '@nestjs/common';
-import { createNodeSchema } from '../../modules/nodes/nodes.dto.js';
+import { createNodeSchema, updateNodeSchema } from '../../modules/nodes/nodes.dto.js';
 import { NodesService } from '../../modules/nodes/nodes.service.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { textOf, type Flags } from '../flags.js';
@@ -26,6 +26,10 @@ export async function nodeCreate(context: INestApplicationContext, flags: Flags)
     scheme: textOf(flags, 'scheme') ?? 'https',
     port: numberOf(flags, 'port') ?? 8443,
     sftpPort: numberOf(flags, 'sftp-port') ?? 2022,
+    // The installer asks for it; UTC only when nobody was asked. An
+    // unrecognised name is refused here rather than accepted and quietly
+    // ignored by every container on the node.
+    timezone: textOf(flags, 'timezone') ?? 'UTC',
     memoryBytes: numberOf(flags, 'memory') ?? 0,
     diskBytes: numberOf(flags, 'disk') ?? 0,
   });
@@ -66,6 +70,42 @@ function numberOf(flags: Flags, key: string): number | undefined {
   }
 
   return parsed;
+}
+
+/**
+ * The one node an identifier names, or a refusal.
+ *
+ * Refuses rather than picks when several match: rotating the wrong node's
+ * token cuts a machine off in production, and the mistake only shows when the
+ * daemon restarts.
+ */
+async function resolveNode(
+  prisma: PrismaService,
+  identifier: string | undefined,
+): Promise<{ uuid: string; name: string }> {
+  const matches = await prisma.node.findMany({
+    where: identifier === undefined ? {} : { OR: [{ uuid: identifier }, { name: identifier }] },
+    select: { uuid: true, name: true },
+    orderBy: { createdAt: 'asc' },
+  });
+
+  if (matches.length === 0) {
+    fatal(
+      identifier === undefined
+        ? 'No node declared. Create one from the administration first.'
+        : `No node matches "${identifier}".`,
+    );
+  }
+
+  if (matches.length > 1) {
+    fatal(
+      `Several nodes match, narrow it down with --node:\n  ${matches
+        .map((node) => `${node.name} (${node.uuid})`)
+        .join('\n  ')}`,
+    );
+  }
+
+  return matches[0]!;
 }
 
 /**
@@ -130,4 +170,67 @@ export async function nodeToken(context: INestApplicationContext, flags: Flags):
   line(`\n${bold('Token renewed')} — ${node.name}`);
   line(`  configuration written to ${output}`);
   line('  restart the daemon: systemctl restart hopperd');
+}
+
+/**
+ * Changes a declared node, from the machine it runs on.
+ *
+ * The installer's own use, and the reason it exists: rerunning the script with
+ * a different address moved `.env` and the vhost and left the node row alone,
+ * so the panel went on calling the daemon at the address typed months earlier
+ * — and went on handing that daemon an allowed origin for a panel that had
+ * moved. Both are written from this row, so this is where a reinstall has to
+ * land for the machine to follow the answers.
+ *
+ * It prints `HOPPER_NODE_CHANGED=1` when the row really changed. The installer
+ * reads that to decide whether to rewrite daemon.yml, which costs a token
+ * rotation: doing it on every rerun would renew a secret for nothing.
+ */
+export async function nodeUpdate(context: INestApplicationContext, flags: Flags): Promise<void> {
+  const prisma = context.get(PrismaService);
+  const nodes = context.get(NodesService);
+
+  const node = await resolveNode(prisma, textOf(flags, 'node'));
+  const current = await prisma.node.findUnique({ where: { uuid: node.uuid } });
+
+  if (!current) {
+    fatal(`No node matches "${node.uuid}".`);
+  }
+
+  const wanted: Record<string, unknown> = {};
+  const put = (key: string, value: unknown): void => {
+    if (value !== undefined && value !== current[key as keyof typeof current]) {
+      wanted[key] = value;
+    }
+  };
+
+  put('name', textOf(flags, 'name'));
+  put('fqdn', textOf(flags, 'fqdn'));
+  put('scheme', textOf(flags, 'scheme'));
+  put('timezone', textOf(flags, 'timezone'));
+  put('port', numberOf(flags, 'port'));
+  put('sftpPort', numberOf(flags, 'sftp-port'));
+
+  if (Object.keys(wanted).length === 0) {
+    line(`${bold('Node unchanged')} — ${current.name}`);
+    return;
+  }
+
+  const parsed = updateNodeSchema.safeParse(wanted);
+
+  if (!parsed.success) {
+    const details = parsed.error.issues
+      .map((issue) => `${issue.path.join('.') || 'value'}: ${issue.message}`)
+      .join('\n  ');
+
+    fatal(`Invalid options.\n  ${details}`);
+  }
+
+  await nodes.update(current.uuid, parsed.data, null, CLI_CONTEXT);
+
+  // The marker the installer greps for, on its own line and never piped: a
+  // machine-readable answer to "did anything move?".
+  line('HOPPER_NODE_CHANGED=1');
+  line(`${bold('Node updated')} — ${current.name}: ${Object.keys(wanted).join(', ')}`);
+  line('  daemon.yml is written from this row: rewrite it with node:token.');
 }

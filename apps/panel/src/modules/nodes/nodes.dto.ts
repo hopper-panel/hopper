@@ -14,6 +14,33 @@ const fqdnSchema = z
   .regex(/^[a-zA-Z0-9.-]+$/, 'The FQDN may only contain letters, digits, dots and hyphens.');
 
 /**
+ * An IANA timezone, checked against what this machine actually knows.
+ *
+ * Asked rather than assumed, and validated rather than trusted: the value ends
+ * up as `TZ` inside every container on the node, and a name the C library does
+ * not recognise is not an error there — the container silently falls back to
+ * UTC, which is precisely the behaviour the operator was trying to change.
+ *
+ * `Intl` is the check because it carries the same tz database the containers
+ * do, and it answers for `UTC`, `Europe/Paris` and nothing invented.
+ */
+const timezoneSchema = z
+  .string()
+  .min(1)
+  .max(64)
+  .refine(
+    (value) => {
+      try {
+        new Intl.DateTimeFormat('en-US', { timeZone: value });
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    { message: 'Unknown timezone — expected an IANA name such as Europe/Paris or UTC.' },
+  );
+
+/**
  * What a node is made of, with no default attached to any of it.
  *
  * Split out from the two schemas below because **`.partial()` does not remove a
@@ -41,6 +68,9 @@ const nodeShape = {
   port: z.number().int().min(1).max(65535),
   sftpPort: z.number().int().min(1).max(65535),
 
+  /** Reaches every container on this node as `TZ`. */
+  timezone: timezoneSchema,
+
   memoryBytes: z.number().int().nonnegative(),
   diskBytes: z.number().int().nonnegative(),
   /** -1 = no limit, 0 = overallocation forbidden. */
@@ -56,6 +86,7 @@ export const createNodeSchema = z.object({
   scheme: nodeShape.scheme.default('https'),
   port: nodeShape.port.default(8443),
   sftpPort: nodeShape.sftpPort.default(2022),
+  timezone: nodeShape.timezone.default('UTC'),
   memoryBytes: nodeShape.memoryBytes.default(0),
   diskBytes: nodeShape.diskBytes.default(0),
   memoryOverallocation: nodeShape.memoryOverallocation.default(0),

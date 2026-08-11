@@ -56,8 +56,37 @@ hopper node:create --name paris-1 --fqdn node1.example.com --output /etc/hopper/
 Declares a node and writes its configuration. Without `--output`, the `daemon.yml` goes to standard
 output, which allows redirecting it or copying it to another machine.
 
-Options: `--scheme http|https` (default `https`), `--port` (8443), `--sftp-port` (2022), `--memory`
-and `--disk` in bytes — `0` meaning "no declared limit".
+Options: `--scheme http|https` (default `https`), `--port` (8443), `--sftp-port` (2022),
+`--timezone` (`UTC`), `--memory` and `--disk` in bytes — `0` meaning "no declared limit".
+
+## `hopper node:update`
+
+```bash
+hopper node:update --node paris-1 --fqdn node2.example.com --timezone Europe/Paris
+hopper node:token  --node paris-1 --output /etc/hopper/daemon.yml
+```
+
+Changes a declared node: `--name`, `--fqdn`, `--scheme`, `--port`, `--sftp-port`, `--timezone`. Only
+the options given are touched.
+
+`daemon.yml` is generated from that row — the certificate paths, the origin the daemon accepts, the
+timezone it hands the containers — so a change that has to reach the machine is followed by
+`node:token`, which rewrites the file. The installer does exactly this when it is rerun with a
+different address.
+
+## `hopper settings:list` and `hopper settings:set`
+
+```bash
+hopper settings:list
+hopper settings:set --key defaultLocale --value fr
+hopper settings:set --key panelName --value 'My panel'
+```
+
+The instance settings, the ones the administration edits: panel name, default language, two-factor
+requirement, mail, node timeout, activity retention. `settings:list` never prints a secret.
+
+The panel reads its settings once and caches them: a value written here is served after
+`systemctl restart hopper-panel`.
 
 ## `hopper node:token`
 

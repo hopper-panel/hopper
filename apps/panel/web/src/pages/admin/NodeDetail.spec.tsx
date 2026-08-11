@@ -32,6 +32,7 @@ const NODE: NodeSummary = {
   scheme: 'http',
   port: 8443,
   sftpPort: 2022,
+  timezone: 'Europe/Paris',
   memoryBytes: 64 * 1024 ** 3,
   diskBytes: 500 * 1024 ** 3,
   memoryOverallocation: 0,

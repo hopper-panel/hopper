@@ -202,6 +202,7 @@ function NodeSettingsDialog({ node, onClose }: { node: NodeSummary; onClose: () 
     scheme: node.scheme,
     port: node.port,
     sftpPort: node.sftpPort,
+    timezone: node.timezone,
     memoryGib: Number((node.memoryBytes / GIB).toFixed(2)),
     diskGib: Number((node.diskBytes / GIB).toFixed(2)),
     maintenance: node.maintenance,
@@ -216,6 +217,7 @@ function NodeSettingsDialog({ node, onClose }: { node: NodeSummary; onClose: () 
         scheme: form.scheme,
         port: Number(form.port),
         sftpPort: Number(form.sftpPort),
+        timezone: form.timezone.trim(),
         memoryBytes: Math.round(form.memoryGib * GIB),
         diskBytes: Math.round(form.diskGib * GIB),
         maintenance: form.maintenance,
@@ -289,6 +291,18 @@ function NodeSettingsDialog({ node, onClose }: { node: NodeSummary; onClose: () 
             <option value="https">https</option>
             <option value="http">http</option>
           </select>
+        </Field>
+
+        {/* The clock every game server on this node writes its logs with. An
+            operator who reads "14:02" on a machine whose wall clock says 16:02
+            is reading a container that was never told where it lives. */}
+        <Field label={t('adminNode.timezone')} hint={t('adminNode.timezoneHint')}>
+          <Input
+            value={form.timezone}
+            onChange={(event) => setForm({ ...form, timezone: event.target.value })}
+            placeholder="Europe/Paris"
+            required
+          />
         </Field>
 
         <Field label={t('adminNodes.memory')} hint={t('adminNodes.capacityHint')}>
