@@ -929,6 +929,10 @@ export const fr: Partial<Messages> = {
   'adminNodes.configNote':
     'Le secret n’est affiché qu’une seule fois. Le perdre impose une rotation du jeton.',
   'adminNodes.copy': 'Copier',
+  'adminNodes.applyHere': 'Appliquer sur cette machine',
+  'adminNodes.applying': 'Application…',
+  'adminNodes.applyStarted':
+    'Cette machine écrit le fichier et redémarre son daemon. Lancez hopper doctor dans quelques secondes pour vérifier.',
   'adminNodes.copied': 'Copié',
   'adminNode.allocations': 'Ports alloués',
   'adminNode.addPorts': 'Ajouter des ports',

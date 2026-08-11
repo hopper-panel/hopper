@@ -97,6 +97,12 @@ The panel drives as many machines as needed. On the new one:
    daemon (`pnpm --filter @hopper/daemon build`), write the `daemon.yml` into
    `/etc/hopper/daemon.yml` in mode `600`, install `install/hopperd.service`, then
    `systemctl enable --now hopperd`.
+
+   **For a node on the machine the panel already runs on**, press **Apply on this machine** instead:
+   the panel asks a root-owned systemd unit to write the file in mode `600` and restart hopperd, and
+   nothing has to be copied. It is offered only where that unit exists, which `install.sh` lays
+   down; elsewhere the panel says so and gives the two commands to run.
+
 3. Check from the panel: **Administration** has to show the node as reachable.
 
 The daemon refuses to start if `/etc/hopper/daemon.yml` is readable by anyone other than root: it
