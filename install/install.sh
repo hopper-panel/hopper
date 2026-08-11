@@ -110,6 +110,31 @@ if [ -z "$DOMAIN" ]; then
   ask "Domain name of the panel (or IP address)" "$(hostname -f 2>/dev/null || hostname)" DOMAIN
 fi
 
+# A host name, whatever was typed. People paste URLs.
+#
+# `http://192.168.1.141/` travelled through this script untouched and broke
+# three things at once, none of them near the question that produced it:
+#
+#   - `APP_URL` became `http://192.168.1.141/`, which the daemon copies into
+#     its allowed origins — and a browser's `Origin` header never carries a
+#     trailing slash, so every console was refused with "Origin not allowed".
+#   - `server_name 192.168.1.141/;` is not a host nginx will ever match.
+#   - `IS_IP` below tests for characters outside `[0-9.]`, so the slash made an
+#     IP address look like a domain name, and the script offered a Let's
+#     Encrypt certificate that could only fail.
+#
+# Trimmed rather than refused: the answer is unambiguous, and sending somebody
+# back to retype an address because of a slash is the kind of strictness that
+# teaches nothing.
+ORIGINAL_DOMAIN="$DOMAIN"
+DOMAIN="${DOMAIN#http://}"
+DOMAIN="${DOMAIN#https://}"
+DOMAIN="${DOMAIN%%/*}"
+DOMAIN="$(printf '%s' "$DOMAIN" | tr -d '[:space:]')"
+
+[ -n "$DOMAIN" ] || die "The panel needs a domain name or an IP address."
+[ "$DOMAIN" = "$ORIGINAL_DOMAIN" ] || note "domain read as $DOMAIN"
+
 # An IP address cannot receive a Let's Encrypt certificate: offering TLS in that
 # case would lead the user straight into a certbot failure.
 IS_IP=0
@@ -325,7 +350,33 @@ step "Panel configuration"
 ENV_FILE="$HOPPER_ROOT/apps/panel/.env"
 
 if [ -f "$ENV_FILE" ]; then
-  note ".env already present, kept"
+  # Kept, because `APP_SECRET` lives in it and encrypts the node tokens, the
+  # SQL passwords and the two-factor secrets: rewriting the file would make
+  # every one of them unreadable.
+  #
+  # **Except the two lines that say where this installation answers.** Those
+  # are exactly what a rerun with a different answer is meant to change, and
+  # keeping them turned this script into a liar: it printed
+  # `Panel : http://192.168.1.141` from the answers just given, wrote nothing,
+  # and left the panel on the address typed months earlier. Reported by an
+  # operator who reinstalled onto his LAN address three times and kept landing
+  # on the default nginx page — the vhost below had the same problem.
+  CURRENT_URL=$(sed -n 's/^APP_URL=//p' "$ENV_FILE" | head -1)
+
+  # The panel listens on the loopback when a proxy sits in front of it, and on
+  # every interface otherwise — without which it would be reachable from
+  # nowhere. That answer can change on a rerun too.
+  WANTED_HOST=127.0.0.1
+  [ "$WEBSERVER" != none ] || WANTED_HOST=0.0.0.0
+
+  if [ "$CURRENT_URL" = "$APP_URL" ]; then
+    note ".env already present, kept"
+  else
+    sed -i "s|^APP_URL=.*|APP_URL=$APP_URL|" "$ENV_FILE"
+    good ".env kept, address updated: ${CURRENT_URL:-unset} → $APP_URL"
+  fi
+
+  sed -i "s|^HOST=.*|HOST=$WANTED_HOST|" "$ENV_FILE"
 else
   [ -n "$DB_PASSWORD" ] || die "The PostgreSQL role already existed but its password is unknown: set DATABASE_URL in $ENV_FILE then rerun."
 
@@ -539,9 +590,20 @@ if [ "$WEBSERVER" != none ]; then
 
   mkdir -p /var/www/html
 
-  if [ -f "$VHOST" ] && [ -z "${HOPPER_FORCE_VHOST:-}" ]; then
-    note "vhost already present, kept ($VHOST)"
+  # Kept when it already answers for this domain, rewritten when it does not.
+  #
+  # A vhost naming the previous address is not a harmless leftover: nginx has
+  # no server matching the `Host` header the operator is now typing, falls back
+  # to its default site, and serves the "Welcome to nginx!" page. The
+  # installation is fine and looks broken, which is the worst way to end a
+  # rerun that was performed precisely to change the address.
+  if
+    [ -f "$VHOST" ] && [ -z "${HOPPER_FORCE_VHOST:-}" ] &&
+      grep -E '^[[:space:]]*(server_name|ServerName)' "$VHOST" | grep -Fq "$DOMAIN"
+  then
+    note "vhost already present and answers for $DOMAIN, kept ($VHOST)"
   else
+    [ ! -f "$VHOST" ] || good "vhost rewritten for $DOMAIN ($VHOST)"
     write_plain_vhost "$VHOST"
     [ "$WEBSERVER" != apache ] || [ "$FAMILY" != debian ] || a2ensite hopper >/dev/null
     systemctl enable --now "$SERVICE" >/dev/null
@@ -686,6 +748,14 @@ if [ "$ADMIN_CREATED" = 1 ]; then
   info "Username   : $ADMIN_USERNAME"
   info "Password   : $ADMIN_PASSWORD"
   note "Write it down: it is not kept in the clear."
+else
+  # A rerun creates no account and therefore has no password to print. Saying
+  # nothing at all left the operator staring at a sign-in form with credentials
+  # from an installation they no longer remembered — and the way out is one
+  # command they had no reason to know exists.
+  info "Username   : $ADMIN_USERNAME"
+  note "The administrator already existed, so no new password was generated."
+  note "Lost it?     hopper user:password --username $ADMIN_USERNAME"
 fi
 
 info ""
