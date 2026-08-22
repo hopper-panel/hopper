@@ -59,5 +59,14 @@ export class ApplicationInstanceController {
  *
  * The rule for moving it: a new route or a new optional field does not; a
  * removed field, a renamed one, or a changed meaning does.
+ *
+ * **2** — `key.scopes` became `key.permissions`, and its shape changed with it:
+ * an array of two coarse scopes became one level per resource. The routes added
+ * alongside it (`nodes`, `allocations`, `templates`, `users`) did not move this
+ * on their own; the renamed field did, and by the rule above it had to.
+ *
+ * Version 1 lived for one afternoon, which is why nothing here tries to serve
+ * both shapes. If it had been out for a month it would be worth serving the old
+ * field alongside the new one for a version — and worth saying so here.
  */
-export const APPLICATION_API_VERSION = 1;
+export const APPLICATION_API_VERSION = 2;
