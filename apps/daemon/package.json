@@ -22,7 +22,7 @@
     "@fastify/websocket": "^11.3.0",
     "@hopper/shared": "workspace:*",
     "dockerode": "^5.0.1",
-    "fastify": "^5.6.0",
+    "fastify": "^5.12.1",
     "jose": "^6.2.8",
     "pino": "^10.3.1",
     "ssh2": "^1.17.0",
