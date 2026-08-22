@@ -202,6 +202,143 @@ refusing a sale.
 Ties break deterministically. The same request answered twice puts two servers in the same place,
 rather than scattering one customer's servers for a reason nobody could reconstruct later.
 
+## Selling a server
+
+```bash
+curl -X POST https://panel.example.com/api/application/servers      -H "Authorization: Bearer hpa_…"      -H "Idempotency-Key: order-1041"      -H "Content-Type: application/json"      -d '{
+           "plan": "minecraft-4gb",
+           "name": "Survival",
+           "owner": { "email": "customer@example.com" }
+         }'
+```
+
+That is the whole call. Everything absent from it — the node, the port, the template, twelve
+resource limits — is a decision the panel is better placed to make, and one that would otherwise
+have to be configured a second time in your billing system and kept in step by hand.
+
+It finds or creates the customer's account, picks a machine, takes a port, applies the plan's
+limits, and asks the daemon to install:
+
+```json
+{
+  "uuid": "1b32d12d-…",
+  "name": "Survival",
+  "status": "INSTALLING",
+  "plan": { "slug": "minecraft-4gb", "name": "Minecraft 4 GB" },
+  "owner": { "uuid": "7c4a…", "email": "customer@example.com", "username": "customer" },
+  "address": { "host": "mc.example.com", "port": 25565 },
+  "node": { "name": "paris-1" },
+  "limits": { "memoryBytes": 4294967296, "diskBytes": 21474836480, "cpuPercent": 0 },
+  "ownerCreated": true
+}
+```
+
+`ownerCreated` tells a first purchase from a returning customer without a second question — and
+tells you an invitation email is on its way, so your own welcome message does not duplicate it. An
+account created this way has **no password**: the customer receives a link and chooses one. A
+password set here would travel through a channel neither of us controls, and usually stay unchanged.
+
+`status` is `INSTALLING`: the container is being built. Nothing else is needed from you — but see
+the note on knowing when it finishes, below.
+
+### `Idempotency-Key` is required
+
+Unusually, and deliberately. This is the only route here that is not naturally repeatable —
+suspending twice is a no-op, deleting twice is a `404`, creating twice is **two servers and two
+invoices** — and the call most likely to be repeated is the one that timed out, where you cannot
+tell "it never arrived" from "it worked and the answer was lost". Making the header optional would
+make the safe default the unsafe one, and the integrations that skip it are exactly the ones that
+will retry.
+
+Use the identifier of the thing that caused the purchase: an order number, a subscription id. Not a
+random value generated per attempt — that defeats the point.
+
+A repeat of a settled call replays the original answer, with `Idempotency-Replayed: true` so you can
+tell them apart in a log:
+
+| Situation                                | Answer                                     |
+| ---------------------------------------- | ------------------------------------------ |
+| First call                               | `201` with the server                      |
+| Same key, same body, first call finished | `201` with the **same** server, replayed   |
+| Same key, first call still running       | `409` — retry in a moment                  |
+| Same key, **different** body             | `422` — the key is being reused by mistake |
+| First call failed                        | The key is released; retrying is allowed   |
+
+That last row matters: a failed provisioning call is the one you most need to make again — a node in
+maintenance, a daemon restarting. A key that answered `500` for a day would turn a transient failure
+into an unsellable order.
+
+Keys are scoped to the key that made the call, and expire after 24 hours.
+
+### When there is no room
+
+```json
+{
+  "statusCode": 409,
+  "message": "No node can take a server on \"minecraft-4gb\" right now: paris-1 (maintenance), paris-2 (no-free-port), lille-1 (not-enough-memory)."
+}
+```
+
+Every machine that was passed over, with what stopped it. Ask
+`/api/application/plans/:slug/availability` **before** taking the money and this arrives on a
+purchase page instead of in a refund.
+
+## The rest of the lifecycle
+
+```
+GET    /api/application/servers?owner=customer@example.com   what this customer has
+GET    /api/application/servers?plan=minecraft-4gb           who is on an offer
+GET    /api/application/servers/:uuid                        one server
+POST   /api/application/servers/:uuid/suspend                invoice unpaid
+POST   /api/application/servers/:uuid/unsuspend              invoice settled
+PATCH  /api/application/servers/:uuid/plan                   upgrade or downgrade
+DELETE /api/application/servers/:uuid                        cancellation
+```
+
+**Suspending is repeatable.** Sending it twice is not an error; the answer carries `changed`, saying
+whether anything moved. A billing system reacting to an unpaid invoice sends it on a schedule, and a
+`409` on the second one would have every integrator write the same "is it already suspended" check
+— a check that races with the panel's own screen.
+
+A suspended server stops and its owner can no longer reach it. Their **account** is untouched: a
+customer with three servers and one unpaid invoice keeps the other two.
+
+**Changing plan** applies the new offer's limits and records what the server is now sold under:
+
+```bash
+curl -X PATCH https://panel.example.com/api/application/servers/1b32d12d-…/plan      -H "Authorization: Bearer hpa_…"      -H "Content-Type: application/json"      -d '{"plan": "minecraft-8gb"}'
+```
+
+Only the plan — sending arbitrary limits alongside it would make "what is this customer paying for"
+unanswerable from the panel. The server **stays on its machine**: moving it between nodes is a
+transfer, which copies a world across a network, takes minutes and can fail halfway. Doing that
+silently because somebody bought more memory would be the worst possible moment to find out. If the
+new plan is not offered on the node the server runs on, the call is refused and says so.
+
+The new limits take effect when the container is next rebuilt — the panel marks it, the daemon
+applies it on the next start.
+
+**Deleting** destroys the server, its volume and its backups. It is irreversible and reachable by a
+machine, which is why it needs a `write` key and why the audit entry names the integration that
+asked.
+
+## What the audit trail shows
+
+Every action taken through this API is recorded with **no actor** — the column already means "issued
+by the system" — and the integration's name in the metadata. Inventing a user to put there would
+have the trail name somebody who was asleep.
+
+`server.provisioned` is recorded alongside the ordinary `server.created`, deliberately: an operator
+asking "which of these came from the billing system" needs the two to be tellable apart.
+
+## What is not here yet
+
+- **No webhooks.** You learn that an installation finished by polling
+  `GET /api/application/servers/:uuid` until `status` leaves `INSTALLING`. Every few seconds is
+  fine; installations take from a few seconds to a few minutes depending on the template.
+- **No single sign-on.** A customer clicking "manage my server" in your portal lands on the panel's
+  own sign-in page.
+
 ## Errors
 
 Ordinary HTTP, with a message meant to be read by whoever integrates rather than by an end customer:

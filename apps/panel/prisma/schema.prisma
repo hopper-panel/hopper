@@ -258,8 +258,56 @@ model ApplicationKey {
   createdById Int?
   createdBy   User? @relation("ApplicationKeyCreator", fields: [createdById], references: [id], onDelete: SetNull)
 
+  requests IdempotentRequest[]
+
   @@index([createdById])
   @@map("application_keys")
+}
+
+/// One provisioning call, remembered so it cannot happen twice.
+///
+/// Creating a server is the only route of this API that is not naturally
+/// repeatable: suspending a suspended server is a no-op, deleting a deleted one
+/// is a 404, but creating twice is two servers and two invoices. And the call
+/// that most needs repeating is exactly the one that failed halfway — a
+/// timeout, a proxy that gave up, a billing system restarted mid-purchase.
+///
+/// So the caller names its attempt with an `Idempotency-Key` and the answer to
+/// the first attempt is replayed for the rest.
+///
+/// Scoped to the key that made the call: two integrations picking the same
+/// value — and "order-1041" is a value both would pick — must not read each
+/// other's answers.
+model IdempotentRequest {
+  id Int @id @default(autoincrement())
+
+  applicationKeyId Int
+  applicationKey   ApplicationKey @relation(fields: [applicationKeyId], references: [id], onDelete: Cascade)
+
+  /// What the caller called this attempt.
+  key String
+
+  /// Digest of the request body.
+  ///
+  /// A retry has to be the same request. Reusing a key with a different body is
+  /// a bug in the caller — usually a key derived from something less unique
+  /// than they thought — and answering it with the first server's details would
+  /// hide it until an audit found two customers sharing one machine.
+  requestHash String
+
+  /// Null while the first attempt is still running.
+  status   Int?
+  response Json?
+
+  createdAt DateTime @default(now())
+  /// After this, the key means nothing again. A retry window measured in a day
+  /// covers every retry a billing system will make; keeping them for ever would
+  /// turn a table nobody reads into the biggest one in the database.
+  expiresAt DateTime
+
+  @@unique([applicationKeyId, key])
+  @@index([expiresAt])
+  @@map("idempotent_requests")
 }
 
 // ---------------------------------------------------------------------------

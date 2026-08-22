@@ -98,7 +98,7 @@ export class ServersService {
     return this.queryServers(searchClause(query.search), query, viewerId);
   }
 
-  async findByUuid(uuid: string, viewerId: number): Promise<ServerListItem> {
+  async findByUuid(uuid: string, viewerId: number | null): Promise<ServerListItem> {
     const server = await this.prisma.server.findUnique({
       where: { uuid },
       include: this.listInclude(),
@@ -125,7 +125,14 @@ export class ServersService {
    */
   async create(
     dto: CreateServerDto,
-    actorId: number,
+    /**
+     * Null when nobody is acting: the application API provisions on behalf of
+     * a hosting provider's software, which answers for no person. The audit
+     * log already allows it — `actorId` is nullable there, "an action issued by
+     * the system" — and the caller records which integration it was in the
+     * entry's metadata.
+     */
+    actorId: number | null,
     context: RequestContext,
   ): Promise<ServerListItem> {
     const [owner, node, template] = await Promise.all([
@@ -140,6 +147,18 @@ export class ServersService {
     if (!owner) throw new BadRequestException('Owner not found.');
     if (!node) throw new BadRequestException('Node not found.');
     if (!template) throw new BadRequestException('Template not found.');
+
+    const plan =
+      dto.planUuid === undefined
+        ? null
+        : await this.prisma.plan.findUnique({
+            where: { uuid: dto.planUuid },
+            select: { id: true },
+          });
+
+    if (dto.planUuid !== undefined && !plan) {
+      throw new BadRequestException('Plan not found.');
+    }
 
     if (node.maintenance) {
       throw new ConflictException(
@@ -190,6 +209,7 @@ export class ServersService {
           ownerId: owner.id,
           nodeId: node.id,
           templateId: template.id,
+          planId: plan?.id ?? null,
           status: 'INSTALLING',
           memoryBytes: BigInt(dto.memoryBytes),
           diskBytes: BigInt(dto.diskBytes),
@@ -376,7 +396,7 @@ export class ServersService {
   async updateBuild(
     uuid: string,
     dto: UpdateServerBuildDto,
-    actorId: number,
+    actorId: number | null,
     context: RequestContext,
   ): Promise<ServerListItem> {
     const server = await this.prisma.server.findUnique({
@@ -430,7 +450,7 @@ export class ServersService {
   async setSuspended(
     uuid: string,
     suspended: boolean,
-    actorId: number,
+    actorId: number | null,
     context: RequestContext,
   ): Promise<ServerListItem> {
     const server = await this.prisma.server.findUnique({
@@ -462,7 +482,7 @@ export class ServersService {
     return this.findByUuid(uuid, actorId);
   }
 
-  async remove(uuid: string, actorId: number, context: RequestContext): Promise<void> {
+  async remove(uuid: string, actorId: number | null, context: RequestContext): Promise<void> {
     const server = await this.prisma.server.findUnique({
       where: { uuid },
       select: { id: true, name: true, node: { select: { uuid: true } } },
@@ -639,7 +659,7 @@ export class ServersService {
         primaryAllocation: { select: { ip: true; port: true; alias: true } };
       };
     }>,
-    viewerId: number,
+    viewerId: number | null,
   ): ServerListItem {
     return {
       uuid: server.uuid,
