@@ -1037,6 +1037,54 @@ export const en = {
   'adminServers.templateOptions': 'Template options',
   'adminServers.submit': 'Create the server',
   'adminServers.choose': '— choose —',
+  // Application API — the credentials a hosting provider's software holds
+  'adminAppApi.title': 'Application API',
+  'adminAppApi.subtitle':
+    'Credentials for the software that drives this panel: a billing system, a back office, a status page.',
+  'adminAppApi.create': 'New credential',
+  'adminAppApi.empty': 'No application key',
+  'adminAppApi.emptyHint':
+    'Create one to let a billing system provision servers, or use hopper application-key:create.',
+  'adminAppApi.revoke': 'Revoke',
+  'adminAppApi.revoked': 'revoked',
+  'adminAppApi.confirmRevoke': 'Revoke "{name}"? Whatever presents it stops working at once.',
+  'adminAppApi.by': 'by {name}',
+  'adminAppApi.lastUsed': 'last used {when}',
+  'adminAppApi.created': 'created {when}',
+  'adminAppApi.fromAddresses': 'from {list}',
+
+  'adminAppApi.newTitle': 'New credential',
+  'adminAppApi.name': 'Name',
+  'adminAppApi.nameHint':
+    'The software that will present it — it appears here, in the audit trail and in the logs.',
+  'adminAppApi.addresses': 'Allowed addresses',
+  'adminAppApi.addressesHint':
+    'Comma separated. Empty imposes no restriction; a billing server has a fixed address, so this one is worth filling in.',
+  'adminAppApi.permissions': 'Permissions',
+  'adminAppApi.permissionsHint':
+    'One decision per resource. Grant only what this integration does: a status page that can delete a server is a leak waiting to matter.',
+  'adminAppApi.noneAll': 'None',
+  'adminAppApi.readAll': 'Read all',
+  'adminAppApi.writeAll': 'Read & write all',
+  'adminAppApi.levelNone': 'None',
+  'adminAppApi.levelRead': 'Read',
+  'adminAppApi.levelWrite': 'Read & write',
+  'adminAppApi.readOnlyResource': 'This resource is read-only through the application API.',
+
+  'adminAppApi.resource.servers': 'Servers',
+  'adminAppApi.resource.users': 'Customers',
+  'adminAppApi.resource.plans': 'Plans',
+  'adminAppApi.resource.nodes': 'Nodes',
+  'adminAppApi.resource.allocations': 'Ports',
+  'adminAppApi.resource.templates': 'Templates',
+  'adminAppApi.resource.unknown': 'Unknown resource',
+
+  'adminAppApi.issuedTitle': 'Copy this token',
+  'adminAppApi.issuedOnce':
+    'Shown once. It is stored hashed, so closing this without copying it means creating another key.',
+  'adminAppApi.issuedHint':
+    'Paste it into the configuration of "{name}". It goes in an Authorization: Bearer header.',
+
   'adminHosts.title': 'Database servers',
   'adminHosts.subtitle':
     'MySQL or MariaDB servers on which game servers can create their databases.',

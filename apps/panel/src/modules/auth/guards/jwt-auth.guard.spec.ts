@@ -5,7 +5,12 @@ import type { PrismaService } from '../../../prisma/prisma.service.js';
 import type { ApiKeysService } from '../../api-keys/api-keys.service.js';
 import { generateApplicationKey } from '../../application/application-key.js';
 import type { ApplicationKeysService } from '../../application/application-keys.service.js';
-import { IS_APPLICATION_API_KEY, IS_PUBLIC_KEY, REQUIRED_ROLE_KEY } from '../decorators.js';
+import {
+  IS_APPLICATION_API_KEY,
+  IS_PUBLIC_KEY,
+  REQUIRED_ROLE_KEY,
+  UNGOVERNED_APPLICATION_ROUTE,
+} from '../decorators.js';
 import type { AuthenticatedRequest } from '../request-user.js';
 import type { TokenService } from '../token.service.js';
 import { JwtAuthGuard } from './jwt-auth.guard.js';
@@ -36,7 +41,7 @@ interface HarnessOptions {
   /** Metadata the route carries: `@ApplicationApi()`, `@Public()`, `@AdminOnly()`. */
   metadata?: Record<string, unknown>;
   /** What the application key service answers. `null` refuses. */
-  application?: { id: number; uuid: string; name: string; scopes: string[] } | null;
+  application?: { id: number; uuid: string; name: string; permissions: string[] } | null;
   method?: string;
 }
 
@@ -51,7 +56,12 @@ function harness(options: HarnessOptions = {}) {
     authenticate: vi.fn(() =>
       Promise.resolve(
         options.application === undefined
-          ? { id: 1, uuid: 'a-uuid', name: 'Paymenter', scopes: ['read', 'write'] }
+          ? {
+              id: 1,
+              uuid: 'a-uuid',
+              name: 'Paymenter',
+              permissions: ['servers:write', 'plans:read'],
+            }
           : options.application,
       ),
     ),
@@ -124,7 +134,7 @@ function harness(options: HarnessOptions = {}) {
 
 describe('an application key reaches the application API and nothing else', () => {
   it('is accepted on a route marked @ApplicationApi()', async () => {
-    const { run } = harness({ metadata: { [IS_APPLICATION_API_KEY]: true } });
+    const { run } = harness({ metadata: { [IS_APPLICATION_API_KEY]: 'servers' } });
 
     const { allowed, request } = await run(APPLICATION_TOKEN);
 
@@ -133,7 +143,7 @@ describe('an application key reaches the application API and nothing else', () =
       id: 1,
       uuid: 'a-uuid',
       name: 'Paymenter',
-      scopes: ['read', 'write'],
+      permissions: ['servers:write', 'plans:read'],
     });
   });
 
@@ -141,7 +151,7 @@ describe('an application key reaches the application API and nothing else', () =
     // The audit log names an actor from `request.user`, and an ownership check
     // decides on one. A fabricated user would make both answer about somebody
     // who was not there.
-    const { run } = harness({ metadata: { [IS_APPLICATION_API_KEY]: true } });
+    const { run } = harness({ metadata: { [IS_APPLICATION_API_KEY]: 'servers' } });
 
     const { request } = await run(APPLICATION_TOKEN);
 
@@ -170,33 +180,59 @@ describe('an application key reaches the application API and nothing else', () =
 
   it('is refused when the service refuses it, without saying which check failed', async () => {
     const { run } = harness({
-      metadata: { [IS_APPLICATION_API_KEY]: true },
+      metadata: { [IS_APPLICATION_API_KEY]: 'servers' },
       application: null,
     });
 
     await expect(run(APPLICATION_TOKEN)).rejects.toThrow(/invalid, expired or revoked/);
   });
 
-  it('is refused when its scope does not cover the verb', async () => {
+  it('is refused when its permission on this resource does not cover the verb', async () => {
     const { run } = harness({
-      metadata: { [IS_APPLICATION_API_KEY]: true },
-      application: { id: 1, uuid: 'a-uuid', name: 'Status page', scopes: ['read'] },
+      metadata: { [IS_APPLICATION_API_KEY]: 'servers' },
+      application: { id: 1, uuid: 'a-uuid', name: 'Status page', permissions: ['servers:read'] },
       method: 'POST',
     });
 
-    await expect(run(APPLICATION_TOKEN)).rejects.toThrow(/necessary scope/);
+    // The resource is named, and the level with it: "insufficient permissions"
+    // sends an integrator to re-read the whole matrix, this sends them to one
+    // line of it.
+    await expect(run(APPLICATION_TOKEN)).rejects.toThrow(/read & write on servers/);
+  });
+
+  it('is refused on a resource it was granted nothing on, even holding another', async () => {
+    // The reason the matrix exists at all.
+    const { run } = harness({
+      metadata: { [IS_APPLICATION_API_KEY]: 'servers' },
+      application: { id: 1, uuid: 'a-uuid', name: 'Status page', permissions: ['plans:read'] },
+      method: 'GET',
+    });
+
+    await expect(run(APPLICATION_TOKEN)).rejects.toThrow(/read on servers/);
+  });
+
+  it('lets a key with nothing granted still check itself', async () => {
+    // `instance` is how an integrator finds out a key works at all. Governing
+    // it by a permission would mean a key granted nothing cannot even be told
+    // apart from a key that is wrong.
+    const { run } = harness({
+      metadata: { [IS_APPLICATION_API_KEY]: UNGOVERNED_APPLICATION_ROUTE },
+      application: { id: 1, uuid: 'a-uuid', name: 'Fresh', permissions: [] },
+    });
+
+    await expect(run(APPLICATION_TOKEN)).resolves.toMatchObject({ allowed: true });
   });
 });
 
 describe('the application API opens to nothing but an application key', () => {
   it('refuses a browser session, and names the credential to use', async () => {
-    const { run } = harness({ metadata: { [IS_APPLICATION_API_KEY]: true } });
+    const { run } = harness({ metadata: { [IS_APPLICATION_API_KEY]: 'servers' } });
 
     await expect(run(SESSION_TOKEN)).rejects.toThrow(/application key \(hpa_…\)/);
   });
 
   it('refuses a personal API key, even an administrator’s', async () => {
-    const { run, apiKeys } = harness({ metadata: { [IS_APPLICATION_API_KEY]: true } });
+    const { run, apiKeys } = harness({ metadata: { [IS_APPLICATION_API_KEY]: 'servers' } });
 
     await expect(run(PERSONAL_TOKEN)).rejects.toThrow(/application key \(hpa_…\)/);
     expect(apiKeys.authenticate).not.toHaveBeenCalled();
@@ -206,7 +242,7 @@ describe('the application API opens to nothing but an application key', () => {
     // `@Public()` is read first and stays first: the application check must not
     // start demanding a credential on the health endpoint.
     const { run } = harness({
-      metadata: { [IS_PUBLIC_KEY]: true, [IS_APPLICATION_API_KEY]: true },
+      metadata: { [IS_PUBLIC_KEY]: true, [IS_APPLICATION_API_KEY]: 'servers' },
     });
 
     await expect(run(SESSION_TOKEN)).resolves.toEqual(expect.objectContaining({ allowed: true }));

@@ -21,6 +21,7 @@ import { ServerSettingsPage } from './pages/ServerSettings';
 import { ServerStartupPage } from './pages/ServerStartup';
 import { ServerSubusersPage } from './pages/ServerSubusers';
 import { ServerWebhooksPage } from './pages/ServerWebhooks';
+import { AdminApplicationApiPage } from './pages/admin/ApplicationApi';
 import { AdminLayout } from './pages/admin/AdminLayout';
 import { AdminDatabaseHostsPage } from './pages/admin/DatabaseHosts';
 import { AdminNodeDetailPage } from './pages/admin/NodeDetail';
@@ -102,6 +103,7 @@ export function App() {
           <Route path="users" element={<AdminUsersPage />} />
           <Route path="database-hosts" element={<AdminDatabaseHostsPage />} />
           <Route path="settings" element={<AdminSettingsPage />} />
+          <Route path="application-api" element={<AdminApplicationApiPage />} />
           {/* `groups` is a literal segment and React Router ranks it above the
               `:uuid` below it, the same precedence the API's own controller
               relies on for the very same two routes. */}

@@ -1053,6 +1053,56 @@ export const fr: Partial<Messages> = {
   'adminServers.templateOptions': 'Options du template',
   'adminServers.submit': 'Créer le serveur',
   'adminServers.choose': '— choisir —',
+  // API applicative — les identifiants que détient le logiciel d'un hébergeur
+  'adminAppApi.title': 'API applicative',
+  'adminAppApi.subtitle':
+    "Identifiants du logiciel qui pilote ce panel : une facturation, un back-office, une page d'état.",
+  'adminAppApi.create': 'Nouvel identifiant',
+  'adminAppApi.empty': "Aucune clé d'application",
+  'adminAppApi.emptyHint':
+    "Créez-en une pour qu'un logiciel de facturation puisse livrer des serveurs, ou utilisez hopper application-key:create.",
+  'adminAppApi.revoke': 'Révoquer',
+  'adminAppApi.revoked': 'révoquée',
+  'adminAppApi.confirmRevoke':
+    'Révoquer « {name} » ? Ce qui la présente cesse de fonctionner immédiatement.',
+  'adminAppApi.by': 'par {name}',
+  'adminAppApi.lastUsed': 'dernier usage {when}',
+  'adminAppApi.created': 'créée le {when}',
+  'adminAppApi.fromAddresses': 'depuis {list}',
+
+  'adminAppApi.newTitle': 'Nouvel identifiant',
+  'adminAppApi.name': 'Nom',
+  'adminAppApi.nameHint':
+    "Le logiciel qui la présentera : il apparaît ici, dans le journal d'audit et dans les logs.",
+  'adminAppApi.addresses': 'Adresses autorisées',
+  'adminAppApi.addressesHint':
+    "Séparées par des virgules. Vide n'impose aucune restriction ; un serveur de facturation a une adresse fixe, donc celle-ci vaut la peine d'être remplie.",
+  'adminAppApi.permissions': 'Permissions',
+  'adminAppApi.permissionsHint':
+    "Une décision par ressource. N'accordez que ce que fait cette intégration : une page d'état capable de supprimer un serveur est une fuite qui attend son heure.",
+  'adminAppApi.noneAll': 'Aucune',
+  'adminAppApi.readAll': 'Tout en lecture',
+  'adminAppApi.writeAll': 'Tout en écriture',
+  'adminAppApi.levelNone': 'Aucune',
+  'adminAppApi.levelRead': 'Lecture',
+  'adminAppApi.levelWrite': 'Lecture et écriture',
+  'adminAppApi.readOnlyResource':
+    "Cette ressource est en lecture seule à travers l'API applicative.",
+
+  'adminAppApi.resource.servers': 'Serveurs',
+  'adminAppApi.resource.users': 'Clients',
+  'adminAppApi.resource.plans': 'Offres',
+  'adminAppApi.resource.nodes': 'Nodes',
+  'adminAppApi.resource.allocations': 'Ports',
+  'adminAppApi.resource.templates': 'Templates',
+  'adminAppApi.resource.unknown': 'Ressource inconnue',
+
+  'adminAppApi.issuedTitle': 'Copiez ce jeton',
+  'adminAppApi.issuedOnce':
+    'Affiché une seule fois. Il est stocké haché : fermer sans le copier oblige à en créer un autre.',
+  'adminAppApi.issuedHint':
+    'Collez-le dans la configuration de « {name} ». Il se présente dans un en-tête Authorization: Bearer.',
+
   'adminHosts.title': 'Serveurs de bases de données',
   'adminHosts.subtitle':
     'Serveurs MySQL ou MariaDB sur lesquels les serveurs de jeu peuvent créer leurs bases.',

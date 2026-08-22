@@ -42,7 +42,7 @@ const MAX_IDEMPOTENCY_KEY = 128;
  * it when it is settled, move it to another offer, delete it on cancellation.
  */
 @Controller('api/application/servers')
-@ApplicationApi()
+@ApplicationApi('servers')
 export class ApplicationServersController {
   constructor(
     private readonly provisioning: ProvisioningService,

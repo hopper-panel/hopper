@@ -1,5 +1,6 @@
 import type { Permission } from '@hopper/shared';
 import { SetMetadata } from '@nestjs/common';
+import type { ApplicationResource } from '../application/application-permissions.js';
 
 export const IS_PUBLIC_KEY = 'hopper:public';
 export const REQUIRED_ROLE_KEY = 'hopper:role';
@@ -25,9 +26,25 @@ export const Public = (): MethodDecorator & ClassDecorator => SetMetadata(IS_PUB
  * cannot end up half-integrated — driving provisioning from a browser session
  * that expires, or from a key that dies with its owner's account, and
  * discovering the difference the day it stops.
+ *
+ * @param resource Which resource of the key's permission matrix governs this
+ *   route. Omitted on the one route that governs none — `instance`, which
+ *   answers "does this credential work" and has to be reachable by a key that
+ *   has been granted nothing yet. Every other route names one, and a route that
+ *   forgets to is refused by the guard rather than let through: an unnamed
+ *   resource is a permission nobody can revoke.
  */
-export const ApplicationApi = (): MethodDecorator & ClassDecorator =>
-  SetMetadata(IS_APPLICATION_API_KEY, true);
+export const ApplicationApi = (resource?: ApplicationResource): MethodDecorator & ClassDecorator =>
+  SetMetadata(IS_APPLICATION_API_KEY, resource ?? UNGOVERNED_APPLICATION_ROUTE);
+
+/**
+ * Marks a route of the application API that no permission governs.
+ *
+ * A value of its own rather than `true`, so the guard reads one piece of
+ * metadata and can tell "this route names no resource" from "somebody wrote
+ * `@ApplicationApi()` and meant to fill it in".
+ */
+export const UNGOVERNED_APPLICATION_ROUTE = 'instance-check';
 
 /** Reserves the route for panel administrators. */
 export const AdminOnly = (): MethodDecorator & ClassDecorator =>

@@ -11,10 +11,11 @@ paid-for server, which must not depend on an administrator still working there.
 
 ## The credential
 
-An **application key** belongs to nobody. Create one from the command line:
+An **application key** belongs to nobody. Create one from **Administration → Application API**, or
+from the command line:
 
 ```bash
-hopper application-key:create --name Paymenter --scopes write
+hopper application-key:create --name Paymenter --permissions servers:write,plans:read
 ```
 
 The token is printed once, alone on the last line — so `| tail -1` is a reasonable thing to write in
@@ -24,28 +25,64 @@ an installation script. It is stored hashed; losing it means creating another.
 hpa_A1b2C3d4E5f6G7h8.xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 ```
 
-Two scopes:
+## Permissions
 
-| Scope   | What it allows                                       |
-| ------- | ---------------------------------------------------- |
-| `read`  | `GET` — describing plans, servers, capacity          |
-| `write` | Everything that acts — provisioning, suspending, ... |
+A key holds **one decision per resource**, not one for the whole API:
 
-A provider running both a billing system and a public status page is expected to hold **two keys**,
-so the one in the page that anybody can load cannot delete a customer's server.
+| Resource      | What it covers                                       | Levels            |
+| ------------- | ---------------------------------------------------- | ----------------- |
+| `servers`     | Provisioning, suspending, changing plan, deleting    | none, read, write |
+| `users`       | Customers: finding them, correcting them, suspending | none, read, write |
+| `plans`       | The catalogue and its availability                   | none, read        |
+| `nodes`       | The machines and what is on them                     | none, read        |
+| `allocations` | Free ports, per node                                 | none, read        |
+| `templates`   | What a plan can be written against                   | none, read        |
+
+`read` covers `GET`; `write` covers everything else and includes `read`.
+
+The four read-only resources are read-only because there is nothing to write: declaring a node,
+importing a template and opening a range of ports are decisions an operator makes about their own
+hardware, from the administration. The interface greys those lines out rather than offering a
+checkbox that changes nothing — somebody ticks one of those, believes their integration can write,
+and finds out in production.
+
+**Grant one key per job.** A billing system needs `servers:write` and `plans:read`. A public status
+page needs `plans:read` and `nodes:read` and must not be able to delete a customer's world because it
+also needed to count them. That separation is the reason this is a matrix and not a switch.
+
+```bash
+# The billing system
+hopper application-key:create --name Paymenter --permissions servers:write,users:write,plans:read
+
+# The status page, which can only look
+hopper application-key:create --name Status --permissions plans:read,nodes:read
+
+# Everything, read-only — for a dashboard
+hopper application-key:create --name Dashboard --permissions all:read
+```
+
+`all:write` grants each resource as much as it allows, so it is `write` on the two that have it and
+`read` on the rest.
 
 Restrict a key to the addresses it will actually come from. A billing server has a fixed address far
 more often than a person does, which makes this cheap here and useless there:
 
 ```bash
-hopper application-key:create --name WHMCS --scopes write --allowed-ips 203.0.113.7
+hopper application-key:create --name WHMCS --permissions servers:write --allowed-ips 203.0.113.7
 ```
 
 Also `hopper application-key:list` and `hopper application-key:revoke --uuid <uuid>`, and the same
-three actions under `/api/admin/application-keys` for an administrator driving them from a script.
+actions under `/api/admin/application-keys`.
 
 A key is **revoked, never deleted**: it stays nameable in the audit trail of the two hundred servers
 it provisioned.
+
+A refusal names the resource and the level, so it points at one line of the matrix rather than at
+all of it:
+
+```json
+{ "statusCode": 403, "message": "This key is not granted read & write on servers." }
+```
 
 ## What a key opens, and what it does not
 
@@ -77,7 +114,11 @@ curl -H "Authorization: Bearer hpa_…" https://panel.example.com/api/applicatio
 ```json
 {
   "panel": { "version": "0.18.0", "api": 1 },
-  "key": { "uuid": "3f1c…", "name": "Paymenter", "scopes": ["read", "write"] }
+  "key": {
+    "uuid": "3f1c…",
+    "name": "Paymenter",
+    "permissions": { "servers": "write", "plans": "read" }
+  }
 }
 ```
 
@@ -201,6 +242,43 @@ refusing a sale.
 
 Ties break deterministically. The same request answered twice puts two servers in the same place,
 rather than scattering one customer's servers for a reason nobody could reconstruct later.
+
+## Reading the estate
+
+Three read-only resources, for a dashboard or a capacity report. They are what a provider would
+otherwise go and read out of the panel's database.
+
+```
+GET /api/application/nodes                        machines, capacity, load, free ports
+GET /api/application/nodes/:uuid/allocations      the ports of one node; ?free=false for all
+GET /api/application/templates                    what a plan can be written against
+```
+
+`nodes` reports the same figures placement decides on, so a dashboard built from it shows the picture
+the panel used when it accepted — or refused — a sale. A capacity of `0` means the machine declares
+none: it is managed by hand and nothing is accounting for it.
+
+## Customers
+
+```
+GET   /api/application/users?email=customer@example.com
+GET   /api/application/users/:uuid
+PATCH /api/application/users/:uuid                { "email": "...", "username": "...", "suspended": true }
+```
+
+There is no create route: accounts are created by a purchase, which also sends the invitation that
+lets the customer choose a password. What this covers is everything afterwards — an address changed
+in your portal, a name corrected, an account suspended for fraud — each of them a fact you hold and
+the panel does not.
+
+`PATCH` deliberately accepts neither `role` nor `password`. A leaked billing credential must not be
+able to make an account an administrator, and a password set through an API travels through a channel
+neither side controls.
+
+**Suspending an account is not suspending a server.** A suspended account can no longer sign in; its
+servers keep running, because cutting players off a community server over a billing dispute is
+disproportionate. Suspending what a customer pays for is
+`POST /api/application/servers/:uuid/suspend`, and the two are separate decisions on purpose.
 
 ## Selling a server
 
