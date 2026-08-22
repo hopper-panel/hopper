@@ -5,6 +5,7 @@ import { AUDIT_EVENTS, type AuditService } from '../audit/audit.service.js';
 import type { BackupsService } from '../backups/backups.service.js';
 import type { ServerConfigurationService } from '../servers/server-configuration.service.js';
 import { WEBHOOK_EVENTS } from '../webhooks/events.js';
+import type { InstanceWebhooksService } from '../webhooks/instance-webhooks.service.js';
 import type { WebhooksService } from '../webhooks/webhooks.service.js';
 import type { RemoteRequest } from './remote-node.guard.js';
 import type { SftpAuthService } from './sftp-auth.service.js';
@@ -77,6 +78,8 @@ interface AuditEntry {
 function controller() {
   const record = vi.fn((_entry: AuditEntry) => Promise.resolve());
   const dispatch = vi.fn();
+  /** The instance-wide subscribers, which hear the same installation report. */
+  const dispatchForServer = vi.fn();
 
   const prisma = {
     server: { findFirst: vi.fn(() => Promise.resolve({ id: 7, name: 'Test' })) },
@@ -89,9 +92,10 @@ function controller() {
     {} as unknown as SftpAuthService,
     {} as unknown as BackupsService,
     { dispatch } as unknown as WebhooksService,
+    { dispatchForServer } as unknown as InstanceWebhooksService,
   );
 
-  return { instance, record, dispatch };
+  return { instance, record, dispatch, dispatchForServer };
 }
 
 const fromNode = { node: { id: 1, name: 'node-1' } } as unknown as RemoteRequest;

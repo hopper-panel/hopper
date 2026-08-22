@@ -3,6 +3,7 @@ import { AuditModule } from '../audit/audit.module.js';
 import { PlansModule } from '../plans/plans.module.js';
 import { ServersModule } from '../servers/servers.module.js';
 import { UsersModule } from '../users/users.module.js';
+import { WebhooksModule } from '../webhooks/webhooks.module.js';
 import { ApplicationInstanceController } from './application-instance.controller.js';
 import { ApplicationKeysController } from './application-keys.controller.js';
 import { ApplicationKeysService } from './application-keys.service.js';
@@ -19,7 +20,7 @@ import { ProvisioningService } from './provisioning.service.js';
  */
 @Global()
 @Module({
-  imports: [AuditModule, PlansModule, ServersModule, UsersModule],
+  imports: [AuditModule, PlansModule, ServersModule, UsersModule, WebhooksModule],
   controllers: [
     ApplicationInstanceController,
     ApplicationKeysController,

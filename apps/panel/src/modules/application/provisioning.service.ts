@@ -6,6 +6,8 @@ import { choosePlacement, type PlacementRejection } from '../plans/placement.js'
 import { PlansService, type PlanView } from '../plans/plans.service.js';
 import { ServersService } from '../servers/servers.service.js';
 import { UsersService } from '../users/users.service.js';
+import { INSTANCE_WEBHOOK_EVENTS } from '../webhooks/instance-events.js';
+import { InstanceWebhooksService } from '../webhooks/instance-webhooks.service.js';
 import {
   usernameFromEmail,
   type ChangePlanDto,
@@ -49,6 +51,7 @@ export class ProvisioningService {
     private readonly servers: ServersService,
     private readonly users: UsersService,
     private readonly audit: AuditService,
+    private readonly notifications: InstanceWebhooksService,
   ) {}
 
   /**
@@ -140,6 +143,11 @@ export class ProvisioningService {
       ownerCreated: created,
     });
 
+    this.notifications.dispatchForServer(INSTANCE_WEBHOOK_EVENTS.SERVER_PROVISIONED, server.uuid, {
+      plan: plan.slug,
+      ownerCreated: created,
+    });
+
     return { server: await this.describe(server.uuid), ownerCreated: created };
   }
 
@@ -205,6 +213,13 @@ export class ProvisioningService {
       application,
       context,
       { server: uuid },
+    );
+
+    this.notifications.dispatchForServer(
+      suspended
+        ? INSTANCE_WEBHOOK_EVENTS.SERVER_SUSPENDED
+        : INSTANCE_WEBHOOK_EVENTS.SERVER_UNSUSPENDED,
+      uuid,
     );
 
     return { server: await this.describe(uuid), changed: true };
@@ -280,6 +295,11 @@ export class ProvisioningService {
       to: plan.slug,
     });
 
+    this.notifications.dispatchForServer(INSTANCE_WEBHOOK_EVENTS.SERVER_PLAN_CHANGED, uuid, {
+      from: server.plan?.slug ?? null,
+      to: plan.slug,
+    });
+
     return this.describe(uuid);
   }
 
@@ -305,7 +325,16 @@ export class ProvisioningService {
       throw new NotFoundException('Server not found.');
     }
 
+    // Described *before* it is gone: by the time the notification is worth
+    // sending there is nothing left to read, and a deletion event naming no
+    // server is one nobody can reconcile against.
+    const subject = await this.notifications.subjectFor(uuid);
+
     await this.servers.remove(uuid, null, context);
+
+    if (subject) {
+      this.notifications.dispatch(INSTANCE_WEBHOOK_EVENTS.SERVER_DELETED, subject);
+    }
 
     await this.record(AUDIT_EVENTS.SERVER_DELETED, application, context, {
       server: uuid,

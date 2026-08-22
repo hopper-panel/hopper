@@ -851,6 +851,49 @@ model Webhook {
   @@map("webhooks")
 }
 
+/// Outgoing notification about the instance, not about one server.
+///
+/// A separate table rather than a nullable `serverId` on the one above, because
+/// the two answer different people about different things. That one belongs to
+/// a server's owner and tells them their world restarted; this one belongs to
+/// the operator and tells their billing system that a purchase finished
+/// installing. Sharing a table would mean every query on either having to
+/// remember which kind it was looking at, and one forgotten `where` handing a
+/// customer the instance's events.
+///
+/// Its events are the ones an integration cannot observe for itself: a purchase
+/// finishing — or failing — minutes after the call that ordered it returned.
+model InstanceWebhook {
+  id   Int    @id @default(autoincrement())
+  uuid String @unique @default(uuid())
+
+  /// What an operator calls this recipient: "Paymenter", "ops-channel".
+  name String
+
+  url String
+
+  /// Subscribed events. Empty = nothing is sent.
+  events String[]
+
+  /// HMAC signing key, encrypted at rest, like the per-server one.
+  secretEncrypted String
+
+  active Boolean @default(true)
+
+  lastStatus    Int?
+  lastError     String?
+  lastAttemptAt DateTime?
+  lastSuccessAt DateTime?
+  /// Consecutive failures. Past the threshold it disables itself, so a dead
+  /// address stops costing five seconds on every provisioning call.
+  failureCount  Int       @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("instance_webhooks")
+}
+
 model ServerVariable {
   id       Int    @id @default(autoincrement())
   serverId Int

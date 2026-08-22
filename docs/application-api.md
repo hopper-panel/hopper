@@ -331,13 +331,66 @@ have the trail name somebody who was asleep.
 `server.provisioned` is recorded alongside the ordinary `server.created`, deliberately: an operator
 asking "which of these came from the billing system" needs the two to be tellable apart.
 
+## Being told, instead of asking
+
+Provisioning answers in a second with `INSTALLING`. Whether the container actually came up is
+decided **minutes later**, long after that call returned — which is the one thing an integration
+cannot observe for itself, and the reason instance-wide notifications exist.
+
+Add one in the administration (`/api/admin/instance-webhooks`), give it an address and the events
+you want:
+
+| Event                   | Sent when                                                     |
+| ----------------------- | ------------------------------------------------------------- |
+| `server.provisioned`    | a server was sold through this API                            |
+| `server.installed`      | its installation finished — it is usable                      |
+| `server.install-failed` | its installation failed; the server exists and will not start |
+| `server.suspended`      | it was suspended, from here **or from the panel**             |
+| `server.unsuspended`    | it was reinstated                                             |
+| `server.plan-changed`   | it moved onto another offer                                   |
+| `server.deleted`        | it was deleted                                                |
+
+The lifecycle events are not redundant with your own records. An operator's estate changes from two
+directions, and a server suspended by an administrator clicking a button in the panel is the same
+event to anything keeping a mirror — it is just the one your billing system does not already know
+about.
+
+Every request carries `X-Hopper-Event` and `X-Hopper-Signature`, an HMAC-SHA256 of the body, using a
+secret you can read once from the administration. **Verify it**: a webhook URL always ends up
+circulating, and without a signature anybody who learns it can tell you a customer cancelled.
+
+The body is the same shape for every event, so one handler routes on `event`:
+
+```json
+{
+  "event": "server.installed",
+  "occurredAt": "2026-08-22T14:03:11.000Z",
+  "server": {
+    "uuid": "1b32d12d-…",
+    "name": "Survival",
+    "planSlug": "minecraft-4gb",
+    "ownerEmail": "customer@example.com",
+    "address": "mc.example.com:25565",
+    "node": "paris-1"
+  },
+  "details": { "reinstall": false }
+}
+```
+
+No Discord formatting here, unlike the per-server notifications: the reader is a program keeping a
+mirror of an estate, not a person watching a channel.
+
+Sends are not retried, and a recipient that fails **twenty times in a row disables itself** — a dead
+address otherwise costs five seconds of timeout on every sale. Treat these as a fast path, not as a
+ledger: `GET /api/application/servers/:uuid` is always the truth, and an integration that has been
+offline should reconcile against it rather than assume it missed nothing.
+
 ## What is not here yet
 
-- **No webhooks.** You learn that an installation finished by polling
-  `GET /api/application/servers/:uuid` until `status` leaves `INSTALLING`. Every few seconds is
-  fine; installations take from a few seconds to a few minutes depending on the template.
 - **No single sign-on.** A customer clicking "manage my server" in your portal lands on the panel's
   own sign-in page.
+- **No transfers.** Changing plan keeps a server on its machine; moving it between nodes is done
+  from the administration.
 
 ## Errors
 
