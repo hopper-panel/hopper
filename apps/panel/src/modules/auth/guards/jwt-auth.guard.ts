@@ -9,12 +9,18 @@ import { Reflector } from '@nestjs/core';
 import { PrismaService } from '../../../prisma/prisma.service.js';
 import { looksLikeApiKey, scopeAllows } from '../../api-keys/api-key.js';
 import { ApiKeysService } from '../../api-keys/api-keys.service.js';
+import { looksLikeApplicationKey } from '../../application/application-key.js';
 import {
-  applicationScopeAllows,
-  looksLikeApplicationKey,
-} from '../../application/application-key.js';
+  permissionAllows,
+  type ApplicationResource,
+} from '../../application/application-permissions.js';
 import { ApplicationKeysService } from '../../application/application-keys.service.js';
-import { IS_APPLICATION_API_KEY, IS_PUBLIC_KEY, REQUIRED_ROLE_KEY } from '../decorators.js';
+import {
+  IS_APPLICATION_API_KEY,
+  IS_PUBLIC_KEY,
+  REQUIRED_ROLE_KEY,
+  UNGOVERNED_APPLICATION_ROUTE,
+} from '../decorators.js';
 import type { AuthenticatedRequest } from '../request-user.js';
 import { TokenService } from '../token.service.js';
 
@@ -53,17 +59,22 @@ export class JwtAuthGuard implements CanActivate {
       throw new UnauthorizedException('Authentication required.');
     }
 
-    const isApplicationRoute = this.reflector.getAllAndOverride<boolean>(IS_APPLICATION_API_KEY, [
+    // The metadata carries the resource this route is governed by, or the
+    // sentinel for the one route no permission governs. Its presence is what
+    // makes a route an application route at all.
+    const governedBy = this.reflector.getAllAndOverride<string>(IS_APPLICATION_API_KEY, [
       context.getHandler(),
       context.getClass(),
     ]);
+
+    const isApplicationRoute = governedBy !== undefined;
 
     // An application key is recognised by its prefix, before anything is
     // parsed: a malformed `hpa_…` has to be refused as a bad application key
     // rather than fall through and be tried as a session token, which would
     // fail signature verification and say something misleading.
     if (looksLikeApplicationKey(token)) {
-      if (isApplicationRoute !== true) {
+      if (!isApplicationRoute) {
         // Named plainly rather than answered with a generic 401. An integrator
         // who points their key at `/api/servers` because that is where the
         // documentation of *personal* keys sent them needs to read what is
@@ -73,7 +84,7 @@ export class JwtAuthGuard implements CanActivate {
         );
       }
 
-      return this.authenticateApplicationKey(request, token);
+      return this.authenticateApplicationKey(request, token, governedBy);
     }
 
     // The other direction. Without this, a route of the application API would
@@ -81,7 +92,7 @@ export class JwtAuthGuard implements CanActivate {
     // harmless and is how an integration ends up half-built: driven from a
     // session that expires, or from a personal key that dies with its owner's
     // account, and discovering the difference on the day it stops.
-    if (isApplicationRoute === true) {
+    if (isApplicationRoute) {
       throw new UnauthorizedException(
         'This route is reached with an application key (hpa_…), created by an administrator.',
       );
@@ -162,6 +173,7 @@ export class JwtAuthGuard implements CanActivate {
   private async authenticateApplicationKey(
     request: AuthenticatedRequest,
     token: string,
+    governedBy: string,
   ): Promise<boolean> {
     const key = await this.applicationKeys.authenticate(token, request.ip);
 
@@ -169,17 +181,24 @@ export class JwtAuthGuard implements CanActivate {
       throw new UnauthorizedException('Application key invalid, expired or revoked.');
     }
 
-    if (!applicationScopeAllows(key.scopes, request.method)) {
-      throw new ForbiddenException(
-        `This key does not have the necessary scope (${key.scopes.join(', ') || 'none'}).`,
-      );
+    if (governedBy !== UNGOVERNED_APPLICATION_ROUTE) {
+      const resource = governedBy as ApplicationResource;
+
+      if (!permissionAllows(key.permissions, resource, request.method)) {
+        // The resource is named, and the level asked for with it. "Insufficient
+        // permissions" sends an integrator to re-read the whole matrix; this
+        // sends them to one line of it.
+        const needed = request.method === 'GET' ? 'read' : 'read & write';
+
+        throw new ForbiddenException(`This key is not granted ${needed} on ${resource}.`);
+      }
     }
 
     request.application = {
       id: key.id,
       uuid: key.uuid,
       name: key.name,
-      scopes: key.scopes,
+      permissions: key.permissions,
     };
 
     // `request.user` is deliberately left unset. Nothing downstream should be

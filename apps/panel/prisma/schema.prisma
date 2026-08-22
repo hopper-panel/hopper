@@ -237,8 +237,14 @@ model ApplicationKey {
   /// Secret part, hashed.
   tokenHash  String
 
-  /// `read`, `write`, or both. Coarse on purpose, like the personal keys.
-  scopes String[]
+  /// What the key may touch, one `resource:level` per entry — `servers:write`,
+  /// `plans:read`. A resource absent from the list is one the key cannot reach.
+  ///
+  /// Absent rather than stored as `servers:none`: a row listing what a key
+  /// *cannot* do would have to be rewritten every time a resource is added, and
+  /// the keys nobody rewrote would silently gain whatever a missing entry
+  /// defaulted to.
+  permissions String[]
 
   /// Restriction by source address. Empty = no restriction. A billing server
   /// has a fixed address far more often than a human does, so this one is

@@ -4,10 +4,12 @@ import { PlansModule } from '../plans/plans.module.js';
 import { ServersModule } from '../servers/servers.module.js';
 import { UsersModule } from '../users/users.module.js';
 import { WebhooksModule } from '../webhooks/webhooks.module.js';
+import { ApplicationEstateController } from './application-estate.controller.js';
 import { ApplicationInstanceController } from './application-instance.controller.js';
 import { ApplicationKeysController } from './application-keys.controller.js';
 import { ApplicationKeysService } from './application-keys.service.js';
 import { ApplicationServersController } from './application-servers.controller.js';
+import { ApplicationUsersController } from './application-users.controller.js';
 import { IdempotencyService } from './idempotency.service.js';
 import { ProvisioningService } from './provisioning.service.js';
 
@@ -25,6 +27,8 @@ import { ProvisioningService } from './provisioning.service.js';
     ApplicationInstanceController,
     ApplicationKeysController,
     ApplicationServersController,
+    ApplicationEstateController,
+    ApplicationUsersController,
   ],
   providers: [ApplicationKeysService, IdempotencyService, ProvisioningService],
   exports: [ApplicationKeysService],

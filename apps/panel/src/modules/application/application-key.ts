@@ -1,4 +1,3 @@
-import { z } from 'zod';
 import { API_KEY_PREFIX, randomString } from '../api-keys/api-key.js';
 
 /**
@@ -24,21 +23,6 @@ export const APPLICATION_KEY_SECRET_LENGTH = 48;
 const PATTERN = new RegExp(
   `^${APPLICATION_KEY_PREFIX}([A-Za-z0-9]{${APPLICATION_KEY_IDENTIFIER_LENGTH}})\\.([A-Za-z0-9]{${APPLICATION_KEY_SECRET_LENGTH}})$`,
 );
-
-/**
- * What a key may do.
- *
- * Two, not three: there is no `admin` here because the whole surface an
- * application key reaches *is* administrative. The question left is whether the
- * integration only reads — a status page, a stock display, a reconciliation job
- * — or acts. A provider running both is expected to hold two keys, so the one
- * sitting in a public-facing status page cannot delete a server.
- */
-export const APPLICATION_KEY_SCOPES = ['read', 'write'] as const;
-
-export type ApplicationKeyScope = (typeof APPLICATION_KEY_SCOPES)[number];
-
-export const applicationKeyScopeSchema = z.enum(APPLICATION_KEY_SCOPES);
 
 export interface ParsedApplicationKey {
   identifier: string;
@@ -101,20 +85,6 @@ export function prefixesAreDistinguishable(): boolean {
     !APPLICATION_KEY_PREFIX.startsWith(API_KEY_PREFIX) &&
     !API_KEY_PREFIX.startsWith(APPLICATION_KEY_PREFIX)
   );
-}
-
-/**
- * True if the scope allows the request.
- *
- * The verb decides, as it does for personal keys: everything that is not a read
- * needs `write`. Provisioning a server is a `POST`, suspending one is a `POST`,
- * and reading a plan is a `GET` — so a read key describes the estate and
- * changes none of it.
- */
-export function applicationScopeAllows(scopes: readonly string[], method: string): boolean {
-  const readOnly = method === 'GET' || method === 'HEAD' || method === 'OPTIONS';
-
-  return readOnly ? scopes.includes('read') || scopes.includes('write') : scopes.includes('write');
 }
 
 /** What is displayed of a key: its prefix, never its secret. */

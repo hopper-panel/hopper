@@ -87,8 +87,7 @@ const COMMANDS: Command[] = [
   {
     name: 'application-key:create',
     summary: 'Creates a key for a billing system. Prints the token once, last.',
-    usage:
-      'hopper application-key:create --name Paymenter [--scopes write] [--allowed-ips 203.0.113.7]',
+    usage: 'hopper application-key:create --name Paymenter --permissions servers:write,plans:read',
     run: (context, flags) => applicationKeyCreate(context, flags),
   },
   {

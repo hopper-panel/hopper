@@ -110,7 +110,7 @@ restart.
 ## `hopper application-key:create`, `:list` and `:revoke`
 
 ```bash
-hopper application-key:create --name Paymenter --scopes write --allowed-ips 203.0.113.7
+hopper application-key:create --name Paymenter --permissions servers:write,plans:read
 ```
 
 Creates the credential a hosting provider's billing system presents to the
@@ -122,8 +122,12 @@ creatable without a browser: a provider installs the panel and wires their billi
 the same SSH session, and signing in to a web interface to obtain the credential that automates the
 web interface is a detour with no purpose.
 
-`--scopes` defaults to `read,write`. Give a status page `read` alone and it cannot delete a
-customer's server.
+`--permissions` is required and has no default: a credential is going into a configuration file, and the
+shortest path must not be the one that grants the most. One entry per resource, `resource:level` —
+or `all:read` and `all:write` for the cases that want the lot.
+
+The same matrix is on **Administration → Application API**, which is also where an operator sees which
+keys exist, what each may touch and when it was last used.
 
 ```bash
 hopper application-key:list

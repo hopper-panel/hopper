@@ -3,6 +3,7 @@ import { NavLink, Outlet } from 'react-router-dom';
 import {
   DashboardIcon,
   DatabaseIcon,
+  KeyIcon,
   NodesIcon,
   ServersIcon,
   SettingsIcon,
@@ -35,6 +36,7 @@ const SECTIONS: {
     items: [
       { to: '/admin', label: 'admin.overview', icon: DashboardIcon, end: true },
       { to: '/admin/settings', label: 'admin.settings', icon: SettingsIcon },
+      { to: '/admin/application-api', label: 'adminAppApi.title', icon: KeyIcon },
     ],
   },
   {

@@ -14,7 +14,11 @@ import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe.js';
 import { AUDIT_EVENTS, AuditService } from '../audit/audit.service.js';
 import { AdminOnly } from '../auth/decorators.js';
 import { CurrentUser, type AuthenticatedRequest, type RequestUser } from '../auth/request-user.js';
-import { applicationKeyScopeSchema } from './application-key.js';
+import {
+  applicationPermissionsSchema,
+  APPLICATION_RESOURCES,
+  RESOURCE_LEVELS,
+} from './application-permissions.js';
 import { ApplicationKeysService } from './application-keys.service.js';
 
 const createApplicationKeySchema = z.object({
@@ -25,7 +29,12 @@ const createApplicationKeySchema = z.object({
    * and "test" in none.
    */
   name: z.string().min(1).max(100),
-  scopes: z.array(applicationKeyScopeSchema).min(1),
+  /**
+   * One level per resource. Anything left out is `none`, so a caller granting
+   * a single resource sends a single entry rather than a full matrix with five
+   * refusals in it.
+   */
+  permissions: applicationPermissionsSchema,
   /**
    * Restriction by source address. Compared as is, without ranges — the same
    * choice as the personal keys, for the same reason: a panel usually sits
@@ -67,6 +76,24 @@ export class ApplicationKeysController {
     return this.keys.list();
   }
 
+  /**
+   * The matrix an operator is shown, and what each line may be granted.
+   *
+   * Served rather than duplicated in the interface. The screen and the
+   * validation would otherwise be two lists of resources, and the day a
+   * resource is added the one nobody remembered becomes a row that cannot be
+   * ticked, or a permission nobody can see.
+   */
+  @Get('resources')
+  resources() {
+    return {
+      resources: APPLICATION_RESOURCES.map((resource) => ({
+        resource,
+        levels: RESOURCE_LEVELS[resource],
+      })),
+    };
+  }
+
   @Post()
   async create(
     @Body(new ZodValidationPipe(createApplicationKeySchema)) body: CreateApplicationKeyDto,
@@ -82,7 +109,7 @@ export class ApplicationKeysController {
       userAgent: request.headers['user-agent'],
       // The token appears nowhere but in the response to this request. The
       // uuid and the name are what identify the key afterwards.
-      metadata: { uuid: created.uuid, name: created.name, scopes: created.scopes },
+      metadata: { uuid: created.uuid, name: created.name, permissions: created.permissions },
     });
 
     return created;

@@ -1,8 +1,13 @@
 import type { INestApplicationContext } from '@nestjs/common';
 import {
-  APPLICATION_KEY_SCOPES,
-  type ApplicationKeyScope,
-} from '../../modules/application/application-key.js';
+  APPLICATION_RESOURCES,
+  PERMISSION_LEVELS,
+  levelIsOffered,
+  RESOURCE_LEVELS,
+  type ApplicationPermissions,
+  type ApplicationResource,
+  type PermissionLevel,
+} from '../../modules/application/application-permissions.js';
 import { ApplicationKeysService } from '../../modules/application/application-keys.service.js';
 import { textOf, type Flags } from '../flags.js';
 import { bold, dim, fatal, line } from '../output.js';
@@ -37,7 +42,7 @@ export async function applicationKeyCreate(
     );
   }
 
-  const scopes = parseScopes(textOf(flags, 'scopes') ?? 'read,write');
+  const permissions = parsePermissions(textOf(flags, 'permissions'));
   const allowedIps = splitList(textOf(flags, 'allowed-ips'));
   const expiresAt = textOf(flags, 'expires-at');
 
@@ -50,10 +55,10 @@ export async function applicationKeyCreate(
   // No actor: a key created from a shell is attributed to nobody rather than
   // to whichever administrator happens to be first in the table. The audit
   // trail then reads "created by the system", which is what happened.
-  const created = await keys.create({ name, scopes, allowedIps, expiresAt }, undefined);
+  const created = await keys.create({ name, permissions, allowedIps, expiresAt }, undefined);
 
   line(`\n${bold('Application key created')} — ${created.name}`);
-  line(dim(`  Scopes: ${created.scopes.join(', ')}`));
+  line(dim(`  Permissions: ${describe(created.permissions)}`));
   line(
     dim(
       `  Addresses: ${created.allowedIps.length === 0 ? 'no restriction' : created.allowedIps.join(', ')}`,
@@ -86,7 +91,7 @@ export async function applicationKeyList(context: INestApplicationContext): Prom
 
     line(`  ${key.name} ${dim(`(${state})`)}`);
     line(dim(`    ${key.key}`));
-    line(dim(`    Scopes: ${key.scopes.join(', ')}`));
+    line(dim(`    Permissions: ${describe(key.permissions)}`));
     line(dim(`    Last used: ${key.lastUsedAt === null ? 'never' : key.lastUsedAt.toISOString()}`));
   }
 }
@@ -110,26 +115,83 @@ export async function applicationKeyRevoke(
   line(dim('  It is kept, revoked, so the audit entries it left still name it.'));
 }
 
-function parseScopes(raw: string): ApplicationKeyScope[] {
-  const asked = splitList(raw);
-
-  if (asked.length === 0) {
-    fatal(`Empty --scopes. Expected one or both of: ${APPLICATION_KEY_SCOPES.join(', ')}.`);
-  }
-
-  const unknown = asked.filter(
-    (scope) => !APPLICATION_KEY_SCOPES.includes(scope as ApplicationKeyScope),
-  );
-
-  if (unknown.length > 0) {
-    // Named, with the list: the caller is usually a script, and "invalid
-    // scope" without saying which one is a trip to the source.
+/**
+ * Reads `--permissions servers:write,plans:read`.
+ *
+ * No default. The first version of this command defaulted to everything a key
+ * could do, which was defensible when there were two scopes and is not now: a
+ * credential is going into a configuration file, and the shortest path must not
+ * be the one that grants the most. `--permissions all:read` and
+ * `--permissions all:write` exist for the cases that genuinely want the lot.
+ */
+function parsePermissions(raw: string | undefined): Partial<ApplicationPermissions> {
+  if (raw === undefined) {
     fatal(
-      `Unknown scope: ${unknown.join(', ')}.\n  Known scopes: ${APPLICATION_KEY_SCOPES.join(', ')}.`,
+      'Missing --permissions.\n' +
+        `  Resources: ${APPLICATION_RESOURCES.join(', ')}\n` +
+        '  Example:   --permissions servers:write,plans:read\n' +
+        '  Shorthand: --permissions all:read',
     );
   }
 
-  return asked as ApplicationKeyScope[];
+  const permissions: Partial<ApplicationPermissions> = {};
+
+  for (const entry of splitList(raw)) {
+    const [resource, level] = entry.split(':');
+
+    if (resource === undefined || level === undefined) {
+      fatal(`Unreadable permission: ${entry}. Expected resource:level, e.g. servers:write.`);
+    }
+
+    if (!isLevel(level)) {
+      fatal(`Unknown level: ${level}.\n  Known levels: ${PERMISSION_LEVELS.join(', ')}.`);
+    }
+
+    if (resource === 'all') {
+      for (const known of APPLICATION_RESOURCES) {
+        // `all:write` means "as much as each resource allows", not "write
+        // everywhere": four of them have no write route, and refusing the whole
+        // command over that would make the shorthand useless.
+        permissions[known] = levelIsOffered(known, level) ? level : 'read';
+      }
+
+      continue;
+    }
+
+    if (!isResource(resource)) {
+      fatal(
+        `Unknown resource: ${resource}.\n  Known resources: ${APPLICATION_RESOURCES.join(', ')}.`,
+      );
+    }
+
+    if (!levelIsOffered(resource, level)) {
+      fatal(
+        `"${resource}" cannot be granted "${level}".\n` +
+          `  It accepts: ${RESOURCE_LEVELS[resource].join(', ')}.`,
+      );
+    }
+
+    permissions[resource] = level;
+  }
+
+  return permissions;
+}
+
+/** One line an operator can read back, rather than a serialised array. */
+function describe(permissions: ApplicationPermissions): string {
+  const granted = APPLICATION_RESOURCES.filter((resource) => permissions[resource] !== 'none').map(
+    (resource) => `${resource}:${permissions[resource]}`,
+  );
+
+  return granted.length === 0 ? 'none' : granted.join(', ');
+}
+
+function isResource(value: string): value is ApplicationResource {
+  return (APPLICATION_RESOURCES as readonly string[]).includes(value);
+}
+
+function isLevel(value: string): value is PermissionLevel {
+  return (PERMISSION_LEVELS as readonly string[]).includes(value);
 }
 
 function splitList(raw: string | undefined): string[] {

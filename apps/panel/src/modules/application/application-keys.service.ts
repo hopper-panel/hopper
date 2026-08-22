@@ -1,12 +1,25 @@
-import { ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { apiKeySecretMatches, hashApiKeySecret, ipAllowed } from '../api-keys/api-key.js';
 import {
   displayableApplicationKey,
   generateApplicationKey,
   parseApplicationKey,
-  type ApplicationKeyScope,
 } from './application-key.js';
+import {
+  decodePermissions,
+  encodePermissions,
+  grantsAnything,
+  levelIsOffered,
+  APPLICATION_RESOURCES,
+  type ApplicationPermissions,
+} from './application-permissions.js';
 
 /**
  * Same reasoning as the personal keys: a key called in a loop must not cost one
@@ -20,12 +33,13 @@ export interface AuthenticatedApplication {
   id: number;
   uuid: string;
   name: string;
-  scopes: string[];
+  /** Stored form, `resource:level` per entry. */
+  permissions: string[];
 }
 
 export interface CreateApplicationKeyDto {
   name: string;
-  scopes: ApplicationKeyScope[];
+  permissions: Partial<ApplicationPermissions>;
   allowedIps: string[];
   expiresAt?: string;
 }
@@ -46,7 +60,7 @@ export class ApplicationKeysService {
       uuid: key.uuid,
       name: key.name,
       key: displayableApplicationKey(key.identifier),
-      scopes: key.scopes,
+      permissions: decodePermissions(key.permissions),
       allowedIps: key.allowedIps,
       lastUsedAt: key.lastUsedAt,
       expiresAt: key.expiresAt,
@@ -78,6 +92,25 @@ export class ApplicationKeysService {
       throw new ConflictException(`An active key is already named "${dto.name}".`);
     }
 
+    for (const resource of APPLICATION_RESOURCES) {
+      const level = dto.permissions[resource] ?? 'none';
+
+      // Refused rather than quietly downgraded. An operator who ticked "read &
+      // write" on a resource that has no write route believes their integration
+      // can write, and a silent demotion means they find out in production.
+      if (!levelIsOffered(resource, level)) {
+        throw new BadRequestException(
+          `"${resource}" cannot be granted "${level}": it is read-only through this API.`,
+        );
+      }
+    }
+
+    // A key that opens nothing is a credential somebody will paste into a
+    // configuration file and spend an afternoon debugging.
+    if (!grantsAnything(dto.permissions)) {
+      throw new BadRequestException('Grant the key at least one resource.');
+    }
+
     const { token, identifier, secret } = generateApplicationKey();
 
     const key = await this.prisma.applicationKey.create({
@@ -85,7 +118,7 @@ export class ApplicationKeysService {
         name: dto.name,
         identifier,
         tokenHash: hashApiKeySecret(secret),
-        scopes: dto.scopes,
+        permissions: encodePermissions(dto.permissions),
         allowedIps: dto.allowedIps,
         expiresAt: dto.expiresAt === undefined ? null : new Date(dto.expiresAt),
         createdById: createdById ?? null,
@@ -96,7 +129,7 @@ export class ApplicationKeysService {
       uuid: key.uuid,
       name: key.name,
       token,
-      scopes: key.scopes,
+      permissions: decodePermissions(key.permissions),
       allowedIps: key.allowedIps,
       expiresAt: key.expiresAt,
       createdAt: key.createdAt,
@@ -178,7 +211,7 @@ export class ApplicationKeysService {
 
     void this.touch(key.id, key.lastUsedAt);
 
-    return { id: key.id, uuid: key.uuid, name: key.name, scopes: key.scopes };
+    return { id: key.id, uuid: key.uuid, name: key.name, permissions: key.permissions };
   }
 
   private async touch(id: number, lastUsedAt: Date | null): Promise<void> {

@@ -1,6 +1,7 @@
 import { Controller, Get } from '@nestjs/common';
 import { PANEL_VERSION } from '../../version.js';
 import { ApplicationApi } from '../auth/decorators.js';
+import { decodePermissions } from './application-permissions.js';
 import { CurrentApplication, type RequestApplication } from '../auth/request-user.js';
 
 /**
@@ -38,7 +39,12 @@ export class ApplicationInstanceController {
       key: {
         uuid: application.uuid,
         name: application.name,
-        scopes: application.scopes,
+        /**
+         * Decoded rather than raw. An integrator checking "may I provision"
+         * should read `{"servers": "write"}` and not have to split
+         * `servers:write` themselves — and the stored form is ours to change.
+         */
+        permissions: decodePermissions(application.permissions),
       },
     };
   }

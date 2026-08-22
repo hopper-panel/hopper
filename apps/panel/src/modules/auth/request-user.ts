@@ -42,7 +42,8 @@ export interface RequestApplication {
   uuid: string;
   /** What an operator called the integration: "Paymenter", "WHMCS". */
   name: string;
-  scopes: string[];
+  /** Stored form, `resource:level` per entry. Decode it rather than parse it. */
+  permissions: string[];
 }
 
 /**

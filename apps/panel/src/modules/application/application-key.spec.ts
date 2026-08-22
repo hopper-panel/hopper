@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import { API_KEY_PREFIX, looksLikeApiKey, parseApiKey } from '../api-keys/api-key.js';
 import {
   APPLICATION_KEY_PREFIX,
-  applicationScopeAllows,
   displayableApplicationKey,
   generateApplicationKey,
   looksLikeApplicationKey,
@@ -82,34 +81,5 @@ describe('telling the two kinds of key apart', () => {
     // thing.
     expect(looksLikeApplicationKey(`${APPLICATION_KEY_PREFIX}nonsense`)).toBe(true);
     expect(parseApplicationKey(`${APPLICATION_KEY_PREFIX}nonsense`)).toBeNull();
-  });
-});
-
-describe('application key scopes', () => {
-  it.each(['GET', 'HEAD', 'OPTIONS'])('lets a read key through on %s', (method) => {
-    expect(applicationScopeAllows(['read'], method)).toBe(true);
-  });
-
-  it.each(['POST', 'PATCH', 'PUT', 'DELETE'])('stops a read key on %s', (method) => {
-    // A key pasted into a public status page must not be able to delete a
-    // customer's server.
-    expect(applicationScopeAllows(['read'], method)).toBe(false);
-  });
-
-  it('lets a write key read as well', () => {
-    expect(applicationScopeAllows(['write'], 'GET')).toBe(true);
-    expect(applicationScopeAllows(['write'], 'POST')).toBe(true);
-  });
-
-  it('refuses a key with no scope at all', () => {
-    expect(applicationScopeAllows([], 'GET')).toBe(false);
-    expect(applicationScopeAllows([], 'POST')).toBe(false);
-  });
-
-  it('ignores a scope it does not know', () => {
-    // `admin` means something for the personal keys and nothing here. It must
-    // not open a write by resembling one.
-    expect(applicationScopeAllows(['admin'], 'POST')).toBe(false);
-    expect(applicationScopeAllows(['admin'], 'GET')).toBe(false);
   });
 });

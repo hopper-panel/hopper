@@ -12,7 +12,7 @@ import { PlansService } from './plans.service.js';
  * somebody eventually forgets to read.
  */
 @Controller('api/application/plans')
-@ApplicationApi()
+@ApplicationApi('plans')
 export class ApplicationPlansController {
   constructor(private readonly plans: PlansService) {}
 
