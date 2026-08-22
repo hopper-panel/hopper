@@ -113,7 +113,7 @@ curl -H "Authorization: Bearer hpa_…" https://panel.example.com/api/applicatio
 
 ```json
 {
-  "panel": { "version": "0.18.0", "api": 1 },
+  "panel": { "version": "0.19.0", "api": 2 },
   "key": {
     "uuid": "3f1c…",
     "name": "Paymenter",
@@ -130,6 +130,10 @@ changes things.
 `panel.api` is the version of **this contract**, moved by hand, and not the panel's version, which
 moves on every release including the ones that change nothing here. Pin against `api`. A new route
 or a new optional field does not move it; a removed field, a renamed one or a changed meaning does.
+
+It is at **2**: `key.scopes` became `key.permissions` when a key stopped holding two coarse
+scopes and started holding one level per resource. Version 1 was published for one afternoon, so
+nothing serves both shapes.
 
 ## Plans — what you sell
 
