@@ -118,7 +118,14 @@ export function displayableKey(identifier: string): string {
   return `${API_KEY_PREFIX}${identifier}.${'•'.repeat(8)}`;
 }
 
-function randomString(length: number): string {
+/**
+ * Random string over an alphanumeric alphabet.
+ *
+ * Exported because the application keys generate their secret the same way, and
+ * the reasoning below about the modulo bias is worth having written once rather
+ * than judged twice.
+ */
+export function randomString(length: number): string {
   const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
   const bytes = randomBytes(length);
   let value = '';

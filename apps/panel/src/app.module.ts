@@ -3,6 +3,7 @@ import { ConfigModule } from '@nestjs/config';
 import { validateEnvironment } from './config/environment.js';
 import { ActivityModule } from './modules/activity/activity.module.js';
 import { ApiKeysModule } from './modules/api-keys/api-keys.module.js';
+import { ApplicationModule } from './modules/application/application.module.js';
 import { AuditModule } from './modules/audit/audit.module.js';
 import { AllocationsModule } from './modules/allocations/allocations.module.js';
 import { AuthModule } from './modules/auth/auth.module.js';
@@ -39,6 +40,7 @@ import { WebModule } from './web/web.module.js';
     AuditModule,
     AuthModule,
     ApiKeysModule,
+    ApplicationModule,
     InstanceSettingsModule,
     UsersModule,
     NodesModule,

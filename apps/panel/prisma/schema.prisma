@@ -58,8 +58,9 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  sessions     Session[]
-  apiKeys      ApiKey[]
+  sessions        Session[]
+  apiKeys         ApiKey[]
+  applicationKeys ApplicationKey[]   @relation("ApplicationKeyCreator")
   passkeys     Passkey[]
   challenges   WebauthnChallenge[]
   ownedServers Server[]            @relation("ServerOwner")
@@ -206,6 +207,59 @@ model ApiKey {
 
   @@index([userId])
   @@map("api_keys")
+}
+
+/// Machine identity, for the software a hosting provider runs beside the panel.
+///
+/// Deliberately not an `ApiKey` with a flag. An `ApiKey` borrows its owner's
+/// access, which is right for a key somebody pastes into a script and wrong for
+/// the credential a billing system provisions with: that one has to keep
+/// working when the administrator who created it is demoted, leaves, or has
+/// their account deleted — none of which should stop a customer's server from
+/// being delivered. So it belongs to nobody, and `createdById` is a note for
+/// the trail rather than a dependency.
+///
+/// It opens `/api/application/*` and nothing else. Not the administration, not
+/// a console, not a file. A credential that lives in a billing server's
+/// configuration file is the one most likely to leak, and the blast radius of
+/// this one is bounded by the surface it can reach rather than by the promise
+/// that nobody will misuse it.
+model ApplicationKey {
+  id   Int    @id @default(autoincrement())
+  uuid String @unique @default(uuid())
+
+  /// What the key is for, in an operator's words: "Paymenter", "WHMCS".
+  name String
+
+  /// Public part, in clear text: finds the row without comparing the secret
+  /// against the whole table.
+  identifier String @unique
+  /// Secret part, hashed.
+  tokenHash  String
+
+  /// `read`, `write`, or both. Coarse on purpose, like the personal keys.
+  scopes String[]
+
+  /// Restriction by source address. Empty = no restriction. A billing server
+  /// has a fixed address far more often than a human does, so this one is
+  /// worth filling in.
+  allowedIps String[]
+
+  /// Revoked rather than deleted: a key that provisioned servers stays
+  /// nameable in the audit trail afterwards.
+  revokedAt DateTime?
+
+  lastUsedAt DateTime?
+  expiresAt  DateTime?
+  createdAt  DateTime  @default(now())
+
+  /// Who created it. `SetNull`, and that is the point: the key outlives the
+  /// account.
+  createdById Int?
+  createdBy   User? @relation("ApplicationKeyCreator", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([createdById])
+  @@map("application_keys")
 }
 
 // ---------------------------------------------------------------------------

@@ -79,6 +79,12 @@ export const AUDIT_EVENTS = {
   API_KEY_CREATED: 'api-key.created',
   API_KEY_DELETED: 'api-key.deleted',
 
+  // Application keys are revoked, never deleted, so there is no
+  // `application-key.deleted` to pair with the personal keys' event. The
+  // difference in the vocabulary is the difference in what happens.
+  APPLICATION_KEY_CREATED: 'application-key.created',
+  APPLICATION_KEY_REVOKED: 'application-key.revoked',
+
   WEBHOOK_CREATED: 'webhook.created',
   WEBHOOK_UPDATED: 'webhook.updated',
   WEBHOOK_DELETED: 'webhook.deleted',
