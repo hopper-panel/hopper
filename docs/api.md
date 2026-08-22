@@ -51,6 +51,10 @@ That two-minute lifetime is also the delay before a withdrawn access stops worki
 
 ## Outgoing notifications
 
+These are a **server's** notifications, for its owner. A hosting provider wanting to hear about the
+whole instance — a purchase finishing its installation, a server suspended from the panel — wants
+the instance-wide ones instead, in [Application API](./application-api.md).
+
 A server's **Notifications tab**. The panel calls the address of your choice on every subscribed
 event: start, stop, unexpected stop, backup and installation.
 

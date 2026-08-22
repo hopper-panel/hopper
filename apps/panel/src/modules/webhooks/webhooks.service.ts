@@ -5,21 +5,14 @@ import type { Webhook } from '@prisma/client';
 import { CryptoService } from '../../common/crypto/crypto.service.js';
 import type { Environment } from '../../config/environment.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
-import { PANEL_VERSION } from '../../version.js';
 import { ALL_WEBHOOK_EVENTS, type WebhookEvent } from './events.js';
-import { buildPayload, signPayload, type WebhookContext } from './payload.js';
+import { buildPayload, type WebhookContext } from './payload.js';
+import { postSigned } from './transport.js';
 import { UnsafeWebhookUrlError, assertSafeWebhookUrl } from './url-guard.js';
 import type { CreateWebhookDto, UpdateWebhookDto } from './webhooks.dto.js';
 
 /** Past this, the address is taken for dead and the notification pauses. */
 const MAX_CONSECUTIVE_FAILURES = 20;
-
-/**
- * A recipient that does not answer must not hold the panel back: the request
- * that triggered the event — a server start — is already finished, but the
- * process keeps the connection open.
- */
-const DELIVERY_TIMEOUT_MS = 5000;
 
 /**
  * Outgoing notifications.
@@ -215,42 +208,12 @@ export class WebhooksService {
   ): Promise<{ ok: boolean; status: number | null; error: string | null }> {
     const { body } = buildPayload(webhook.url, event, context);
 
-    let outcome: { ok: boolean; status: number | null; error: string | null };
-
-    try {
-      // Revalidated on every send: between creation and now, the name may have
-      // started pointing at the internal network.
-      await assertSafeWebhookUrl(webhook.url);
-
-      const response = await fetch(webhook.url, {
-        method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          'user-agent': `Hopper/${PANEL_VERSION}`,
-          'x-hopper-event': event,
-          'x-hopper-signature': signPayload(this.crypto.decrypt(webhook.secretEncrypted), body),
-        },
-        body,
-        signal: AbortSignal.timeout(DELIVERY_TIMEOUT_MS),
-      });
-
-      outcome = {
-        ok: response.ok,
-        status: response.status,
-        error: response.ok ? null : `The recipient answered ${response.status}.`,
-      };
-    } catch (error: unknown) {
-      outcome = {
-        ok: false,
-        status: null,
-        error:
-          error instanceof UnsafeWebhookUrlError
-            ? error.message
-            : error instanceof Error
-              ? error.message
-              : 'Could not send.',
-      };
-    }
+    const outcome = await postSigned({
+      url: webhook.url,
+      secret: this.crypto.decrypt(webhook.secretEncrypted),
+      event,
+      body,
+    });
 
     await this.recordAttempt(webhook, outcome);
 

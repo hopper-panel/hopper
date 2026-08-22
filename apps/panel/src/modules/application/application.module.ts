@@ -1,8 +1,15 @@
 import { Global, Module } from '@nestjs/common';
 import { AuditModule } from '../audit/audit.module.js';
+import { PlansModule } from '../plans/plans.module.js';
+import { ServersModule } from '../servers/servers.module.js';
+import { UsersModule } from '../users/users.module.js';
+import { WebhooksModule } from '../webhooks/webhooks.module.js';
 import { ApplicationInstanceController } from './application-instance.controller.js';
 import { ApplicationKeysController } from './application-keys.controller.js';
 import { ApplicationKeysService } from './application-keys.service.js';
+import { ApplicationServersController } from './application-servers.controller.js';
+import { IdempotencyService } from './idempotency.service.js';
+import { ProvisioningService } from './provisioning.service.js';
 
 /**
  * The application API — what a hosting provider's own software talks to.
@@ -13,9 +20,13 @@ import { ApplicationKeysService } from './application-keys.service.js';
  */
 @Global()
 @Module({
-  imports: [AuditModule],
-  controllers: [ApplicationInstanceController, ApplicationKeysController],
-  providers: [ApplicationKeysService],
+  imports: [AuditModule, PlansModule, ServersModule, UsersModule, WebhooksModule],
+  controllers: [
+    ApplicationInstanceController,
+    ApplicationKeysController,
+    ApplicationServersController,
+  ],
+  providers: [ApplicationKeysService, IdempotencyService, ProvisioningService],
   exports: [ApplicationKeysService],
 })
 export class ApplicationModule {}

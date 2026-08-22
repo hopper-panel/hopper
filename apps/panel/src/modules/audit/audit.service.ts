@@ -89,6 +89,14 @@ export const AUDIT_EVENTS = {
   PLAN_UPDATED: 'plan.updated',
   PLAN_DELETED: 'plan.deleted',
 
+  // Distinct from `server.created`, which stays what an administrator does
+  // from the panel. Both are written when a sale is delivered — the first by
+  // the service that creates any server, this one by the API that sold it —
+  // and an operator asking "which of these came from the billing system" needs
+  // the two to be tellable apart.
+  SERVER_PROVISIONED: 'server.provisioned',
+  SERVER_PLAN_CHANGED: 'server.plan-changed',
+
   WEBHOOK_CREATED: 'webhook.created',
   WEBHOOK_UPDATED: 'webhook.updated',
   WEBHOOK_DELETED: 'webhook.deleted',

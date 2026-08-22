@@ -33,6 +33,8 @@ import { BackupsService } from '../backups/backups.service.js';
 import { Public } from '../auth/decorators.js';
 import { ServerConfigurationService } from '../servers/server-configuration.service.js';
 import { WEBHOOK_EVENTS } from '../webhooks/events.js';
+import { INSTANCE_WEBHOOK_EVENTS } from '../webhooks/instance-events.js';
+import { InstanceWebhooksService } from '../webhooks/instance-webhooks.service.js';
 import { WebhooksService } from '../webhooks/webhooks.service.js';
 import { RemoteNodeGuard, type RemoteRequest } from './remote-node.guard.js';
 import { SftpAuthService } from './sftp-auth.service.js';
@@ -58,6 +60,7 @@ export class RemoteController {
     private readonly sftp: SftpAuthService,
     private readonly backups: BackupsService,
     private readonly webhooks: WebhooksService,
+    private readonly instanceWebhooks: InstanceWebhooksService,
   ) {}
 
   /**
@@ -209,6 +212,20 @@ export class RemoteController {
       server.id,
       body.successful ? WEBHOOK_EVENTS.INSTALL_COMPLETED : WEBHOOK_EVENTS.INSTALL_FAILED,
       { Reinstall: body.reinstall ? 'yes' : 'no' },
+    );
+
+    // And the instance's own subscribers, which is where a hosting provider's
+    // billing system hears it. This is the moment nothing outside the panel can
+    // observe: the call that ordered the server answered `INSTALLING` seconds
+    // after it was placed, and whether the container actually came up is
+    // decided here, minutes later. Without it, an integration has no choice but
+    // to poll every server it has ever sold.
+    this.instanceWebhooks.dispatchForServer(
+      body.successful
+        ? INSTANCE_WEBHOOK_EVENTS.SERVER_INSTALLED
+        : INSTANCE_WEBHOOK_EVENTS.SERVER_INSTALL_FAILED,
+      uuid,
+      { reinstall: body.reinstall },
     );
   }
 

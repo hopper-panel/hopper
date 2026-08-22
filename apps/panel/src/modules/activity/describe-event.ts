@@ -148,6 +148,10 @@ export function describeEvent(event: string, metadata: Metadata): string {
       return `Changed the plan${quoted(text(metadata, 'slug'))}.`;
     case AUDIT_EVENTS.PLAN_DELETED:
       return 'Deleted a plan.';
+    case AUDIT_EVENTS.SERVER_PROVISIONED:
+      return `Provisioned a server on the plan${quoted(text(metadata, 'plan'))}.`;
+    case AUDIT_EVENTS.SERVER_PLAN_CHANGED:
+      return `Moved the server onto the plan${quoted(text(metadata, 'to'))}.`;
 
     // -- Outgoing notifications ------------------------------------------------
     case AUDIT_EVENTS.WEBHOOK_CREATED:

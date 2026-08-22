@@ -53,6 +53,17 @@ export const createServerSchema = z.object({
 
   /** Start the server as soon as the installation finishes. */
   startOnCompletion: z.boolean().default(true),
+
+  /**
+   * The offer this server is being sold under, when it is being sold.
+   *
+   * Recorded, not applied: the limits above are what the server gets, and this
+   * only answers "what was this sold as" later. The application API resolves a
+   * plan into those limits before calling, precisely so that the two can never
+   * disagree — a server whose plan says 4 GB and whose container has 2 would be
+   * a support case nobody could settle.
+   */
+  planUuid: z.uuid().optional(),
 });
 
 export const updateServerSchema = z.object({
