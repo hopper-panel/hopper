@@ -60,12 +60,12 @@ model User {
 
   sessions        Session[]
   apiKeys         ApiKey[]
-  applicationKeys ApplicationKey[]   @relation("ApplicationKeyCreator")
-  passkeys     Passkey[]
-  challenges   WebauthnChallenge[]
-  ownedServers Server[]            @relation("ServerOwner")
-  subuserOf    Subuser[]
-  auditEntries AuditLog[]          @relation("AuditActor")
+  applicationKeys ApplicationKey[]    @relation("ApplicationKeyCreator")
+  passkeys        Passkey[]
+  challenges      WebauthnChallenge[]
+  ownedServers    Server[]            @relation("ServerOwner")
+  subuserOf       Subuser[]
+  auditEntries    AuditLog[]          @relation("AuditActor")
 
   @@index([suspended])
   @@map("users")
@@ -330,6 +330,9 @@ model Node {
 
   allocations   Allocation[]
   databaseHosts DatabaseHost[]
+  /// Plans that may be placed here. Empty on both sides means "no restriction",
+  /// which is what an instance with one node wants and never has to say.
+  plans         Plan[]         @relation("PlanNodes")
   /// Restrict and not Cascade: deleting a node that still hosts servers has to
   /// fail, not destroy their data.
   servers       Server[]
@@ -354,7 +357,7 @@ model Allocation {
   /// Nullable, and null on every port that existed before names did. Null is
   /// also what an unnamed port keeps for ever: naming is opt-in, and a port
   /// with no name is reached the way it always was.
-  role  String?
+  role String?
 
   serverId Int?
   server   Server? @relation("ServerAllocations", fields: [serverId], references: [id], onDelete: SetNull)
@@ -383,6 +386,82 @@ model Allocation {
   @@unique([serverId, role])
   @@index([serverId])
   @@map("allocations")
+}
+
+/// A sellable offer: what a customer gets for what they pay.
+///
+/// It exists because of who calls the API. Without it, a billing system has to
+/// know the panel's internals to sell anything — which template UUID, how many
+/// bytes of memory, which node has a free port, and a dozen more fields — and
+/// every one of those lives in a second place, in a second product's
+/// configuration, drifting from this one. A plan moves that knowledge here,
+/// where it can be changed by the person who decides what is sold, and leaves
+/// the billing system a name.
+///
+/// It is a **template for creating a server**, not a live dependency. Limits
+/// are copied onto the server at creation, exactly as the startup command is
+/// copied from its template: editing an offer must not silently change what
+/// two hundred existing customers are running. Moving a server onto a plan's
+/// current limits is a deliberate act, and it has a route of its own.
+model Plan {
+  id   Int    @id @default(autoincrement())
+  uuid String @unique @default(uuid())
+
+  /// Stable identifier chosen by the operator: `minecraft-4gb`.
+  ///
+  /// The billing system references this and not the uuid, because it is what a
+  /// human types into a product's configuration and reads back in a support
+  /// ticket. Renaming a plan is therefore a breaking change for whatever sells
+  /// it, which is the honest trade for never having to look up an identifier.
+  slug        String @unique
+  name        String
+  description String @default("")
+
+  templateId Int
+  template   Template @relation(fields: [templateId], references: [id], onDelete: Restrict)
+
+  /// Which of the template's images to run. Empty = the template's default.
+  /// A provider selling "Java 8" and "Java 21" from one template needs this;
+  /// one selling a single image never sets it.
+  dockerImage String @default("")
+
+  // What the customer gets. Same units and same meaning as the columns of the
+  // same name on `Server`, because that is where they are copied.
+  memoryBytes     BigInt
+  swapBytes       BigInt  @default(0)
+  diskBytes       BigInt
+  cpuPercent      Int     @default(0)
+  ioWeight        Int     @default(500)
+  pidsLimit       Int     @default(512)
+  oomKillDisabled Boolean @default(false)
+
+  backupLimit     Int @default(3)
+  databaseLimit   Int @default(0)
+  allocationLimit Int @default(0)
+
+  /// Where servers on this plan may be placed. Empty = anywhere.
+  ///
+  /// A many-to-many rather than one node per plan: an offer usually exists on
+  /// every machine of a region, and duplicating the offer per node would make
+  /// the billing system choose the machine — which is the decision this whole
+  /// model exists to take away from it.
+  nodes Node[] @relation("PlanNodes")
+
+  /// A retired offer stops being sellable; the customers on it keep running.
+  ///
+  /// Deleting is also possible and does the same to the servers, thanks to the
+  /// `SetNull` above — but it loses the name, and "which plan was this sold
+  /// under" is a question support asks about servers whose offer was withdrawn
+  /// two years ago.
+  active Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  servers Server[]
+
+  @@index([active])
+  @@map("plans")
 }
 
 // ---------------------------------------------------------------------------
@@ -450,7 +529,7 @@ model Template {
   startup      String
 
   /// How to stop the server: `command:stop` or `signal:SIGTERM`.
-  stopCommand      String  @default("command:stop")
+  stopCommand String @default("command:stop")
 
   /// How to stop the server when the string above cannot say it
   /// (StopConfiguration shape from the contract).
@@ -537,6 +616,10 @@ model Template {
 
   variables TemplateVariable[]
   servers   Server[]
+  /// `Restrict` on the other side: deleting a template that a sellable offer
+  /// points at has to fail rather than leave the offer unable to create
+  /// anything.
+  plans     Plan[]
 
   @@unique([groupId, name])
   @@index([groupId])
@@ -618,6 +701,19 @@ model Server {
   templateId Int
   template   Template @relation(fields: [templateId], references: [id], onDelete: Restrict)
 
+  /// The offer this server was sold under, when it was sold under one.
+  ///
+  /// Null for every server an administrator creates by hand, and for every
+  /// server that existed before plans did — which is why it is nullable rather
+  /// than defaulted to some "custom" row nobody asked for.
+  ///
+  /// `SetNull` on delete: retiring an offer must not refuse to delete it
+  /// because customers are still on it, and must not delete their servers
+  /// either. What they run is copied onto the server at creation; the plan is a
+  /// record of what was sold, not a live dependency.
+  planId Int?
+  plan   Plan? @relation(fields: [planId], references: [id], onDelete: SetNull)
+
   status ServerStatus @default(INSTALLING)
 
   /// Primary allocation: the one injected into `server-port`.
@@ -664,6 +760,7 @@ model Server {
   @@index([ownerId])
   @@index([nodeId])
   @@index([templateId])
+  @@index([planId])
   @@index([status])
   @@map("servers")
 }

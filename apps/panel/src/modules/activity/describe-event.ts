@@ -142,6 +142,12 @@ export function describeEvent(event: string, metadata: Metadata): string {
       return `Created an application key${quoted(text(metadata, 'name'))}.`;
     case AUDIT_EVENTS.APPLICATION_KEY_REVOKED:
       return `Revoked the application key${quoted(text(metadata, 'name'))}.`;
+    case AUDIT_EVENTS.PLAN_CREATED:
+      return `Created the plan${quoted(text(metadata, 'slug'))}.`;
+    case AUDIT_EVENTS.PLAN_UPDATED:
+      return `Changed the plan${quoted(text(metadata, 'slug'))}.`;
+    case AUDIT_EVENTS.PLAN_DELETED:
+      return 'Deleted a plan.';
 
     // -- Outgoing notifications ------------------------------------------------
     case AUDIT_EVENTS.WEBHOOK_CREATED:
