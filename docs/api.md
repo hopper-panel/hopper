@@ -1,5 +1,10 @@
 # API and notifications
 
+For personal keys and outgoing webhooks. If you are a **hosting provider** wiring a billing system to
+Hopper, the credential and the routes you want are in [Application API](./application-api.md): a key
+here borrows its owner's access and stops working when that account does, which is the wrong shape
+for provisioning.
+
 ## API keys
 
 **My account → API keys**. A key borrows its owner's access: it never opens a server they could not

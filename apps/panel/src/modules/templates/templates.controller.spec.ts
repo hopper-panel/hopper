@@ -7,6 +7,7 @@ import { Test } from '@nestjs/testing';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { ApiKeysService } from '../api-keys/api-keys.service.js';
+import { ApplicationKeysService } from '../application/application-keys.service.js';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
 import { TokenService } from '../auth/token.service.js';
 import { TemplateEditorService } from './template-editor.service.js';
@@ -153,6 +154,17 @@ const apiKeys = {
   ),
 };
 
+/**
+ * The guard injects this since application keys exist, and refuses every token
+ * it is offered here: no route of this controller is an application route, so
+ * an application key has nothing to do on one. Answering `null` rather than
+ * omitting the provider keeps the guard whole — a test that stubs away half of
+ * it stops testing the thing that runs in production.
+ */
+const applicationKeys = {
+  authenticate: vi.fn(() => Promise.resolve(null)),
+};
+
 let app: NestFastifyApplication;
 
 beforeAll(async () => {
@@ -165,6 +177,7 @@ beforeAll(async () => {
       { provide: TokenService, useValue: tokens },
       { provide: PrismaService, useValue: prisma },
       { provide: ApiKeysService, useValue: apiKeys },
+      { provide: ApplicationKeysService, useValue: applicationKeys },
       // Exactly how `AuthModule` registers it: globally, so that forgetting a
       // guard on a route is impossible rather than merely unlikely.
       { provide: APP_GUARD, useClass: JwtAuthGuard },

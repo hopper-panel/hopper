@@ -9,7 +9,12 @@ import { Reflector } from '@nestjs/core';
 import { PrismaService } from '../../../prisma/prisma.service.js';
 import { looksLikeApiKey, scopeAllows } from '../../api-keys/api-key.js';
 import { ApiKeysService } from '../../api-keys/api-keys.service.js';
-import { IS_PUBLIC_KEY, REQUIRED_ROLE_KEY } from '../decorators.js';
+import {
+  applicationScopeAllows,
+  looksLikeApplicationKey,
+} from '../../application/application-key.js';
+import { ApplicationKeysService } from '../../application/application-keys.service.js';
+import { IS_APPLICATION_API_KEY, IS_PUBLIC_KEY, REQUIRED_ROLE_KEY } from '../decorators.js';
 import type { AuthenticatedRequest } from '../request-user.js';
 import { TokenService } from '../token.service.js';
 
@@ -28,6 +33,7 @@ export class JwtAuthGuard implements CanActivate {
     private readonly tokens: TokenService,
     private readonly prisma: PrismaService,
     private readonly apiKeys: ApiKeysService,
+    private readonly applicationKeys: ApplicationKeysService,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -45,6 +51,40 @@ export class JwtAuthGuard implements CanActivate {
 
     if (!token) {
       throw new UnauthorizedException('Authentication required.');
+    }
+
+    const isApplicationRoute = this.reflector.getAllAndOverride<boolean>(IS_APPLICATION_API_KEY, [
+      context.getHandler(),
+      context.getClass(),
+    ]);
+
+    // An application key is recognised by its prefix, before anything is
+    // parsed: a malformed `hpa_…` has to be refused as a bad application key
+    // rather than fall through and be tried as a session token, which would
+    // fail signature verification and say something misleading.
+    if (looksLikeApplicationKey(token)) {
+      if (isApplicationRoute !== true) {
+        // Named plainly rather than answered with a generic 401. An integrator
+        // who points their key at `/api/servers` because that is where the
+        // documentation of *personal* keys sent them needs to read what is
+        // wrong, and "invalid token" would send them looking at the key.
+        throw new ForbiddenException(
+          'An application key only opens /api/application. Use a personal API key for the rest.',
+        );
+      }
+
+      return this.authenticateApplicationKey(request, token);
+    }
+
+    // The other direction. Without this, a route of the application API would
+    // also answer to an administrator's browser session — which sounds
+    // harmless and is how an integration ends up half-built: driven from a
+    // session that expires, or from a personal key that dies with its owner's
+    // account, and discovering the difference on the day it stops.
+    if (isApplicationRoute === true) {
+      throw new UnauthorizedException(
+        'This route is reached with an application key (hpa_…), created by an administrator.',
+      );
     }
 
     // An API key is recognised by its prefix: mistaking it for a session token
@@ -107,6 +147,43 @@ export class JwtAuthGuard implements CanActivate {
       throw new ForbiddenException('This action is for administrators only.');
     }
 
+    return true;
+  }
+
+  /**
+   * Authenticates a request carrying an application key.
+   *
+   * Shorter than its personal-key counterpart, and every missing check is a
+   * check that has nowhere to happen: there is no account to find suspended,
+   * no role to re-read, no session to see revoked. What is left is the key
+   * itself — its secret, its expiry, its revocation, the address it came from
+   * — and its scope.
+   */
+  private async authenticateApplicationKey(
+    request: AuthenticatedRequest,
+    token: string,
+  ): Promise<boolean> {
+    const key = await this.applicationKeys.authenticate(token, request.ip);
+
+    if (!key) {
+      throw new UnauthorizedException('Application key invalid, expired or revoked.');
+    }
+
+    if (!applicationScopeAllows(key.scopes, request.method)) {
+      throw new ForbiddenException(
+        `This key does not have the necessary scope (${key.scopes.join(', ') || 'none'}).`,
+      );
+    }
+
+    request.application = {
+      id: key.id,
+      uuid: key.uuid,
+      name: key.name,
+      scopes: key.scopes,
+    };
+
+    // `request.user` is deliberately left unset. Nothing downstream should be
+    // able to mistake this for a person acting.
     return true;
   }
 

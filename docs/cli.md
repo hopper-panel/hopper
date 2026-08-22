@@ -106,3 +106,29 @@ is the control link that is cut, not the containers.
 Without `--node`, the command refuses to act when several nodes exist rather than picking one:
 rotating the wrong machine's token cuts a production off, and the mistake only shows at the next
 restart.
+
+## `hopper application-key:create`, `:list` and `:revoke`
+
+```bash
+hopper application-key:create --name Paymenter --scopes write --allowed-ips 203.0.113.7
+```
+
+Creates the credential a hosting provider's billing system presents to the
+[Application API](./application-api.md). The token is printed **once**, alone on the last line, so
+`| tail -1` works in an installation script.
+
+It exists as a command and not only as an administration screen because the first one has to be
+creatable without a browser: a provider installs the panel and wires their billing system to it in
+the same SSH session, and signing in to a web interface to obtain the credential that automates the
+web interface is a detour with no purpose.
+
+`--scopes` defaults to `read,write`. Give a status page `read` alone and it cannot delete a
+customer's server.
+
+```bash
+hopper application-key:list
+hopper application-key:revoke --uuid 3f1c…
+```
+
+Revoking keeps the key, revoked, rather than deleting it: it is the only thing that names the
+integration behind the audit entries of every server it provisioned.

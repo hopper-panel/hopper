@@ -2,6 +2,11 @@ import { NestFactory } from '@nestjs/core';
 import type { INestApplicationContext } from '@nestjs/common';
 import { AppModule } from '../app.module.js';
 import { PANEL_VERSION } from '../version.js';
+import {
+  applicationKeyCreate,
+  applicationKeyList,
+  applicationKeyRevoke,
+} from './commands/application-key.js';
 import { runDoctor } from './commands/doctor.js';
 import { nodeCreate, nodeToken, nodeUpdate } from './commands/node.js';
 import { settingsList, settingsSet } from './commands/settings.js';
@@ -79,6 +84,24 @@ const COMMANDS: Command[] = [
     usage: 'hopper node:token --node <uuid or name> [--output /etc/hopper/daemon.yml]',
     run: (context, flags) => nodeToken(context, flags),
   },
+  {
+    name: 'application-key:create',
+    summary: 'Creates a key for a billing system. Prints the token once, last.',
+    usage:
+      'hopper application-key:create --name Paymenter [--scopes write] [--allowed-ips 203.0.113.7]',
+    run: (context, flags) => applicationKeyCreate(context, flags),
+  },
+  {
+    name: 'application-key:list',
+    summary: 'Lists the application keys and their state.',
+    run: (context) => applicationKeyList(context),
+  },
+  {
+    name: 'application-key:revoke',
+    summary: 'Revokes an application key, keeping it nameable in the trail.',
+    usage: 'hopper application-key:revoke --uuid <uuid>',
+    run: (context, flags) => applicationKeyRevoke(context, flags),
+  },
 ];
 
 function usage(): void {
@@ -86,10 +109,10 @@ function usage(): void {
   line('Usage: hopper <command> [options]\n');
 
   for (const command of COMMANDS) {
-    line(`  ${command.name.padEnd(16)} ${command.summary}`);
+    line(`  ${command.name.padEnd(24)} ${command.summary}`);
 
     if (command.usage) {
-      line(`  ${' '.repeat(16)} ${command.usage}`);
+      line(`  ${' '.repeat(24)} ${command.usage}`);
     }
   }
 
