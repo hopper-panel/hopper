@@ -85,6 +85,10 @@ export const AUDIT_EVENTS = {
   APPLICATION_KEY_CREATED: 'application-key.created',
   APPLICATION_KEY_REVOKED: 'application-key.revoked',
 
+  PLAN_CREATED: 'plan.created',
+  PLAN_UPDATED: 'plan.updated',
+  PLAN_DELETED: 'plan.deleted',
+
   WEBHOOK_CREATED: 'webhook.created',
   WEBHOOK_UPDATED: 'webhook.updated',
   WEBHOOK_DELETED: 'webhook.deleted',

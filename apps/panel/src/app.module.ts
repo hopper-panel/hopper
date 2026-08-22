@@ -12,6 +12,7 @@ import { DatabasesModule } from './modules/databases/databases.module.js';
 import { HealthModule } from './modules/health/health.module.js';
 import { InstanceSettingsModule } from './modules/instance-settings/instance-settings.module.js';
 import { NodesModule } from './modules/nodes/nodes.module.js';
+import { PlansModule } from './modules/plans/plans.module.js';
 import { PluginsModule } from './modules/plugins/plugins.module.js';
 import { RemoteModule } from './modules/remote/remote.module.js';
 import { SchedulesModule } from './modules/schedules/schedules.module.js';
@@ -56,6 +57,7 @@ import { WebModule } from './web/web.module.js';
     DatabasesModule,
     ActivityModule,
     WebhooksModule,
+    PlansModule,
     PluginsModule,
     RemoteModule,
     HealthModule,
