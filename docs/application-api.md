@@ -76,7 +76,7 @@ curl -H "Authorization: Bearer hpa_…" https://panel.example.com/api/applicatio
 
 ```json
 {
-  "panel": { "version": "0.17.1", "api": 1 },
+  "panel": { "version": "0.18.0", "api": 1 },
   "key": { "uuid": "3f1c…", "name": "Paymenter", "scopes": ["read", "write"] }
 }
 ```
