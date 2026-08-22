@@ -89,7 +89,7 @@ export class ServerManager {
     await server.destroyContainer();
 
     if (purgeVolume) {
-      this.logger.warn({ server: uuid, path: server.volumePath }, 'Suppression du volume');
+      this.logger.warn({ server: uuid, path: server.volumePath }, 'Deleting the volume');
       await rm(server.volumePath, { recursive: true, force: true });
     }
 
