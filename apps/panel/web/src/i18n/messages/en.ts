@@ -104,6 +104,10 @@ export const en = {
   'console.connecting': 'Connecting to the console…',
   'console.disconnected': 'The node refused this console.',
   'console.refused': 'The node refused this console: {reason}',
+  'console.wrongAddress':
+    'The node accepts consoles only from {address}, the address this panel answers to. This page was opened at {current}: open it at {address} and the console will connect.',
+  'console.nodeUnaware':
+    'This panel answers at {address}, and the node has not been told about it. In Administration → Nodes, open the node, take its configuration again and restart hopperd on the machine.',
   'console.address': 'Address',
   'console.uptime': 'Uptime',
   'console.cpu': 'Processor',
@@ -117,6 +121,11 @@ export const en = {
   'console.chartInbound': 'inbound',
   'console.chartOutbound': 'outbound',
   'console.copyAddress': 'Copy {value}',
+
+  // The panel reached by an address that is not its own
+  'address.wrong':
+    'This panel answers at {address}. Opened at {current}, its consoles are refused and passkeys will not work.',
+  'address.goThere': 'Go to the right address',
 
   // Duration and size
   'unit.offline': 'offline',

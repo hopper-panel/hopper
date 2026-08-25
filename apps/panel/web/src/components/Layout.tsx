@@ -4,6 +4,7 @@ import { useTranslation } from '../i18n';
 import { useAuth } from '../lib/auth';
 import { cx } from '../lib/cx';
 import { SearchDialog } from './SearchDialog';
+import { WrongAddressBanner } from './WrongAddressBanner';
 import { LogoutIcon, SearchIcon, ServersIcon, SettingsIcon, UsersIcon } from './icons';
 
 type IconProps = SVGProps<SVGSVGElement>;
@@ -73,6 +74,8 @@ export function Layout() {
           </div>
         </div>
       ) : null}
+
+      <WrongAddressBanner />
 
       <main>
         <Outlet />

@@ -94,6 +94,10 @@ export const fr: Partial<Messages> = {
   'console.connecting': 'Connexion à la console…',
   'console.disconnected': 'Le node a refusé cette console.',
   'console.refused': 'Le node a refusé cette console : {reason}',
+  'console.wrongAddress':
+    "Le node n'accepte les consoles que depuis {address}, l'adresse à laquelle ce panel répond. Cette page a été ouverte sur {current} : ouvrez-la sur {address} et la console se connectera.",
+  'console.nodeUnaware':
+    "Ce panel répond à l'adresse {address}, et le node n'en a jamais été informé. Dans Administration → Nodes, ouvrez le node, reprenez sa configuration et redémarrez hopperd sur la machine.",
   'console.address': 'Adresse',
   'console.uptime': 'Temps de fonctionnement',
   'console.cpu': 'Processeur',
@@ -107,6 +111,11 @@ export const fr: Partial<Messages> = {
   'console.chartInbound': 'entrant',
   'console.chartOutbound': 'sortant',
   'console.copyAddress': 'Copier {value}',
+
+  // Le panel atteint par une adresse qui n'est pas la sienne
+  'address.wrong':
+    "Ce panel répond à l'adresse {address}. Ouvert sur {current}, ses consoles sont refusées et les passkeys ne fonctionnent pas.",
+  'address.goThere': 'Aller à la bonne adresse',
 
   'unit.offline': 'hors ligne',
   'unit.bytes': 'o',

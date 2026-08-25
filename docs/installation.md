@@ -107,6 +107,22 @@ Then, in the interface:
    Velocity, BungeeCord…) is already installed. Resynchronise after every Hopper update.
 3. **Create a server**.
 
+## One address, and only one
+
+The address given during the installation is written into `APP_URL`, and from there into every node's
+`daemon.yml`. A node opens a console only for a browser arriving from that exact address — a browser
+never sends a path or a trailing slash with it, so `https://panel.example.com` and
+`https://203.0.113.7` are two different addresses even when they lead to the same machine.
+
+Reaching the panel by the other one is not obviously wrong: it signs in, it lists the servers, it
+starts and stops them. Only the console stays empty, and the passkeys stop working. The panel says so
+in a banner, and names the address it answers to.
+
+Changing that address afterwards — putting the panel behind a domain name, or behind TLS — means
+giving each node its configuration again: **Administration → Nodes → your node → Configuration**,
+then restart `hopperd` on the machine. Rerunning `install.sh` does it for the node on the panel's own
+machine.
+
 ## Firewall
 
 Docker writes its own `iptables` rules, **before** ufw's: a ufw rule that seems to close a container
