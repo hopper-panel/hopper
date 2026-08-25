@@ -675,6 +675,33 @@ The command was delivered and obeyed; it is the wrapper that undoes it. What the
 minutes later, is the replacement — a server that came up during the stop and has been taking
 players ever since.
 
+**A refusal from Steam is not a failed installation.** `+app_update 4020 validate` answered
+
+```
+Connecting anonymously to Steam Public...OK
+Waiting for user info...OK
+ERROR! Failed to install app '4020' (Missing configuration)
+```
+
+and exited 8, in a fresh container on a machine with 31 GB free, before a byte of depot — and the
+same line in another fresh container ten minutes later downloaded all 6.87 GB. Steam had not handed
+out the app's configuration, and nothing on the node decides that. So the shipped Source install
+runs `app_update` up to three times before giving up, which is worth copying into any template that
+installs from Steam: one attempt turns a passing Steam mood into an installation somebody has to
+notice and start again, on a download measured in gigabytes.
+
+The three failures worth telling apart, because none of their fixes is guessable from what SteamCMD
+prints:
+
+| What SteamCMD says      | What it means                                                                                                        |
+| ----------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `Missing configuration` | Steam refused the app's configuration. Nothing local; reinstall in a few minutes.                                    |
+| `state is 0x202`        | Out of room. The depot stages into `steamapps/downloading`, so the install wants about twice the finished size free. |
+| `No subscription`       | The app id is not anonymously installable — a game client's id, most often.                                          |
+
+The second was measured by giving the volume 1.9 GB for a 6.87 GB depot; the first is the one that
+sends an operator looking for a fault on their own machine.
+
 #### The `su` rule that was here, and was wrong
 
 This section used to open with a third rule: that `su` cannot work in the install container, because

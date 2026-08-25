@@ -1028,6 +1028,47 @@ describe('catalogue de templates', () => {
       });
 
       /**
+       * The failure that is not this machine's.
+       *
+       * `+app_update 4020` answered "ERROR! Failed to install app '4020'
+       * (Missing configuration)" and exited 8 on a fresh container with 31 GB
+       * free, before a byte of depot — and the same line in another fresh
+       * container ten minutes later downloaded all 6.87 GB. Steam had simply
+       * not handed out the app's configuration. One attempt turns that into a
+       * failed installation somebody has to notice and start again.
+       *
+       * The assertions are on the executable text and not on the comments,
+       * which say all of this too.
+       */
+      it('retries the download rather than failing on one refusal', () => {
+        expect(executable).toContain('until steam_update');
+        expect(executable).toContain('STEAMCMD_ATTEMPTS=3');
+      });
+
+      it('gives up in the end, rather than looping on a real failure', () => {
+        // A wrong app id or a full volume fails the same way every time, and
+        // has to be reported in a minute rather than in an hour.
+        expect(executable).toContain('-ge "${STEAMCMD_ATTEMPTS}"');
+        expect(executable).toContain('exit 1');
+      });
+
+      it('names the three failures it can tell apart', () => {
+        // Each of the three has a different fix and none of them is guessable
+        // from what SteamCMD prints: a passing Steam mood, a volume with too
+        // little room, an app id that is not anonymously installable.
+        expect(executable).toContain('grep -q "Missing configuration"');
+        expect(executable).toContain('grep -q "state is 0x202"');
+        expect(executable).toContain('grep -q "No subscription"');
+      });
+
+      it('keeps the download on the console while keeping it for the diagnosis', () => {
+        // `tee`, not a redirection: an install that goes silent for six
+        // gigabytes looks stuck, and the operator watching it has no other
+        // progress to read.
+        expect(executable).toContain('| tee "${STEAMCMD_LOG}"');
+      });
+
+      /**
        * Where srcds looks for the Steam client library **second**.
        *
        * `HOME` is `/home/container` in the runtime image and the volume is
