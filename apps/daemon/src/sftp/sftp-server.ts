@@ -1,6 +1,6 @@
 import type { WriteStream } from 'node:fs';
-import { mkdir, readFile, writeFile, type FileHandle } from 'node:fs/promises';
-import { join } from 'node:path';
+import { mkdir, readFile, rename, writeFile, type FileHandle } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
 import { PERMISSIONS, type Permission } from '@hopper/shared';
 import {
   Server as SshServer,
@@ -121,6 +121,52 @@ export interface SftpServerOptions {
   logger: Logger;
 }
 
+/**
+ * How many keys are generated before giving up on ssh2's generator.
+ *
+ * One in 256 is short, so eight in a row is a one in eighteen million million
+ * million event: reaching this limit means the failure is no longer the one
+ * described below.
+ */
+const GENERATION_ATTEMPTS = 8;
+
+/**
+ * An ed25519 host key that ssh2 will read back.
+ *
+ * `utils.generateKeyPairSync('ed25519')` produces a key ssh2's own parser
+ * rejects roughly **one time in 256**: measured at 12 in 3000, and the shape of
+ * the damage says where that figure comes from — the public key comes out 31
+ * bytes instead of 32 and the secret 63 instead of 64, one byte short at the
+ * front. A leading zero stripped as though the key material were an integer,
+ * which one key in 256 begins with.
+ *
+ * It is not a rare inconvenience. The key is written to disk on a node's first
+ * start and read at every start after it, so one node in 256 would have
+ * generated a key that only fails later, on a message naming neither the daemon
+ * nor the file — and no reinstall would fix it, since the broken key is exactly
+ * what is kept.
+ *
+ * So each key is put through the parser that will read it, and a short one is
+ * thrown away. Node's own `crypto.generateKeyPairSync('ed25519')` was tried
+ * first and is not an option: ssh2 answers "Unsupported key format" to the
+ * PKCS#8 PEM it exports, 2000 times out of 2000.
+ */
+export function generateHostKey(): Buffer {
+  for (let attempt = 1; attempt <= GENERATION_ATTEMPTS; attempt += 1) {
+    const generated = utils.generateKeyPairSync('ed25519').private;
+
+    if (!(utils.parseKey(generated) instanceof Error)) {
+      return Buffer.from(generated);
+    }
+  }
+
+  throw new Error(
+    `Generated ${GENERATION_ATTEMPTS} SSH host keys and ssh2 refused every one of them. This is ` +
+      'not the known one-in-256 short key: something about key generation on this machine has ' +
+      'changed.',
+  );
+}
+
 export class SftpServer {
   private server: SshServer | null = null;
 
@@ -138,19 +184,47 @@ export class SftpServer {
       this.options.config.system.sftp.hostKeyPath ??
       join(this.options.paths.root, 'ssh_host_ed25519_key');
 
-    try {
-      return await readFile(path);
-    } catch {
-      this.options.logger.info({ path }, 'Generating the SFTP host key');
+    const existing = await readFile(path).catch(() => null);
 
-      const keys = utils.generateKeyPairSync('ed25519');
+    if (existing !== null) {
+      // Read here rather than left to `new SshServer`, which throws "Malformed
+      // OpenSSH private key" from inside a constructor and names no file. A
+      // node that generated an unusable key before the check below existed is
+      // stuck on exactly that message at every start, so this is the one place
+      // that can say which file and what to do about it.
+      const parsed = utils.parseKey(existing);
 
-      await mkdir(join(path, '..'), { recursive: true }).catch(() => undefined);
-      // 0600: the host private key must be readable by the daemon only.
-      await writeFile(path, keys.private, { mode: 0o600 });
+      if (parsed instanceof Error) {
+        throw new Error(
+          `${path} is not a key this daemon can use (${parsed.message}). Delete it and start ` +
+            'again to have another generated — every SFTP client will then report a changed host ' +
+            'key, which is the price of replacing it.',
+        );
+      }
 
-      return Buffer.from(keys.private);
+      return existing;
     }
+
+    this.options.logger.info({ path }, 'Generating the SFTP host key');
+
+    const key = generateHostKey();
+
+    await mkdir(dirname(path), { recursive: true }).catch(() => undefined);
+
+    // Written beside its destination and renamed onto it, because a daemon
+    // killed in the middle of the write would otherwise leave a truncated key —
+    // and a truncated key is not a missing one: it is read on the next start,
+    // rejected, and SFTP never comes up again on that node.
+    //
+    // 0600 on the temporary file, which the rename carries over: the host
+    // private key must be readable by the daemon alone, and a file that is
+    // world-readable for even a moment has been readable.
+    const temporary = `${path}.${process.pid}.tmp`;
+
+    await writeFile(temporary, key, { mode: 0o600 });
+    await rename(temporary, path);
+
+    return key;
   }
 
   async start(): Promise<void> {

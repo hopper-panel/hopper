@@ -3,14 +3,14 @@ import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { PERMISSIONS, type Permission } from '@hopper/shared';
-import { Client, type SFTPWrapper } from 'ssh2';
+import { Client, utils, type SFTPWrapper } from 'ssh2';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { DaemonConfig } from '../config/schema.js';
 import type { Logger } from '../logger.js';
 import type { PanelClient } from '../panel/panel-client.js';
 import type { ServerInstance } from '../server/server-instance.js';
 import type { ServerManager } from '../server/server-manager.js';
-import { SftpServer } from './sftp-server.js';
+import { SftpServer, generateHostKey } from './sftp-server.js';
 
 /**
  * These tests speak SFTP over a real TCP socket, with the real `ssh2` client
@@ -592,5 +592,51 @@ describe('SFTP resource ceilings', () => {
 
     expect(codes.slice(0, 64).every((code) => code === null)).toBe(true);
     expect(codes[64]).toBe(STATUS.FAILURE);
+  });
+});
+
+/**
+ * The host key, which a node generates once and then depends on for ever.
+ *
+ * This was a flaky test before it was a bug: one CI run in a few hundred died
+ * on "Cannot parse privateKey: Malformed OpenSSH private key", from inside
+ * ssh2's own constructor. The generator is what is wrong — `ed25519` keys come
+ * out one byte short about one time in 256, a leading zero stripped as though
+ * the key material were an integer — and on a real node that is not a flake at
+ * all: the key is written on first start and read at every start after it, so
+ * one node in 256 would have had an SFTP server that never came up again, on a
+ * message naming neither the daemon nor the file.
+ */
+describe('the host key', () => {
+  it('never returns one ssh2 cannot read back', () => {
+    // The generator itself, not a mock of it: the failure being guarded against
+    // is a property of ssh2's output, so a stubbed generator would prove
+    // nothing about it. Two hundred keys carry roughly a 55% chance of meeting
+    // a short one, and every one of them has to come back parseable.
+    for (let i = 0; i < 200; i += 1) {
+      expect(utils.parseKey(generateHostKey())).not.toBeInstanceOf(Error);
+    }
+  });
+
+  it('says which file is unusable rather than letting ssh2 say nothing', async () => {
+    // What a node that generated a short key before this fix has at every
+    // start. ssh2 throws "Malformed OpenSSH private key" from a constructor,
+    // which names no path — and the operator cannot guess that deleting one
+    // file is the fix, or that doing so changes the host key their clients
+    // remember.
+    const path = join(sandbox, 'ssh_host_ed25519_key');
+    await writeFile(path, 'not a key at all\n');
+
+    await expect(startSftp()).rejects.toThrow(/is not a key this daemon can use/);
+  });
+
+  it('keeps the key it already has, so clients see the same host twice', async () => {
+    const first = await startSftp();
+    const key = await readFile(join(sandbox, 'ssh_host_ed25519_key'));
+
+    first.stop();
+    await startSftp();
+
+    expect(await readFile(join(sandbox, 'ssh_host_ed25519_key'))).toEqual(key);
   });
 });
