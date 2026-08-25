@@ -1,6 +1,6 @@
 {
   "name": "hopper",
-  "version": "0.19.2",
+  "version": "0.19.3",
   "private": true,
   "description": "Hopper Panel — open-source, self-hosted game server management panel",
   "license": "AGPL-3.0-or-later",
