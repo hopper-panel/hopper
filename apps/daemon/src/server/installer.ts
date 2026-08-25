@@ -301,6 +301,11 @@ export function installCreateOptions(options: {
      * {@link DockerFrameReader} is the eight bytes of header this adds — and
      * that programs which check for a terminal print their plain output. On an
      * install log, that second one is a gain: `apt-get` stops redrawing.
+     *
+     * It is not the whole of that failure, and the Source templates say so:
+     * with no tty at all, a cold SteamCMD still refuses its first call now and
+     * then, and the next one works. This line takes down a wall; the retry in
+     * the install script handles what is left standing.
      */
     Tty: false,
     AttachStdout: true,

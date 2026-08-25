@@ -694,17 +694,21 @@ So the daemon creates install containers with `Tty: false`, from Hopper 0.19.2. 
 problem: 104 of the 274 published eggs read for this catalogue install from SteamCMD, and a tty was a
 wall in front of every one of them, with a message that names neither the panel nor the terminal.
 
-An install script does not have to do anything about this. What it should do is **retry** — a
-download of several gigabytes dies in the middle sometimes, and Steam keeps what it has already
-staged under `steamapps/downloading`, so a second attempt resumes. The shipped Source install makes
-three, then names which of three things happened, because none of their fixes is guessable from what
-SteamCMD prints:
+**The terminal is not the whole of it.** With no terminal at all, on a node already carrying that
+fix, a cold SteamCMD still refused its first call — and the next attempt downloaded all 6.87 GB.
+Twice in the runs watched, and a warm-up `+quit` beforehand does not prevent it.
 
-| What SteamCMD says      | What it means                                                                                                        |
-| ----------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| `Missing configuration` | The install container had a terminal — this node's daemon is older than the panel that sent the script. Update it.   |
-| `state is 0x202`        | Out of room. The depot stages into `steamapps/downloading`, so the install wants about twice the finished size free. |
-| `No subscription`       | The app id is not anonymously installable — a game client's id, most often.                                          |
+So an install script that fetches from Steam should **retry**, for that refusal and for a download of
+several gigabytes dying in the middle. Steam keeps what it has already staged under
+`steamapps/downloading`, so a second attempt resumes rather than starting over. The shipped Source
+install makes three, then names what happened, because none of these is guessable from what SteamCMD
+prints:
+
+| What SteamCMD says      | What it means                                                                                                                                                                                        |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Missing configuration` | Either the install container had a terminal — a node older than 0.19.2 — or a cold SteamCMD refused its first call. No retry gets past the first; the second one usually clears on the next attempt. |
+| `state is 0x202`        | Out of room. The depot stages into `steamapps/downloading`, so the install wants about twice the finished size free.                                                                                 |
+| `No subscription`       | The app id is not anonymously installable — a game client's id, most often.                                                                                                                          |
 
 The second was measured by giving the volume 1.9 GB for a 6.87 GB depot.
 
