@@ -155,6 +155,25 @@ const CONFIGURATION = {
   build: { memoryBytes: 4 * 1024 * 1024 * 1024, swapBytes: 0, cpuPercent: 200, pidsLimit: 512 },
 } as unknown as Parameters<typeof installCreateOptions>[0]['configuration'];
 
+/**
+ * One frame of Docker's multiplexed attach stream.
+ *
+ * The install container has no tty — SteamCMD will not install through one —
+ * so what the daemon reads is framed: eight bytes of header before each piece
+ * of output. The fake stream below has to speak the same thing the real one
+ * does, or these tests would go on proving that a code path nothing runs any
+ * more still works.
+ */
+function framed(text: string): Buffer {
+  const body = Buffer.from(text, 'utf8');
+  const header = Buffer.alloc(8);
+
+  header[0] = 1;
+  header.writeUInt32BE(body.length, 4);
+
+  return Buffer.concat([header, body]);
+}
+
 describe('installHostConfig', () => {
   const config = installHostConfig({
     volumePath: VOLUME,
@@ -459,6 +478,35 @@ describe('container create options', () => {
 
     expect(options.User).toBeUndefined();
     expect(options.HostConfig?.CapAdd).toContain('CHOWN');
+  });
+
+  /**
+   * The line that decides whether a SteamCMD template installs at all.
+   *
+   * `+app_update 4020 validate`, in a container built exactly like this one,
+   * answers "ERROR! Failed to install app '4020' (Missing configuration)" and
+   * exits 8 before a byte of depot — with a tty. Without one, the same
+   * container downloads all 6.87 GB. Measured eight times on one machine,
+   * interleaved so that neither time nor a Steam outage explains it: seven
+   * failures out of seven with, three successes out of three without. `TERM` is
+   * not the variable, and nothing inside the script escapes it — stdin from
+   * /dev/null, stdout down a pipe and `setsid` were all still refused.
+   *
+   * 104 of the 274 published eggs read for this catalogue install from
+   * SteamCMD, so this is not one game's problem. What it costs is that the
+   * attach stream is multiplexed, which `DockerFrameReader` reads.
+   */
+  it('gives the install container no terminal', () => {
+    const options = installCreateOptions({
+      configuration: CONFIGURATION,
+      install: { containerImage: 'debian:bookworm-slim', entrypoint: 'bash' },
+      environment: [],
+      volumePath: VOLUME,
+      scriptDirectory: SCRIPTS,
+      networkName: 'hopper0',
+    });
+
+    expect(options.Tty).toBe(false);
   });
 
   it('runs the ownership reclaim as root, which a chown to another uid requires', () => {
@@ -1900,7 +1948,7 @@ describe('runInstallation', () => {
     await fake.started;
 
     // No newline: the assembler holds this and emits nothing.
-    fake.stream.emit('data', Buffer.from('curl: (28) Operation timed out after 300000 ms'));
+    fake.stream.emit('data', framed('curl: (28) Operation timed out after 300000 ms'));
     expect(lines.join('\n')).not.toContain('curl: (28)');
 
     await vi.advanceTimersByTimeAsync(WINDOW_MS + 1);
@@ -1978,7 +2026,7 @@ describe('runInstallation', () => {
     // chunk for that reason.
     for (let chunk = 0; chunk < 5; chunk += 1) {
       await vi.advanceTimersByTimeAsync(WINDOW_MS - 1_000);
-      fake.stream.emit('data', Buffer.from('\rUpdate state (0x61) downloading, progress: 41.62'));
+      fake.stream.emit('data', framed('\rUpdate state (0x61) downloading, progress: 41.62'));
     }
 
     expect(fake.calls.stops).toBe(0);
@@ -2327,10 +2375,10 @@ describe('runInstallation', () => {
 
     await fake.started;
 
-    fake.stream.emit('data', Buffer.from('Reading package lists...\n'));
-    fake.stream.emit('data', Buffer.from('progress: 12.34\r'));
-    fake.stream.emit('data', Buffer.from('progress: 41.62\r'));
-    fake.stream.emit('data', Buffer.from('progress: 78.90\r'));
+    fake.stream.emit('data', framed('Reading package lists...\n'));
+    fake.stream.emit('data', framed('progress: 12.34\r'));
+    fake.stream.emit('data', framed('progress: 41.62\r'));
+    fake.stream.emit('data', framed('progress: 78.90\r'));
 
     fake.settle(0);
     await expect(running).resolves.toMatchObject({ successful: true });
@@ -2434,7 +2482,7 @@ describe('runInstallation', () => {
     // what it had buffered. The deadline stood down when the container ended,
     // and this must not put it back up: it would then be watching the reclaim
     // without a single thing able to push it back.
-    fake.stream.emit('data', Buffer.from('installation complete\n'));
+    fake.stream.emit('data', framed('installation complete\n'));
 
     // Five windows of chowning, which is a real modpack on a real disk.
     await vi.advanceTimersByTimeAsync(WINDOW_MS * 5);

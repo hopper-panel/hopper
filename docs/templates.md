@@ -675,6 +675,39 @@ The command was delivered and obeyed; it is the wrapper that undoes it. What the
 minutes later, is the replacement — a server that came up during the stop and has been taking
 players ever since.
 
+**No terminal on the install container, and SteamCMD is why.** `+app_update 4020 validate` answers
+
+```
+Connecting anonymously to Steam Public...OK
+Waiting for user info...OK
+ERROR! Failed to install app '4020' (Missing configuration)
+```
+
+and exits 8 before a byte of depot — when the container has a tty. Without one, the same container,
+on the same machine, downloads all 6.87 GB. Measured eight times, interleaved so that neither time
+nor a Steam outage can explain it: seven failures out of seven with a tty, three successes out of
+three without. `TERM` is not the variable — `TERM=xterm` without a tty still works, an empty `TERM`
+with one still fails — and nothing a script can do escapes it: stdin from `/dev/null`, stdout down a
+pipe and `setsid` to drop the controlling terminal were all still refused.
+
+So the daemon creates install containers with `Tty: false`, from Hopper 0.19.2. It is not one game's
+problem: 104 of the 274 published eggs read for this catalogue install from SteamCMD, and a tty was a
+wall in front of every one of them, with a message that names neither the panel nor the terminal.
+
+An install script does not have to do anything about this. What it should do is **retry** — a
+download of several gigabytes dies in the middle sometimes, and Steam keeps what it has already
+staged under `steamapps/downloading`, so a second attempt resumes. The shipped Source install makes
+three, then names which of three things happened, because none of their fixes is guessable from what
+SteamCMD prints:
+
+| What SteamCMD says      | What it means                                                                                                        |
+| ----------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `Missing configuration` | The install container had a terminal — this node's daemon is older than the panel that sent the script. Update it.   |
+| `state is 0x202`        | Out of room. The depot stages into `steamapps/downloading`, so the install wants about twice the finished size free. |
+| `No subscription`       | The app id is not anonymously installable — a game client's id, most often.                                          |
+
+The second was measured by giving the volume 1.9 GB for a 6.87 GB depot.
+
 #### The `su` rule that was here, and was wrong
 
 This section used to open with a third rule: that `su` cannot work in the install container, because
