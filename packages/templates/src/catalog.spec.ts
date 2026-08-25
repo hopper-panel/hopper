@@ -1028,6 +1028,50 @@ describe('catalogue de templates', () => {
       });
 
       /**
+       * Retrying a download that dies in the middle.
+       *
+       * Not the failure most people arrive here with: `Missing configuration`
+       * was a tty on the install container, and the fix for that is `Tty:
+       * false` in the daemon, where the container is created. Nothing a script
+       * can do escapes a terminal — stdin from /dev/null, stdout down a pipe
+       * and `setsid` were all still refused.
+       *
+       * What a retry is worth is the ordinary thing: 6.87 GB is a long time for
+       * a connection to stay up, and Steam resumes from what it has staged
+       * under `steamapps/downloading`.
+       *
+       * The assertions are on the executable text and not on the comments,
+       * which say all of this too.
+       */
+      it('retries the download rather than failing on one refusal', () => {
+        expect(executable).toContain('until steam_update');
+        expect(executable).toContain('STEAMCMD_ATTEMPTS=3');
+      });
+
+      it('gives up in the end, rather than looping on a real failure', () => {
+        // A wrong app id or a full volume fails the same way every time, and
+        // has to be reported in a minute rather than in an hour.
+        expect(executable).toContain('-ge "${STEAMCMD_ATTEMPTS}"');
+        expect(executable).toContain('exit 1');
+      });
+
+      it('names the three failures it can tell apart', () => {
+        // Each of the three has a different fix and none of them is guessable
+        // from what SteamCMD prints: a passing Steam mood, a volume with too
+        // little room, an app id that is not anonymously installable.
+        expect(executable).toContain('grep -q "Missing configuration"');
+        expect(executable).toContain('grep -q "state is 0x202"');
+        expect(executable).toContain('grep -q "No subscription"');
+      });
+
+      it('keeps the download on the console while keeping it for the diagnosis', () => {
+        // `tee`, not a redirection: an install that goes silent for six
+        // gigabytes looks stuck, and the operator watching it has no other
+        // progress to read.
+        expect(executable).toContain('| tee "${STEAMCMD_LOG}"');
+      });
+
+      /**
        * Where srcds looks for the Steam client library **second**.
        *
        * `HOME` is `/home/container` in the runtime image and the volume is

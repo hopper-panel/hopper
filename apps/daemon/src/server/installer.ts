@@ -6,6 +6,7 @@ import type Dockerode from 'dockerode';
 import { DOCKER_ANSWER_TIMEOUT_MS, DockerUnansweredError } from '../docker/client.js';
 import type { DockerClient } from '../docker/client.js';
 import { CPU_PERIOD_US, cpuQuotaFor, memorySwapFor } from '../docker/container-config.js';
+import { DockerFrameReader } from '../docker/stream-frames.js';
 import { LineAssembler, type ConsoleLine } from './console-buffer.js';
 import { directorySize, formatBytes, freeSpaceBytes } from './disk-usage.js';
 import { buildEnvironment } from './invocation.js';
@@ -267,7 +268,41 @@ export function installCreateOptions(options: {
       `SERVER_MEMORY=${Math.floor(configuration.build.memoryBytes / 1048576)}`,
     ],
     WorkingDir: SERVER_MOUNT,
-    Tty: true,
+
+    /**
+     * **No tty, and this is the line that decides whether Steam installs at
+     * all.**
+     *
+     * A tty here read as a convenience: it is what a terminal gives, so
+     * progress bars redraw and colours arrive, and the attach stream is plain
+     * text instead of Docker's framing. SteamCMD refuses to work through one.
+     * `+app_update 4020 validate`, run in a container built exactly like this
+     * one, answers
+     *
+     *   Connecting anonymously to Steam Public...OK
+     *   Waiting for user info...OK
+     *   ERROR! Failed to install app '4020' (Missing configuration)
+     *
+     * and exits 8 before a byte of depot. The same container without the tty
+     * downloads all 6.87 GB. Measured eight times on one machine, interleaved
+     * so that neither time nor a Steam outage can explain it: with a tty it
+     * failed seven times out of seven, without one it worked three times out of
+     * three. `TERM` is not the variable — an empty `TERM` with a tty still
+     * fails, and `TERM=xterm` without one still works — and no redirection
+     * inside the script escapes it: stdin from /dev/null, stdout down a pipe,
+     * `setsid` to drop the controlling terminal, all still refused.
+     *
+     * That is not one game. 104 of the 274 published eggs read for this
+     * catalogue install from SteamCMD, so a tty here is a wall in front of
+     * every one of them, and the message on the wall names neither the panel
+     * nor the terminal.
+     *
+     * What it costs is that the attach stream is now multiplexed —
+     * {@link DockerFrameReader} is the eight bytes of header this adds — and
+     * that programs which check for a terminal print their plain output. On an
+     * install log, that second one is a gain: `apt-get` stops redrawing.
+     */
+    Tty: false,
     AttachStdout: true,
     AttachStderr: true,
     Labels: {
@@ -1185,6 +1220,10 @@ export async function runInstallation(
   );
 
   const assembler = new LineAssembler();
+  // The container has no tty, so what arrives is framed rather than plain — see
+  // `Tty: false` in `installCreateOptions`, which is there because SteamCMD
+  // will not install through a terminal.
+  const frames = new DockerFrameReader();
   stream.on('data', (chunk: Buffer) => {
     // Before the assembly, and this ordering is the feature: bytes are the
     // evidence the container is alive, and a line is only ever the evidence that
@@ -1195,7 +1234,7 @@ export async function runInstallation(
     // working.
     watchdog.noteActivity();
 
-    for (const line of assembler.push(chunk.toString('utf8'))) {
+    for (const line of assembler.push(frames.push(chunk))) {
       onOutput(line);
     }
   });
