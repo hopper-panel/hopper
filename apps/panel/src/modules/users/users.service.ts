@@ -63,7 +63,8 @@ export class UsersService {
     private readonly mail: MailService,
     config: ConfigService<Environment, true>,
   ) {
-    this.appUrl = config.get('APP_URL', { infer: true }).replace(/\/$/, '');
+    // Already an origin: the environment schema reduces it to one.
+    this.appUrl = config.get('APP_URL', { infer: true });
   }
 
   async list(query: PaginationQuery): Promise<Paginated<UserView>> {

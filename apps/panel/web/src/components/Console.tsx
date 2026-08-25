@@ -1,10 +1,12 @@
-import type { Permission } from '@hopper/shared';
+import { ORIGIN_REFUSED_REASON, type Permission } from '@hopper/shared';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { FitAddon } from '@xterm/addon-fit';
 import { Terminal } from '@xterm/xterm';
 import '@xterm/xterm/css/xterm.css';
 import { useTranslation, type MessageKey } from '../i18n';
+import { useAddressVerdict, type AddressVerdict } from '../lib/panel-address';
 import type { ConnectionStatus, ConsoleController } from '../lib/use-console';
+import { Alert } from './ui';
 
 /**
  * Number of lines kept in the terminal.
@@ -154,10 +156,28 @@ export function Console({ controller }: { controller: ConsoleController }) {
 
   const placeholder = t(consolePlaceholder(controller), { reason: controller.failure ?? '' });
 
+  // Why the node refused, when the browser is in a position to know. The
+  // placeholder repeats what the daemon said; this says what to do about it.
+  const verdict = useAddressVerdict();
+  const advice = refusalAdvice(controller.failure, verdict);
+
   return (
     // Terminal and prompt in one frame, like a real terminal: the input line
     // belongs to the console, not to the page around it.
     <div className="overflow-hidden rounded-xl border border-border-subtle bg-[#14161c]">
+      {advice === null ? null : (
+        <div className="border-b border-border-subtle bg-surface-raised p-3">
+          <Alert tone="danger">
+            {t(advice, {
+              // The address to go to in one case, the address the node has
+              // never heard of in the other — the same value seen from either
+              // end of the mismatch.
+              address: verdict.kind === 'wrong-address' ? verdict.expected : window.location.origin,
+              current: window.location.origin,
+            })}
+          </Alert>
+        </div>
+      )}
       {/* An explicit height, not `flex-1`: xterm sizes its content from the
           box it is given. With a height derived from the content, every line
           written grew the box, which allowed one more line — the console
@@ -219,4 +239,47 @@ export function consolePlaceholder(controller: {
   return controller.permissions.includes('control.console')
     ? 'console.commandPlaceholder'
     : 'console.commandDenied';
+}
+
+/**
+ * What to do about a console the node refused over its origin.
+ *
+ * The daemon's own words — "Origin not allowed." — name what was refused and
+ * never what would have been accepted, which leaves an operator with a true
+ * sentence and nowhere to go. The browser holds the missing half: it knows
+ * which address was typed, and the panel has just told it which one it answers
+ * to. The two of them make a complete instruction.
+ *
+ * Only that refusal. Code 1008 also closes a socket with no token, one whose
+ * signature does not check out and one that expired, and none of those has
+ * anything to do with an address — hence the reason is matched, not the close
+ * code. {@link ORIGIN_REFUSED_REASON} is shared with the daemon so the two
+ * cannot drift apart in silence.
+ *
+ * Both surviving branches are worth distinguishing, because they are fixed in
+ * different places by different people. Standing on the wrong address is a
+ * matter of opening another tab. Standing on the right one and being refused
+ * anyway means the node's `daemon.yml` predates it — a configuration to
+ * regenerate and a daemon to restart, on the machine.
+ *
+ * Pure and exported so every branch can be tested without a terminal.
+ */
+export function refusalAdvice(failure: string | null, verdict: AddressVerdict): MessageKey | null {
+  if (failure !== ORIGIN_REFUSED_REASON) {
+    return null;
+  }
+
+  switch (verdict.kind) {
+    case 'wrong-address':
+      return 'console.wrongAddress';
+
+    case 'expected':
+      return 'console.nodeUnaware';
+
+    case 'unknown':
+      // Nothing to compare against, so nothing to advise. The placeholder still
+      // carries the daemon's reason, and a guess dressed as a diagnosis is
+      // worse than none.
+      return null;
+  }
 }

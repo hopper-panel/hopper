@@ -1,9 +1,10 @@
-import { useQuery } from '@tanstack/react-query';
 import { useState, type FormEvent } from 'react';
 import { useTranslation } from '../i18n';
-import { ApiError, api } from '../lib/api';
+import { ApiError } from '../lib/api';
 import { useAuth } from '../lib/auth';
+import { usePanelIdentity } from '../lib/panel-address';
 import { authenticateWithPasskey, passkeysSupported, wasCancelled } from '../lib/passkeys';
+import { WrongAddressBanner } from '../components/WrongAddressBanner';
 import { Alert, Button, Card, Field, Input } from '../components/ui';
 
 /**
@@ -16,10 +17,9 @@ export function LoginPage() {
   const { login, adopt } = useAuth();
   const { t } = useTranslation();
 
-  const branding = useQuery({
-    queryKey: ['panel', 'branding'],
-    queryFn: () => api.get<{ name: string }>('/api/panel'),
-  });
+  // The same query the rest of the panel uses for its own identity: one
+  // request, and the address it answers to comes along with the name.
+  const branding = usePanelIdentity();
 
   const panelName = branding.data?.name ?? 'Hopper';
 
@@ -83,100 +83,108 @@ export function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-surface px-4">
-      <div className="w-full max-w-sm">
-        <div className="mb-8 text-center">
-          <div aria-hidden className="text-4xl">
-            🪣
+    // The banner sits above the card rather than inside the centred column:
+    // a passkey offered by a page reached at the wrong address cannot work, and
+    // that is worth saying before somebody presses the button and reads a
+    // browser error about a relying party.
+    <div className="flex min-h-screen flex-col bg-surface">
+      <WrongAddressBanner />
+
+      <div className="flex flex-1 items-center justify-center px-4 py-8">
+        <div className="w-full max-w-sm">
+          <div className="mb-8 text-center">
+            <div aria-hidden className="text-4xl">
+              🪣
+            </div>
+            <h1 className="mt-3 text-2xl font-semibold text-content">{panelName}</h1>
+            <p className="mt-1 text-sm text-content-muted">
+              {needsTotp ? t('login.totpTitle') : t('login.title')}
+            </p>
           </div>
-          <h1 className="mt-3 text-2xl font-semibold text-content">{panelName}</h1>
-          <p className="mt-1 text-sm text-content-muted">
-            {needsTotp ? t('login.totpTitle') : t('login.title')}
-          </p>
-        </div>
 
-        <Card>
-          <form onSubmit={(event) => void handleSubmit(event)} className="space-y-4">
-            {error ? <Alert>{error}</Alert> : null}
+          <Card>
+            <form onSubmit={(event) => void handleSubmit(event)} className="space-y-4">
+              {error ? <Alert>{error}</Alert> : null}
 
-            {needsTotp ? (
-              <Field label={t('login.totpTitle')} hint={t('login.totpHint')}>
-                <Input
-                  value={totpCode}
-                  onChange={(event) => setTotpCode(event.target.value)}
-                  autoComplete="one-time-code"
-                  inputMode="text"
-                  placeholder="123456"
-                  autoFocus
-                  required
-                />
-              </Field>
-            ) : (
-              <>
-                <Field label={t('login.identifier')}>
+              {needsTotp ? (
+                <Field label={t('login.totpTitle')} hint={t('login.totpHint')}>
                   <Input
-                    value={identifier}
-                    onChange={(event) => setIdentifier(event.target.value)}
-                    autoComplete="username"
+                    value={totpCode}
+                    onChange={(event) => setTotpCode(event.target.value)}
+                    autoComplete="one-time-code"
+                    inputMode="text"
+                    placeholder="123456"
                     autoFocus
                     required
                   />
                 </Field>
+              ) : (
+                <>
+                  <Field label={t('login.identifier')}>
+                    <Input
+                      value={identifier}
+                      onChange={(event) => setIdentifier(event.target.value)}
+                      autoComplete="username"
+                      autoFocus
+                      required
+                    />
+                  </Field>
 
-                <Field label={t('login.password')}>
-                  <Input
-                    type="password"
-                    value={password}
-                    onChange={(event) => setPassword(event.target.value)}
-                    autoComplete="current-password"
-                    required
-                  />
-                </Field>
-              </>
-            )}
+                  <Field label={t('login.password')}>
+                    <Input
+                      type="password"
+                      value={password}
+                      onChange={(event) => setPassword(event.target.value)}
+                      autoComplete="current-password"
+                      required
+                    />
+                  </Field>
+                </>
+              )}
 
-            <Button type="submit" variant="primary" className="w-full" disabled={submitting}>
-              {submitting ? t('login.submitting') : t('login.submit')}
-            </Button>
-
-            {needsTotp ? (
-              <Button
-                type="button"
-                variant="ghost"
-                className="w-full"
-                onClick={() => {
-                  setNeedsTotp(false);
-                  setTotpCode('');
-                  setError(null);
-                }}
-              >
-                {t('login.back')}
+              <Button type="submit" variant="primary" className="w-full" disabled={submitting}>
+                {submitting ? t('login.submitting') : t('login.submit')}
               </Button>
-            ) : null}
 
-            {/* Hidden during the code step: a passkey login is already
-                two-factor, so offering it there would look like a way around
-                the code rather than a different door. */}
-            {canUsePasskeys && !needsTotp ? (
-              <>
-                <div className="flex items-center gap-3 text-xs text-content-subtle">
-                  <span className="h-px flex-1 bg-border-subtle" />
-                  {t('login.or')}
-                  <span className="h-px flex-1 bg-border-subtle" />
-                </div>
-
+              {needsTotp ? (
                 <Button
                   type="button"
+                  variant="ghost"
                   className="w-full"
-                  disabled={passkeyBusy}
-                  onClick={() => void signInWithPasskey()}
+                  onClick={() => {
+                    setNeedsTotp(false);
+                    setTotpCode('');
+                    setError(null);
+                  }}
                 >
-                  {passkeyBusy ? t('login.passkeyWaiting') : t('login.passkey')}
+                  {t('login.back')}
                 </Button>
-              </>
-            ) : null}
-          </form>
-        </Card>
+              ) : null}
+
+              {/* Hidden during the code step: a passkey login is already
+                two-factor, so offering it there would look like a way around
+                the code rather than a different door. */}
+              {canUsePasskeys && !needsTotp ? (
+                <>
+                  <div className="flex items-center gap-3 text-xs text-content-subtle">
+                    <span className="h-px flex-1 bg-border-subtle" />
+                    {t('login.or')}
+                    <span className="h-px flex-1 bg-border-subtle" />
+                  </div>
+
+                  <Button
+                    type="button"
+                    className="w-full"
+                    disabled={passkeyBusy}
+                    onClick={() => void signInWithPasskey()}
+                  >
+                    {passkeyBusy ? t('login.passkeyWaiting') : t('login.passkey')}
+                  </Button>
+                </>
+              ) : null}
+            </form>
+          </Card>
+        </div>
       </div>
     </div>
   );

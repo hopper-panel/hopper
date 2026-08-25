@@ -126,3 +126,17 @@ export const CONSOLE_BUFFER_BYTES = 256 * 1024;
  * nobody was watching.
  */
 export const CONSOLE_ADOPTION_TAIL_LINES = 1000;
+
+/**
+ * The reason the daemon closes with when a browser's `Origin` is not on its
+ * list.
+ *
+ * Shared rather than written twice because the panel reads it. Code 1008 covers
+ * four refusals — this one, a missing token, an invalid one and an expired one
+ * — and only this one is fixed by going to another address, so the panel has to
+ * tell them apart to know whether it may say so. A string compared across two
+ * packages is a coupling worth naming: rewording it here reaches both ends at
+ * once, rewording it in the daemon alone would silently turn the panel's
+ * diagnosis off.
+ */
+export const ORIGIN_REFUSED_REASON = 'Origin not allowed.';

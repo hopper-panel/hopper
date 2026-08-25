@@ -122,7 +122,9 @@ export class MailService {
   }
 
   private panelUrl(): string {
-    return this.config.get('APP_URL', { infer: true }).replace(/\/$/, '');
+    // No trailing slash to strip: `APP_URL` is reduced to its origin when the
+    // environment is read.
+    return this.config.get('APP_URL', { infer: true });
   }
 
   private from(settings: InstanceSettings): string {

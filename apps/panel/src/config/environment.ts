@@ -9,8 +9,28 @@ import { z } from 'zod';
 export const environmentSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
 
-  /** The panel's public URL. Serves as JWT issuer and allowed origin. */
-  APP_URL: z.url().default('http://localhost:8080'),
+  /**
+   * The panel's public URL. Serves as JWT issuer and allowed origin.
+   *
+   * Reduced to its origin — scheme, host, port and nothing else — because that
+   * is the form the two ends that compare it against something use. A browser's
+   * `Origin` header never carries a path or a trailing slash, and the daemon
+   * checks this string against that header before it opens a console; it also
+   * verifies the `iss` of the console token against the same value copied into
+   * its own `daemon.yml`. `http://panel.example.com/` therefore refused every
+   * console on an installation whose configuration looked right everywhere it
+   * was displayed.
+   *
+   * `install.sh` trims what it is given, so this catches the hand-edited `.env`
+   * rather than the common path. On an installation already spelling its URL
+   * this way it changes nothing at all; on one that was not, the node has to be
+   * given its configuration again, which it needed regardless — its consoles
+   * were refused.
+   */
+  APP_URL: z
+    .url()
+    .default('http://localhost:8080')
+    .transform((value) => new URL(value).origin),
   HOST: z.string().default('0.0.0.0'),
   PORT: z.coerce.number().int().min(1).max(65535).default(8080),
 

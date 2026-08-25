@@ -1,5 +1,6 @@
 import {
   CONSOLE_TOKEN_RENEW_MARGIN_SECONDS,
+  ORIGIN_REFUSED_REASON,
   PERMISSIONS,
   WS_ERROR_CODES,
   clientMessageSchema,
@@ -204,7 +205,7 @@ export function registerConsoleGateway(
     const origin = request.headers.origin;
     if (origin && !config.api.allowedOrigins.includes(origin)) {
       logger.warn({ origin, server: uuid }, 'WebSocket connection refused: origin not allowed');
-      socket.close(1008, 'Origin not allowed.');
+      socket.close(1008, ORIGIN_REFUSED_REASON);
       return;
     }
 
