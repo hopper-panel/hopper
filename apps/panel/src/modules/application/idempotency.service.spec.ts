@@ -1,5 +1,5 @@
 import { ConflictException, UnprocessableEntityException } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { Prisma } from '../../prisma/client.js';
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { PrismaService } from '../../prisma/prisma.service.js';
 import { IdempotencyService } from './idempotency.service.js';

@@ -6,3 +6,4 @@ coverage
 pnpm-lock.yaml
 LICENSE
 apps/panel/prisma/migrations
+apps/panel/src/generated

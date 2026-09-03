@@ -1,6 +1,8 @@
+import 'dotenv/config';
 import { randomBytes } from 'node:crypto';
 import { Algorithm, hash } from '@node-rs/argon2';
-import { Prisma, PrismaClient } from '@prisma/client';
+import { PrismaPg } from '@prisma/adapter-pg';
+import { Prisma, PrismaClient } from '../src/prisma/client.js';
 import { TEMPLATE_CATALOG } from '@hopper/templates';
 import { ENCRYPTION_INFO, deriveKey, encryptWithKey } from '../src/common/crypto/cipher.js';
 
@@ -16,7 +18,12 @@ import { ENCRYPTION_INFO, deriveKey, encryptWithKey } from '../src/common/crypto
  *   HOPPER_ADMIN_EMAIL, HOPPER_ADMIN_USERNAME, HOPPER_ADMIN_PASSWORD
  */
 
-const prisma = new PrismaClient();
+// Prisma 7 hands the connection to an adapter rather than reading the schema.
+// `dotenv` is loaded above so the seed also runs on its own, outside the
+// `prisma db seed` that normally loads the configuration for it.
+const prisma = new PrismaClient({
+  adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL }),
+});
 
 const ARGON2_OPTIONS = {
   algorithm: Algorithm.Argon2id,

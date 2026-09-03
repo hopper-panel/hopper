@@ -6,7 +6,7 @@ import {
   Logger,
   UnauthorizedException,
 } from '@nestjs/common';
-import type { User } from '@prisma/client';
+import type { User } from '../../prisma/client.js';
 import { CryptoService } from '../../common/crypto/crypto.service.js';
 import { RateLimiterService } from '../../common/rate-limit/rate-limiter.service.js';
 import { PrismaService } from '../../prisma/prisma.service.js';

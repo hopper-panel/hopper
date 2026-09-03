@@ -33,7 +33,9 @@ Before adding code, check that it goes in the right place:
 - `packages/shared` — **every** shape of data that travels between the panel and the daemon. It is
   the source of truth: a Zod schema is defined there once and imported on both sides. If you are
   about to duplicate an interface, stop and put it here.
-- `apps/panel` — API and interface. Holds the database. Never talks to Docker.
+- `apps/panel` — API and interface. Holds the database. Never talks to Docker. Its Prisma client
+  is generated into `src/generated/prisma`, which is not committed: `prisma generate` rebuilds it
+  on every `pnpm install`, and everything imports it through `src/prisma/client.ts`.
 - `apps/daemon` — drives Docker and the filesystem. Never touches the database.
 - `packages/templates` — server definitions (the counterpart of Pterodactyl's "eggs").
 

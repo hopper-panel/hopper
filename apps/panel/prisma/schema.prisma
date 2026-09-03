@@ -9,13 +9,23 @@
 //  • Cascading deletes are explicit: deleting a node must never silently erase
 //    servers. See the `onDelete: Restrict`.
 
+// The client is generated into the source tree rather than into node_modules:
+// since Prisma 7 it is ordinary TypeScript, compiled with the rest of the panel.
+// `moduleFormat` is stated rather than inferred — the panel is CommonJS, and an
+// inference that reads the wrong signal produces a client that only fails at
+// run time, in `require`.
 generator client {
-  provider = "prisma-client-js"
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  runtime      = "nodejs"
+  moduleFormat = "cjs"
 }
 
+// The connection URL is no longer written here. Prisma 7 refuses it in the
+// schema: Migrate reads it from `prisma.config.ts`, and the client receives an
+// adapter holding it. See `src/prisma/prisma.service.ts`.
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
 }
 
 // ---------------------------------------------------------------------------
