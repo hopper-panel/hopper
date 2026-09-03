@@ -5,7 +5,7 @@ import {
   templateVariableDefinitionSchema,
   type TemplateDefinition,
 } from '@hopper/templates';
-import { Prisma } from '@prisma/client';
+import { Prisma } from '../../prisma/client.js';
 import { describe, expect, it } from 'vitest';
 import type { PrismaService } from '../../prisma/prisma.service.js';
 import { TemplateSyncService } from './template-sync.service.js';

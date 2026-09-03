@@ -2,6 +2,11 @@ const base = require('@hopper/config/eslint');
 
 module.exports = [
   ...base,
+  // The Prisma client is generated, carries its own `eslint-disable` and is
+  // 2 MB of it: linting it costs seconds and can report nothing worth acting on.
+  {
+    ignores: ['src/generated/**'],
+  },
   {
     files: ['**/*.ts'],
     rules: {

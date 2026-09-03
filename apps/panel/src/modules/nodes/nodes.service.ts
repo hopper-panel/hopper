@@ -6,7 +6,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import type { Node, Prisma } from '@prisma/client';
+import type { Node, Prisma } from '../../prisma/client.js';
 import { stringify as stringifyYaml } from 'yaml';
 import { CryptoService } from '../../common/crypto/crypto.service.js';
 import type { Environment } from '../../config/environment.js';

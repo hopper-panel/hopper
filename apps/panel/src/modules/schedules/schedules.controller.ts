@@ -11,7 +11,7 @@ import {
   Post,
   Req,
 } from '@nestjs/common';
-import type { Prisma } from '@prisma/client';
+import type { Prisma } from '../../prisma/client.js';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe.js';
 import { AUDIT_EVENTS, AuditService } from '../audit/audit.service.js';
 import { RequireServerPermission } from '../auth/decorators.js';

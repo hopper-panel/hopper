@@ -4,7 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { Prisma } from '../../prisma/client.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { parseDockerImages } from '../servers/servers.service.js';
 import type { CreatePlanDto, UpdatePlanDto } from './plans.dto.js';

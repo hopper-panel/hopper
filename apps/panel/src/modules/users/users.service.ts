@@ -4,7 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import type { Prisma, User } from '@prisma/client';
+import type { Prisma, User } from '../../prisma/client.js';
 import {
   paginate,
   skipFor,

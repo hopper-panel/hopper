@@ -1,7 +1,7 @@
 import { NODE_CAPABILITIES } from '@hopper/shared';
 import { importPterodactylEgg } from '@hopper/templates';
 import { ConflictException, NotFoundException } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { Prisma } from '../../prisma/client.js';
 import { describe, expect, it, vi } from 'vitest';
 import type { PrismaService } from '../../prisma/prisma.service.js';
 import type { AuditService } from '../audit/audit.service.js';

@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
-import type { InstanceWebhook } from '@prisma/client';
+import type { InstanceWebhook } from '../../prisma/client.js';
 import { CryptoService } from '../../common/crypto/crypto.service.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import {

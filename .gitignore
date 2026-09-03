@@ -8,6 +8,14 @@ build/
 out/
 *.tsbuildinfo
 
+# Prisma client
+#
+# Since Prisma 7 the client is generated as TypeScript into the source tree
+# rather than into node_modules. It is a build artefact all the same: rebuilt by
+# `prisma generate` on postinstall, and again by the installer before the panel
+# is built. Committing it would mean a schema and a client that can disagree.
+apps/panel/src/generated/
+
 # Turborepo
 .turbo/
 

@@ -13,7 +13,13 @@ import { environmentSchema } from './environment.js';
  * including in `hopper doctor`, which called it valid, because it was.
  */
 
-const minimal = { APP_SECRET: 'x'.repeat(48) };
+// What the schema refuses to do without. `DATABASE_URL` joined the list with
+// Prisma 7: the panel builds the driver adapter from it, so it can no longer be
+// something only the schema file knew about.
+const minimal = {
+  APP_SECRET: 'x'.repeat(48),
+  DATABASE_URL: 'postgresql://hopper:hopper@localhost:5432/hopper',
+};
 
 const appUrl = (value?: string): string =>
   environmentSchema.parse(value === undefined ? minimal : { ...minimal, APP_URL: value }).APP_URL;

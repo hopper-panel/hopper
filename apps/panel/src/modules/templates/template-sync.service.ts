@@ -1,6 +1,6 @@
 import { TEMPLATE_CATALOG, type TemplateDefinition } from '@hopper/templates';
 import { Injectable, Logger } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { Prisma } from '../../prisma/client.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 
 export interface SyncOutcome {

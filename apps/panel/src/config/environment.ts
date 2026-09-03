@@ -34,7 +34,13 @@ export const environmentSchema = z.object({
   HOST: z.string().default('0.0.0.0'),
   PORT: z.coerce.number().int().min(1).max(65535).default(8080),
 
-  DATABASE_URL: z.string().min(1).optional(),
+  /**
+   * Required since Prisma 7: the client is built from a driver adapter holding
+   * this URL, so the panel reads it rather than leaving it to `env()` in the
+   * schema. A missing one used to surface on the first query, as a Prisma
+   * error in the middle of a request; it now stops the boot, where it belongs.
+   */
+  DATABASE_URL: z.string().min(1),
   REDIS_URL: z.string().min(1).optional(),
 
   /**
