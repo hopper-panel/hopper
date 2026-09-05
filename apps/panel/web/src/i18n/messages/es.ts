@@ -883,6 +883,12 @@ export const es: Partial<Messages> = {
 
   'fileEdit.backToFiles': 'Volver a los archivos',
 
+  'fileEdit.notText':
+    'Este archivo no es texto: el editor lo mostraría como galimatías y guardarlo lo destruiría.',
+  'fileEdit.download': 'Descárgalo',
+  'fileEdit.editorLabel': 'Contenido de {name}',
+  'fileEdit.saveShortcut': 'para guardar.',
+
   // Llaves de acceso
   'login.or': 'o',
   'login.passkey': 'Iniciar sesión con una llave de acceso',

@@ -20,6 +20,16 @@ import { useServerContext } from '../lib/server-context';
  * The path travels as a query parameter rather than a URL segment: it contains
  * slashes, which would otherwise cut the route up.
  */
+/**
+ * The daemon's refusal to treat a file as text, told apart from every other
+ * read failure.
+ *
+ * It is not an error the user made: the file manager offers anything it cannot
+ * prove is binary, so landing here is a normal outcome — and the useful answer
+ * is a download, not a status code.
+ */
+class NotTextError extends Error {}
+
 export function ServerFileEditPage() {
   const { t } = useTranslation();
   const { uuid = '' } = useParams();
@@ -45,8 +55,12 @@ export function ServerFileEditPage() {
 
       if (!response.ok) {
         const detail = (await response.json().catch(() => null)) as {
-          error?: { message?: string };
+          error?: { code?: string; message?: string };
         } | null;
+
+        if (detail?.error?.code === 'file_not_text') {
+          throw new NotTextError(t('fileEdit.notText'));
+        }
 
         throw new Error(
           detail?.error?.message ?? t('fileEdit.readFailed', { status: response.status }),
@@ -174,6 +188,14 @@ export function ServerFileEditPage() {
         <div className="mb-4">
           <Alert>
             {load.error instanceof Error ? load.error.message : t('common.loadFailed')}{' '}
+            {load.error instanceof NotTextError ? (
+              <a
+                className="underline"
+                href={`/api/servers/${uuid}/files/download?file=${encodeURIComponent(path)}`}
+              >
+                {t('fileEdit.download')}
+              </a>
+            ) : null}{' '}
             <button className="underline" onClick={() => void navigate(filesUrl)}>
               {t('fileEdit.backToFiles')}
             </button>
@@ -223,7 +245,7 @@ export function ServerFileEditPage() {
               // everything below would shift. So it scrolls horizontally, as a
               // code editor does.
               wrap="off"
-              aria-label={`Contenu de ${path}`}
+              aria-label={t('fileEdit.editorLabel', { name: nameOf(path) })}
               // Height relative to the window: an editor growing with its
               // content would force scrolling the whole page to reach the
               // bottom of any sizeable file.
@@ -238,7 +260,8 @@ export function ServerFileEditPage() {
       ) : (
         <p className="mt-3 text-xs text-content-muted">
           <kbd className="rounded border border-border-subtle px-1">Ctrl</kbd> +{' '}
-          <kbd className="rounded border border-border-subtle px-1">S</kbd> pour enregistrer.
+          <kbd className="rounded border border-border-subtle px-1">S</kbd>{' '}
+          {t('fileEdit.saveShortcut')}
         </p>
       )}
     </>

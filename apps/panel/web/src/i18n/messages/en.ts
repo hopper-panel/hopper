@@ -1152,6 +1152,14 @@ export const en = {
 
   'fileEdit.backToFiles': 'Back to the files',
 
+  // The editor opens anything that is not plainly binary; these say what
+  // happens when the daemon finds it was not text after all.
+  'fileEdit.notText':
+    'This file is not text: the editor would show it as gibberish, and saving would destroy it.',
+  'fileEdit.download': 'Download it',
+  'fileEdit.editorLabel': 'Content of {name}',
+  'fileEdit.saveShortcut': 'to save.',
+
   // Passkeys
   'login.or': 'or',
   'login.passkey': 'Sign in with a passkey',

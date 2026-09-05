@@ -5,6 +5,7 @@ import { Readable, Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import {
   ALLOWED_FETCH_HOSTS,
+  BINARY_SNIFF_BYTES,
   MAX_EDITABLE_FILE_BYTES,
   MAX_UPLOAD_BYTES,
   chmodFilesRequestSchema,
@@ -16,6 +17,7 @@ import {
   downloadFileQuerySchema,
   fetchRemoteFileRequestSchema,
   listFilesQuerySchema,
+  looksBinary,
   readFileQuerySchema,
   renameFileRequestSchema,
   uploadFileQuerySchema,
@@ -220,6 +222,28 @@ export function registerFileRoutes(
       }
 
       const absolute = await jail.absolutePathFor(query.file);
+
+      // Whether it is text is settled on the bytes, not on the name.
+      //
+      // The file manager no longer keeps a list of extensions it agrees to
+      // open — it kept refusing perfectly ordinary text nobody had thought to
+      // list — so a `.dat` full of NUL bytes now reaches this route like
+      // anything else. Refusing it here is what keeps it from arriving in the
+      // editor as several thousand replacement characters, saved back over the
+      // real file the moment somebody touches a key.
+      //
+      // A separate, bounded read: the head has to be examined before the reply
+      // is sent, and a stream already being sent can no longer change its
+      // status code.
+      if (looksBinary(await readHead(jail, absolute))) {
+        return reply.code(415).send({
+          error: {
+            code: 'file_not_text',
+            message: 'This file is not text. Download it instead.',
+            requestId: 'n/a',
+          },
+        });
+      }
 
       // Streamed rather than loaded into memory: a 4 MiB file per concurrent
       // request would quickly exhaust the daemon's heap.
@@ -541,4 +565,27 @@ export function registerFileRoutes(
       return reply.code(204).send();
     }),
   );
+}
+
+/**
+ * The first bytes of a file, and no more than that.
+ *
+ * Opened separately from the read that serves the file: the answer is needed
+ * before the reply is sent, and prepending an already-consumed chunk back onto
+ * the payload stream would put a wrapper between Fastify and the descriptor —
+ * which is what closes it when a client hangs up early.
+ *
+ * Both opens go through the jail, so both are checked; between them the owner
+ * could swap a text file for a binary one and get bytes served that were never
+ * examined. That is a mojibake, not an escape, and it costs nothing here.
+ */
+async function readHead(jail: JailedFilesystem, absolute: string): Promise<Uint8Array> {
+  const probe = await jail.createReadStream(absolute, { start: 0, end: BINARY_SNIFF_BYTES - 1 });
+  const chunks: Buffer[] = [];
+
+  for await (const chunk of probe) {
+    chunks.push(chunk as Buffer);
+  }
+
+  return Buffer.concat(chunks);
 }
