@@ -1170,6 +1170,12 @@ export const fr: Partial<Messages> = {
 
   'fileEdit.backToFiles': 'Revenir aux fichiers',
 
+  'fileEdit.notText':
+    "Ce fichier n'est pas du texte : l'éditeur l'afficherait en charabia, et l'enregistrer le détruirait.",
+  'fileEdit.download': 'Le télécharger',
+  'fileEdit.editorLabel': 'Contenu de {name}',
+  'fileEdit.saveShortcut': 'pour enregistrer.',
+
   // Clés d'accès
   'login.or': 'ou',
   'login.passkey': 'Se connecter avec une clé d’accès',

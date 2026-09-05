@@ -1,6 +1,6 @@
+import { isProbablyBinaryName } from '@hopper/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState, type DragEvent, type MouseEvent } from 'react';
-
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { FileBreadcrumb } from '../components/FileBreadcrumb';
 import { KebabMenu } from '../components/KebabMenu';
@@ -45,9 +45,6 @@ interface UploadProgress {
 
 /** Extensions the daemon recognises as extractable archives. */
 const ARCHIVE = /\.(tar\.gz|tgz)$/i;
-
-/** Extensions the editor happily opens. */
-const EDITABLE = /\.(ya?ml|properties|json|txt|log|toml|conf|cfg|ini|sh|md|xml|csv)$/i;
 
 export function ServerFilesPage() {
   const { uuid = '' } = useParams();
@@ -246,7 +243,9 @@ export function ServerFilesPage() {
       return;
     }
 
-    if (EDITABLE.test(entry.name)) {
+    // Anything not plainly binary goes to the editor; the daemon reads the
+    // first bytes and refuses what only looked like text.
+    if (!isProbablyBinaryName(entry.name)) {
       void navigate(`/server/${uuid}/files/edit?f=${encodeURIComponent(entry.path)}`);
       return;
     }
@@ -695,8 +694,9 @@ function FileName({
     return <span className="text-content-muted">{label}</span>;
   }
 
-  // A non-editable file is a download: a real link, not a button.
-  if (!entry.directory && !EDITABLE.test(entry.name)) {
+  // A file that will not open in the editor is a download: a real link, not a
+  // button.
+  if (!entry.directory && isProbablyBinaryName(entry.name)) {
     return (
       <a
         className="text-content"

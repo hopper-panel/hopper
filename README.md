@@ -56,7 +56,7 @@ Hopper aims for the middle:
 | 📦 **One-click install** | Minecraft (Paper, Purpur, Vanilla, Fabric, NeoForge), the Velocity and BungeeCord proxies, Factorio, Source servers, Discord bots |
 | 🥚 **Egg import**        | Reuse the hundreds of existing Pterodactyl eggs, ports and config files included                                                  |
 | ✏️ **Template editor**   | Write your own, in groups, from the administration                                                                                |
-| 📁 **File manager**      | In-browser editing, upload, archives — behind a strict path jail                                                                  |
+| 📁 **File manager**      | In-browser editing of any text file, upload, archives — behind a strict path jail                                                 |
 | 🔌 **Built-in SFTP**     | Sign in with your panel credentials, permissions honoured                                                                         |
 | 💾 **Backups**           | Compressed archives on the node, one-click restore                                                                                |
 | ⏰ **Scheduler**         | Daily restart, nightly backup, scheduled commands                                                                                 |

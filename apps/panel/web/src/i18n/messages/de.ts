@@ -892,6 +892,12 @@ export const de: Partial<Messages> = {
 
   'fileEdit.backToFiles': 'Zurück zu den Dateien',
 
+  'fileEdit.notText':
+    'Diese Datei ist kein Text: der Editor würde Kauderwelsch anzeigen, und Speichern würde sie zerstören.',
+  'fileEdit.download': 'Herunterladen',
+  'fileEdit.editorLabel': 'Inhalt von {name}',
+  'fileEdit.saveShortcut': 'zum Speichern.',
+
   // Passkeys
   'login.or': 'oder',
   'login.passkey': 'Mit einem Passkey anmelden',

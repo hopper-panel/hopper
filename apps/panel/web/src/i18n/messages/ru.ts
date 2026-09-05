@@ -873,6 +873,12 @@ export const ru: Partial<Messages> = {
 
   'fileEdit.backToFiles': 'Вернуться к файлам',
 
+  'fileEdit.notText':
+    'Этот файл — не текст: редактор покажет кракозябры, а сохранение его уничтожит.',
+  'fileEdit.download': 'Скачать',
+  'fileEdit.editorLabel': 'Содержимое {name}',
+  'fileEdit.saveShortcut': 'чтобы сохранить.',
+
   // Ключи доступа
   'login.or': 'или',
   'login.passkey': 'Войти с ключом доступа',

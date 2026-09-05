@@ -94,6 +94,65 @@ export type DecompressFileRequest = z.infer<typeof decompressFileRequestSchema>;
 export const MAX_EDITABLE_FILE_BYTES = 4 * 1024 * 1024;
 
 /**
+ * Extensions the file manager never opens in the editor.
+ *
+ * A **deny** list, and the direction is the whole point. An allow list came
+ * first and behaved as an allow list does: it named the dozen extensions a
+ * Minecraft server has, and everything that was not one hit a wall. A folder of
+ * Garry's Mod `.lua`, a Skript `.sk`, a `Dockerfile`, a `.env` — all plainly
+ * editable text, all offered as downloads because nobody had thought to add
+ * them, and no way for the user to insist.
+ *
+ * Named here is only what is certainly *not* text: archives, images, sounds,
+ * compiled code, databases and a game's world data. Everything else — a known
+ * extension, an unknown one, or none at all — goes to the editor, where the
+ * daemon has the last word by looking at the bytes.
+ */
+export const BINARY_FILE_EXTENSIONS =
+  /\.(zip|tar|gz|tgz|bz2|xz|zst|7z|rar|lz4|jar|war|class|dll|pdb|exe|so|dylib|bin|obj|msi|deb|rpm|png|jpe?g|gif|bmp|ico|webp|tiff?|tga|psd|xcf|mp3|ogg|wav|flac|aac|mp4|mkv|avi|mov|webm|ttf|otf|woff2?|eot|pdf|docx?|xlsx?|odt|ods|db|sqlite3?|mdb|idx|pack|mca|mcr|nbt|schematic|litematic|vpk|gma|bsp|vtf|gcf)$/i;
+
+/**
+ * Whether a name alone is enough to rule the editor out.
+ *
+ * A hint, not a verdict: it spares a round trip on the file nobody meant to
+ * read as text, and it is wrong the moment somebody names a text file `.dat`.
+ * `looksBinary` is what actually decides.
+ */
+export function isProbablyBinaryName(name: string): boolean {
+  return BINARY_FILE_EXTENSIONS.test(name);
+}
+
+/**
+ * How much of a file is examined before calling it text.
+ *
+ * The same 8000 bytes git reads, and for the same reason: far enough in to
+ * catch a header that opens with plausible ASCII, short enough that the check
+ * costs a single read.
+ */
+export const BINARY_SNIFF_BYTES = 8000;
+
+/**
+ * Whether the beginning of a file says it is not text.
+ *
+ * The test is a NUL byte, which is git's, and it is chosen for being *narrow*.
+ * Refusing invalid UTF-8 instead would also refuse the Latin-1 `server.properties`
+ * that a decade of Minecraft servers are full of — files people legitimately
+ * edit, and that no other tool has ever objected to. A NUL byte, on the other
+ * hand, appears in no text file anybody meant to write.
+ */
+export function looksBinary(head: Uint8Array): boolean {
+  const limit = Math.min(head.length, BINARY_SNIFF_BYTES);
+
+  for (let index = 0; index < limit; index += 1) {
+    if (head[index] === 0) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+/**
  * Largest upload, per file.
  *
  * This is **not** a disk quota: nothing stops anyone uploading a thousand
