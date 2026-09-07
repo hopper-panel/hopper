@@ -28,7 +28,7 @@
   },
   "dependencies": {
     "@hopper/shared": "workspace:*",
-    "zod": "^4.1.5"
+    "zod": "^4.5.4"
   },
   "devDependencies": {
     "@hopper/config": "workspace:*",
