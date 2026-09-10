@@ -11,24 +11,8 @@ import {
 import { NodeClientService } from '../nodes/node-client.service.js';
 import { NodesService } from '../nodes/nodes.service.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
+import { pluginLoaderFor } from './loaders.js';
 import { ModrinthService, type PluginSearchPage, type PluginVersion } from './modrinth.service.js';
-
-/**
- * What a template can load, by its key.
- *
- * `vanilla` is absent on purpose, and that absence is the feature: a vanilla
- * server reads neither `plugins/` nor `mods/`. Without this the panel happily
- * installed a Fabric mod onto one — the file landed in the right folder for
- * Fabric, on a server with no loader to read it, and nothing anywhere said so.
- */
-const LOADER_FOR_TEMPLATE: Record<string, string> = {
-  paper: 'paper',
-  purpur: 'purpur',
-  fabric: 'fabric',
-  neoforge: 'neoforge',
-  velocity: 'velocity',
-  bungeecord: 'bungeecord',
-};
 
 /** Where a loader expects its additions to live. */
 const DIRECTORY_FOR_LOADER: Record<string, string> = {
@@ -191,7 +175,7 @@ export class PluginsController {
       select: { template: { select: { key: true, name: true } } },
     });
 
-    const loader = LOADER_FOR_TEMPLATE[record.template.key];
+    const loader = pluginLoaderFor(record.template.key);
 
     if (!loader) {
       throw new BadRequestException(
