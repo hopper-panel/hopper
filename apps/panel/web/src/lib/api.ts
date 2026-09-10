@@ -194,6 +194,8 @@ export interface ServerSummary {
   cpuPercent: number;
   node: { uuid: string; name: string; fqdn: string };
   template: { uuid: string; name: string };
+  /** What the server loads from the plugin catalogue; `null` when it loads nothing. */
+  pluginLoader: string | null;
   primaryAllocation: { ip: string; port: number; alias: string | null } | null;
   isOwner: boolean;
   createdAt: string;

@@ -16,6 +16,11 @@ interface Tab {
   label: MessageKey;
   /** Without it, the tab is not rendered at all. */
   permission?: Permission;
+  /**
+   * Whether the screen means anything for this server. A permission says who
+   * may use a screen; this says whether there is anything there to use.
+   */
+  appliesTo?: (server: ServerSummary) => boolean;
 }
 
 /**
@@ -27,7 +32,14 @@ interface Tab {
 const TABS: Tab[] = [
   { path: '', label: 'tab.console' },
   { path: 'files', label: 'tab.files', permission: 'file.read' },
-  { path: 'plugins', label: 'tab.plugins', permission: 'file.create' },
+  {
+    path: 'plugins',
+    label: 'tab.plugins',
+    permission: 'file.create',
+    // A Factorio server, a Discord bot and a vanilla Minecraft all have nothing
+    // to install from the catalogue: the tab would only lead to a refusal.
+    appliesTo: (server) => server.pluginLoader !== null,
+  },
   { path: 'databases', label: 'tab.databases', permission: 'database.read' },
   { path: 'backups', label: 'tab.backups', permission: 'backup.read' },
   { path: 'schedules', label: 'tab.schedules', permission: 'schedule.read' },
@@ -113,7 +125,11 @@ export function ServerLayout() {
         <div className="mx-auto max-w-7xl px-4">
           {/* `-mb-px` draws the active underline over the band border. */}
           <nav className="-mb-px flex gap-1 overflow-x-auto" aria-label={t('server.sections')}>
-            {TABS.filter((tab) => !tab.permission || can(tab.permission)).map((tab) => (
+            {TABS.filter(
+              (tab) =>
+                (!tab.permission || can(tab.permission)) &&
+                (!tab.appliesTo || tab.appliesTo(server.data)),
+            ).map((tab) => (
               <NavLink
                 key={tab.path}
                 to={tab.path === '' ? `/server/${uuid}` : `/server/${uuid}/${tab.path}`}

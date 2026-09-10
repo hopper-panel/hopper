@@ -22,6 +22,7 @@ import { NodesService } from '../nodes/nodes.service.js';
 import { checkCapacity } from './capacity.js';
 import { ServerConfigurationService } from './server-configuration.service.js';
 import { assertWholeLineParserHonoured } from './config-parsers.js';
+import { pluginLoaderFor } from '../plugins/loaders.js';
 import { assertStopTransportHonoured } from './stop-transport.js';
 import type { CreateServerDto, UpdateServerBuildDto, UpdateServerDto } from './servers.dto.js';
 
@@ -35,6 +36,12 @@ export interface ServerListItem {
   cpuPercent: number;
   node: { uuid: string; name: string; fqdn: string };
   template: { uuid: string; name: string };
+  /**
+   * What the server loads from the plugin catalogue, or `null` when it loads
+   * nothing — every game but the Minecraft family, and vanilla Minecraft too.
+   * The interface shows the Plugins tab on this and on nothing else.
+   */
+  pluginLoader: string | null;
   primaryAllocation: { ip: string; port: number; alias: string | null } | null;
   isOwner: boolean;
   createdAt: Date;
@@ -623,7 +630,7 @@ export class ServersService {
   private listInclude() {
     return {
       node: { select: { uuid: true, name: true, fqdn: true } },
-      template: { select: { uuid: true, name: true } },
+      template: { select: { uuid: true, name: true, key: true } },
       primaryAllocation: { select: { ip: true, port: true, alias: true } },
     } satisfies Prisma.ServerInclude;
   }
@@ -655,7 +662,7 @@ export class ServersService {
     server: Prisma.ServerGetPayload<{
       include: {
         node: { select: { uuid: true; name: true; fqdn: true } };
-        template: { select: { uuid: true; name: true } };
+        template: { select: { uuid: true; name: true; key: true } };
         primaryAllocation: { select: { ip: true; port: true; alias: true } };
       };
     }>,
@@ -670,7 +677,10 @@ export class ServersService {
       diskBytes: server.diskBytes,
       cpuPercent: server.cpuPercent,
       node: server.node,
-      template: server.template,
+      // The key stays inside the panel: it names the template in the catalogue,
+      // which is the panel's business, and the loader is what the screen needs.
+      template: { uuid: server.template.uuid, name: server.template.name },
+      pluginLoader: pluginLoaderFor(server.template.key),
       primaryAllocation: server.primaryAllocation,
       isOwner: server.ownerId === viewerId,
       createdAt: server.createdAt,
