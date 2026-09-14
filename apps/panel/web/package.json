@@ -27,7 +27,7 @@
   },
   "devDependencies": {
     "@hopper/config": "workspace:*",
-    "@material-symbols/svg-400": "^0.47.0",
+    "@material-symbols/svg-400": "^0.47.2",
     "@tailwindcss/vite": "^4.1.13",
     "@testing-library/react": "^16.3.3",
     "@types/react": "^19.1.12",
