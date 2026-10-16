@@ -35,7 +35,7 @@
     "@node-rs/argon2": "^2.1.0",
     "@prisma/adapter-pg": "^7.10.0",
     "@prisma/client": "^7.10.0",
-    "@simplewebauthn/server": "^13.3.3",
+    "@simplewebauthn/server": "^14.0.0",
     "fastify": "^5.12.1",
     "ioredis": "^6.0.0",
     "jose": "^6.2.10",
