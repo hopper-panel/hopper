@@ -33,7 +33,7 @@
   "devDependencies": {
     "@hopper/config": "workspace:*",
     "eslint": "^10.9.1",
-    "rimraf": "^6.0.1",
+    "rimraf": "^6.1.4",
     "tsup": "^8.5.0",
     "typescript": "^5.9.2",
     "vitest": "^4.1.11"
